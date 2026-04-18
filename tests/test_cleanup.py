@@ -251,3 +251,31 @@ def test_build_script_labels_mixed_risk_provider():
     )
     script = build_script(rep)
     assert "risk=mixed" in script
+
+
+def test_build_script_has_shebang_and_warning_header():
+    rep = _report(_e("a", "1", 100))
+    script = build_script(rep)
+    assert script.startswith("#!/usr/bin/env bash\n")
+    assert "commented out" in script.lower()
+
+
+def test_build_script_comments_all_destructive_lines():
+    rep = _report(_e("a", "1", 100, recipe=["rm -rf /1", "echo done"]))
+    script = build_script(rep)
+    # Every recipe line must be prefixed with a comment.
+    for line in ["rm -rf /1", "echo done"]:
+        assert f"#   {line}" in script
+        # The uncommented line must not appear.
+        assert f"\n{line}\n" not in script
+
+
+def test_build_script_groups_by_provider_with_totals():
+    rep = _report(
+        _e("a", "1", 100, recipe=["rm -rf /1"]),
+        _e("a", "2", 200, recipe=["rm -rf /2"]),
+        _e("b", "1", 50, recipe=["rm -rf /b1"]),
+    )
+    script = build_script(rep)
+    assert "# --- a: 300 bytes freed" in script
+    assert "# --- b: 50 bytes freed" in script
