@@ -1,9 +1,6 @@
-from pathlib import Path
-
 from diskdoctor.providers.ollama import OllamaProvider
 from diskdoctor.types import Risk, ShellResult
 from tests.conftest import FakeShell
-
 
 _OLLAMA_LIST_OUT = (
     "NAME                    ID              SIZE      MODIFIED\n"
@@ -31,7 +28,16 @@ def test_discover_parses_ollama_list(monkeypatch):
 def test_discover_falls_back_to_walking_when_list_fails(tmp_path, monkeypatch):
     # Arrange: fake HOME with a models dir
     home = tmp_path / "h"
-    (home / ".ollama" / "models" / "manifests" / "registry.ollama.ai" / "library" / "llama3" / "8b").mkdir(parents=True)
+    (
+        home
+        / ".ollama"
+        / "models"
+        / "manifests"
+        / "registry.ollama.ai"
+        / "library"
+        / "llama3"
+        / "8b"
+    ).mkdir(parents=True)
     blob = home / ".ollama" / "models" / "blobs"
     blob.mkdir(parents=True)
     (blob / "sha256-aaaa").write_bytes(b"x" * 4_000_000)

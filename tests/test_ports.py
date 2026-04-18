@@ -32,7 +32,9 @@ def test_real_shell_captures_stderr_on_failure():
 
 def test_real_shell_timeout_raises():
     import subprocess
+
     import pytest
+
     sh = RealShell()
     with pytest.raises(subprocess.TimeoutExpired):
         sh.run(["sh", "-c", "sleep 5"], timeout=0.2)

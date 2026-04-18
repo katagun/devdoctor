@@ -47,9 +47,43 @@ def run(
             for e in candidates
         ]
 
-    # Selection phase
-    selections: list[tuple[Entry, str]] = []  # (entry, "approved" | "skipped"[:reason])
-    provider_override: dict[str, str] = {}    # provider -> "all" | "skip"
+    selections = _select_entries(candidates, prompt_choice, opts)
+
+    approved = [e for e, s in selections if s == "approved"]
+    if not approved:
+        return _make_skipped_results(selections)
+
+    if not confirm(_summary(approved)):
+        return [
+            CleanResult(
+                entry_id=e.id,
+                status="skipped",
+                freed_bytes=0,
+                message="aborted at confirm",
+            )
+            if state == "approved"
+            else _to_result(e, state)
+            for e, state in selections
+        ]
+
+    # Execute phase
+    results: list[CleanResult] = []
+    for entry, state in selections:
+        if state != "approved":
+            results.append(_to_result(entry, state))
+            continue
+        results.append(_execute_entry(entry, shell))
+    return results
+
+
+def _select_entries(
+    candidates: list[Entry],
+    prompt_choice: PromptChoice,
+    opts: CleanupOpts,
+) -> list[tuple[Entry, str]]:
+    """Decide per-entry state ("approved" or "skipped:<reason>")."""
+    selections: list[tuple[Entry, str]] = []
+    provider_override: dict[str, str] = {}  # provider -> "all" | "skip"
     quit_signalled = False
 
     for entry in candidates:
@@ -73,44 +107,29 @@ def run(
             selections.append((entry, "approved"))
             continue
 
-        choice = prompt_choice(entry)
-        if choice == "y":
-            selections.append((entry, "approved"))
-        elif choice == "n":
-            selections.append((entry, "skipped:user"))
-        elif choice == "a":
-            provider_override[entry.provider] = "all"
-            selections.append((entry, "approved"))
-        elif choice == "s":
-            provider_override[entry.provider] = "skip"
-            selections.append((entry, "skipped:provider-skip"))
-        elif choice == "q":
+        state, override_update = _apply_choice(prompt_choice(entry), entry.provider)
+        if override_update is not None:
+            provider_override[entry.provider] = override_update
+        if state == "skipped:quit":
             quit_signalled = True
-            selections.append((entry, "skipped:quit"))
-        else:
-            selections.append((entry, f"skipped:unknown-choice:{choice}"))
+        selections.append((entry, state))
 
-    approved = [e for e, s in selections if s == "approved"]
-    if not approved:
-        return _make_skipped_results(selections)
+    return selections
 
-    summary = _summary(approved)
-    if not confirm(summary):
-        return [
-            CleanResult(entry_id=e.id, status="skipped", freed_bytes=0, message="aborted at confirm")
-            if state == "approved"
-            else _to_result(e, state)
-            for e, state in selections
-        ]
 
-    # Execute phase
-    results: list[CleanResult] = []
-    for entry, state in selections:
-        if state != "approved":
-            results.append(_to_result(entry, state))
-            continue
-        results.append(_execute_entry(entry, shell))
-    return results
+def _apply_choice(choice: str, _provider: str) -> tuple[str, str | None]:
+    """Translate a PromptChoice into (state, provider_override_update)."""
+    if choice == "y":
+        return "approved", None
+    if choice == "n":
+        return "skipped:user", None
+    if choice == "a":
+        return "approved", "all"
+    if choice == "s":
+        return "skipped:provider-skip", "skip"
+    if choice == "q":
+        return "skipped:quit", None
+    return f"skipped:unknown-choice:{choice}", None
 
 
 def _select_candidates(report: Report, opts: CleanupOpts) -> list[Entry]:
@@ -126,7 +145,10 @@ def _make_skipped_results(selections: list[tuple[Entry, str]]) -> list[CleanResu
 
 def _to_result(entry: Entry, state: str) -> CleanResult:
     if state == "approved":
-        raise AssertionError(f"_to_result called with approved entry {entry.id!r}; should be routed to _execute_entry")
+        raise AssertionError(
+            f"_to_result called with approved entry {entry.id!r}; "
+            "should be routed to _execute_entry"
+        )
     reason = state.split(":", 1)[1] if ":" in state else state
     msg = _reason_message(reason)
     return CleanResult(entry_id=entry.id, status="skipped", freed_bytes=0, message=msg)
@@ -146,11 +168,12 @@ def _execute_entry(entry: Entry, shell: Shell) -> CleanResult:
         argv = shlex.split(line)
         result = shell.run(argv, check=False)
         if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "").strip()
             return CleanResult(
                 entry_id=entry.id,
                 status="error",
                 freed_bytes=0,
-                message=(result.stderr or result.stdout or "").strip() or f"exit {result.returncode}",
+                message=detail or f"exit {result.returncode}",
             )
     return CleanResult(entry_id=entry.id, status="ok", freed_bytes=entry.size_bytes)
 

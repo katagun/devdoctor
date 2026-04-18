@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
+from diskdoctor import discovery
 from diskdoctor.discovery import scan
 from diskdoctor.providers.base import Provider
 from diskdoctor.types import Entry, Risk, ScanFilters
@@ -25,7 +26,9 @@ class _Stub(Provider):
 
 
 def _e(provider, id_, size, risk=Risk.SAFE) -> Entry:
-    return Entry(provider, id_, Path(f"/{id_}"), f"{provider}/{id_}", size, None, risk, [f"rm -rf /{id_}"])
+    return Entry(
+        provider, id_, Path(f"/{id_}"), f"{provider}/{id_}", size, None, risk, [f"rm -rf /{id_}"]
+    )
 
 
 def test_scan_iterates_providers_and_collects_entries():
@@ -70,3 +73,13 @@ def test_scan_populates_metadata():
     assert r.scanned_at == now
     assert r.hostname  # something populated
     assert r.platform in {"darwin", "linux"}
+
+
+def test_platform_linux_branch(monkeypatch):
+    monkeypatch.setattr(discovery.sys, "platform", "linux2")
+    assert discovery._platform() == "linux"
+
+
+def test_platform_other_fallthrough(monkeypatch):
+    monkeypatch.setattr(discovery.sys, "platform", "freebsd13")
+    assert discovery._platform() == "freebsd13"

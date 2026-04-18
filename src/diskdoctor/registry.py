@@ -40,7 +40,9 @@ def load_providers(shell: Shell) -> list[Provider]:
 
     for spec in yaml_docs:
         if not isinstance(spec, dict):
-            raise ValueError(f"{yaml_path}: every entry must be a mapping; got {type(spec).__name__}")
+            raise ValueError(
+                f"{yaml_path}: every entry must be a mapping; got {type(spec).__name__}"
+            )
         providers.append(PathProvider.from_yaml(spec, shell))
 
     _check_unique_names(providers)

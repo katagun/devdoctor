@@ -10,6 +10,7 @@ from pathlib import Path as _Path
 from typing import Any, ClassVar
 
 from diskdoctor.ports import Shell
+from diskdoctor.sizer import size_path
 from diskdoctor.types import Entry, Risk
 
 
@@ -92,7 +93,7 @@ class PathProvider(Provider):
         self._recipe_template = recipe_template
 
     @classmethod
-    def from_yaml(cls, spec: dict[str, Any], shell: Shell) -> "PathProvider":
+    def from_yaml(cls, spec: dict[str, Any], shell: Shell) -> PathProvider:
         try:
             name = str(spec["name"])
             description = str(spec.get("description", ""))
@@ -147,8 +148,6 @@ class PathProvider(Provider):
                 p = _Path(m)
                 if not p.exists():
                     continue
-                from diskdoctor.sizer import size_path
-
                 size, _skipped = size_path(p)
                 quoted = shlex.quote(str(p))
                 recipe = [line.format(path=quoted) for line in self._recipe_template]

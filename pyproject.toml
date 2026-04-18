@@ -57,6 +57,15 @@ src = ["src", "tests"]
 select = ["E", "F", "I", "UP", "B", "SIM", "PL", "RUF"]
 ignore = ["PLR0913"]  # many args is fine for constructors
 
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+  "PLR2004",  # magic values in asserts are idiomatic in tests
+  "PLC0415",  # local imports in tests (e.g. pytest inside a function) are fine
+  "RUF059",   # unpacked-but-unused is fine in tests
+  "E501",     # long lines in test fixtures are fine
+  "F841",     # unused locals happen in tests for readability
+]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true

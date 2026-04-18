@@ -4,21 +4,16 @@ from diskdoctor.providers.docker import DockerProvider
 from diskdoctor.types import Risk, ShellResult
 from tests.conftest import FakeShell
 
-
-_DOCKER_DF_JSON = json.dumps({
-    "Images": [
-        {"Repository": "python", "Tag": "3.12", "Size": "200MB", "Reclaimable": "100MB (50%)"}
-    ],
-    "Containers": [
-        {"Names": "web", "Size": "0B", "Reclaimable": "0B"}
-    ],
-    "Volumes": [
-        {"Name": "pgdata", "Size": "5GB", "Reclaimable": "5GB (100%)"}
-    ],
-    "BuildCache": [
-        {"Id": "x", "Size": "3GB", "Reclaimable": "3GB"}
-    ],
-})
+_DOCKER_DF_JSON = json.dumps(
+    {
+        "Images": [
+            {"Repository": "python", "Tag": "3.12", "Size": "200MB", "Reclaimable": "100MB (50%)"}
+        ],
+        "Containers": [{"Names": "web", "Size": "0B", "Reclaimable": "0B"}],
+        "Volumes": [{"Name": "pgdata", "Size": "5GB", "Reclaimable": "5GB (100%)"}],
+        "BuildCache": [{"Id": "x", "Size": "3GB", "Reclaimable": "3GB"}],
+    }
+)
 
 
 def test_discover_parses_docker_system_df(monkeypatch):

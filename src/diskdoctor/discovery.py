@@ -29,11 +29,7 @@ def scan(
         platform=_platform(),
     )
 
-    if (
-        filters.min_size_bytes
-        or filters.risks is not None
-        or filters.providers is not None
-    ):
+    if filters.min_size_bytes or filters.risks is not None or filters.providers is not None:
         report = report.filter(
             risks=filters.risks,
             min_size=filters.min_size_bytes,

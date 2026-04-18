@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Literal
 
 
-class Risk(str, Enum):
+class Risk(StrEnum):
     SAFE = "safe"
     RECLAIMABLE = "reclaimable"
     DANGEROUS = "dangerous"
@@ -96,15 +97,13 @@ class Report:
         risks: set[Risk] | frozenset[Risk] | None = None,
         min_size: int = 0,
         providers: set[str] | frozenset[str] | None = None,
-    ) -> "Report":
+    ) -> Report:
         def keep(e: Entry) -> bool:
             if risks is not None and e.risk not in risks:
                 return False
             if providers is not None and e.provider not in providers:
                 return False
-            if e.size_bytes < min_size:
-                return False
-            return True
+            return e.size_bytes >= min_size
 
         return Report(
             entries=[e for e in self.entries if keep(e)],
@@ -139,7 +138,7 @@ class Report:
         return json.dumps(payload, indent=2, sort_keys=True)
 
     @classmethod
-    def from_json(cls, data: str) -> "Report":
+    def from_json(cls, data: str) -> Report:
         payload = json.loads(data)
         entries = [
             Entry(

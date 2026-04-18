@@ -3,7 +3,6 @@ import json
 from click.testing import CliRunner
 
 from diskdoctor.cli import build_cli
-from diskdoctor.types import ShellResult
 from tests.conftest import FakeShell
 
 

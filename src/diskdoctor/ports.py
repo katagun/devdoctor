@@ -8,12 +8,24 @@ from diskdoctor.types import ShellResult
 
 
 class Shell(Protocol):
-    def run(self, argv: list[str], *, check: bool = False, timeout: float | None = None) -> ShellResult: ...
+    def run(
+        self,
+        argv: list[str],
+        *,
+        check: bool = False,
+        timeout: float | None = None,
+    ) -> ShellResult: ...
     def which(self, binary: str) -> str | None: ...
 
 
 class RealShell:
-    def run(self, argv: list[str], *, check: bool = False, timeout: float | None = None) -> ShellResult:
+    def run(
+        self,
+        argv: list[str],
+        *,
+        check: bool = False,
+        timeout: float | None = None,
+    ) -> ShellResult:
         proc = subprocess.run(
             argv,
             capture_output=True,

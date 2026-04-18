@@ -60,3 +60,43 @@ def test_size_path_records_permission_denied(tmp_path: Path):
         assert any(str(protected) in str(p) for p in skipped) or size >= 0
     finally:
         protected.chmod(0o755)  # so pytest can clean up
+
+
+def test_size_path_skips_file_that_vanishes_between_walk_and_lstat(tmp_path: Path, monkeypatch):
+    """File disappears between os.walk listing it and our lstat() call."""
+    (tmp_path / "real.txt").write_bytes(b"k" * 42)
+
+    real_lstat = Path.lstat
+    target = tmp_path / "real.txt"
+
+    def flaky_lstat(self):
+        if self == target:
+            raise FileNotFoundError(str(self))
+        return real_lstat(self)
+
+    monkeypatch.setattr(Path, "lstat", flaky_lstat)
+    size, skipped = size_path(tmp_path)
+    # File raised → not counted, recorded in skipped.
+    assert size == 0
+    assert any(str(target) in str(p) for p in skipped)
+
+
+def test_size_path_prunes_subdir_on_lstat_error(tmp_path: Path, monkeypatch):
+    """A subdir whose lstat() raises is pruned and recorded as skipped."""
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "f.txt").write_bytes(b"q" * 10)
+    (tmp_path / "top.txt").write_bytes(b"z" * 5)
+
+    real_lstat = Path.lstat
+    bad = tmp_path / "sub"
+
+    def flaky_lstat(self):
+        if self == bad:
+            raise PermissionError(str(self))
+        return real_lstat(self)
+
+    monkeypatch.setattr(Path, "lstat", flaky_lstat)
+    size, skipped = size_path(tmp_path)
+    # Only top.txt was counted; sub was pruned before descent.
+    assert size == 5
+    assert any(str(bad) in str(p) for p in skipped)

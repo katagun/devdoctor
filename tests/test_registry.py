@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from diskdoctor.registry import load_providers, DuplicateProviderError
+from diskdoctor.registry import DuplicateProviderError, load_providers
 from tests.conftest import FakeShell
 
 
@@ -56,7 +56,9 @@ def test_env_override_replaces_default_yaml(tmp_path: Path, monkeypatch):
 
 def test_malformed_yaml_raises_with_clear_message(tmp_path: Path, monkeypatch):
     yaml_file = tmp_path / "p.yaml"
-    yaml_file.write_text("- name: bad\n  risk: maybe\n  platforms: [darwin]\n  paths: [~/x]\n  recipe: 'x'\n")
+    yaml_file.write_text(
+        "- name: bad\n  risk: maybe\n  platforms: [darwin]\n  paths: [~/x]\n  recipe: 'x'\n"
+    )
     monkeypatch.setenv("DISKDOCTOR_PATHS_YAML", str(yaml_file))
     with pytest.raises(ValueError, match="risk"):
         load_providers(FakeShell())

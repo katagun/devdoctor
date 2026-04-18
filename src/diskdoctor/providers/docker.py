@@ -6,7 +6,6 @@ import re
 from diskdoctor.providers.base import Provider
 from diskdoctor.types import Entry, Risk
 
-
 _SIZE_UNITS = {"B": 1, "KB": 1_000, "MB": 1_000_000, "GB": 1_000_000_000, "TB": 1_000_000_000_000}
 _SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(B|KB|MB|GB|TB)")
 

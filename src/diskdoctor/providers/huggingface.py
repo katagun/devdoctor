@@ -9,7 +9,6 @@ from diskdoctor.providers.base import Provider
 from diskdoctor.sizer import size_path
 from diskdoctor.types import Entry, Risk
 
-
 _REPO_RE = re.compile(r"^(models|datasets)--(.+)$")
 
 

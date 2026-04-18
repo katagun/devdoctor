@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import click
 from rich.console import Console
+from rich.table import Table
 
 from diskdoctor import discovery, history, registry
-from diskdoctor.cleanup import build_script, run as cleanup_run
+from diskdoctor.cleanup import build_script
+from diskdoctor.cleanup import run as cleanup_run
 from diskdoctor.ports import RealShell, Shell
 from diskdoctor.rendering import (
     real_prompts,
@@ -19,9 +21,9 @@ from diskdoctor.rendering import (
 )
 from diskdoctor.types import CleanupOpts, Risk, ScanFilters
 
-
 _SIZE_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([KMGT]?)$", re.IGNORECASE)
 _SIZE_MULT = {"": 1, "K": 1_000, "M": 1_000_000, "G": 1_000_000_000, "T": 1_000_000_000_000}
+_MIN_SNAPSHOTS_FOR_DIFF = 2
 
 
 def _parse_size(s: str) -> int:
@@ -43,7 +45,10 @@ def _parse_risks(values: tuple[str, ...]) -> frozenset[Risk] | None:
         raise click.BadParameter(str(e)) from e
 
 
-def build_cli(shell: Shell | None = None) -> click.Group:
+def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
+    # Many statements because this function wires up every subcommand via
+    # nested @cli.command closures; splitting it into modules would hurt
+    # readability without reducing complexity.
     sh = shell or RealShell()
 
     @click.group()
@@ -78,11 +83,11 @@ def build_cli(shell: Shell | None = None) -> click.Group:
         providers_list = registry.load_providers(ctx.obj["shell"])
         console = Console()
         if json_out:
-            report = discovery.scan(providers_list, filters, datetime.now(timezone.utc))
+            report = discovery.scan(providers_list, filters, datetime.now(UTC))
             click.echo(report.to_json())
             return
         with spinner(console, "Scanning..."):
-            report = discovery.scan(providers_list, filters, datetime.now(timezone.utc))
+            report = discovery.scan(providers_list, filters, datetime.now(UTC))
         render_report_table(console, report)
 
     @cli.command()
@@ -103,7 +108,7 @@ def build_cli(shell: Shell | None = None) -> click.Group:
         report = discovery.scan(
             providers_list,
             ScanFilters(providers=frozenset(providers) if providers else None),
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
         )
         script = build_script(report)
         if output is None:
@@ -128,12 +133,10 @@ def build_cli(shell: Shell | None = None) -> click.Group:
         filters = ScanFilters(providers=frozenset(providers) if providers else None)
         console = Console()
         with spinner(console, "Scanning..."):
-            report = discovery.scan(providers_list, filters, datetime.now(timezone.utc))
+            report = discovery.scan(providers_list, filters, datetime.now(UTC))
         if not execute:
             render_report_table(console, report)
-            console.print(
-                "[dim]Preview only — re-run with --execute to perform cleanup.[/]"
-            )
+            console.print("[dim]Preview only — re-run with --execute to perform cleanup.[/]")
             return
         pc, cf = real_prompts(console)
         results = cleanup_run(
@@ -161,7 +164,7 @@ def build_cli(shell: Shell | None = None) -> click.Group:
         providers_list = registry.load_providers(ctx.obj["shell"])
         console = Console()
         with spinner(console, "Scanning..."):
-            report = discovery.scan(providers_list, ScanFilters(), datetime.now(timezone.utc))
+            report = discovery.scan(providers_list, ScanFilters(), datetime.now(UTC))
         if note:
             report.note = note
         target = history.write_snapshot(report, history.default_snapshot_dir())
@@ -176,14 +179,14 @@ def build_cli(shell: Shell | None = None) -> click.Group:
         recent = history.latest_snapshots(snap_dir, n=2)
         if from_:
             before = history.load_snapshot(Path(from_))
-        elif len(recent) >= 2:
+        elif len(recent) >= _MIN_SNAPSHOTS_FOR_DIFF:
             before = history.load_snapshot(recent[-2])
         else:
             raise click.UsageError("need at least two snapshots, or pass --from")
 
-        if to_ == "live" or (to_ is None and len(recent) < 2):
+        if to_ == "live" or (to_ is None and len(recent) < _MIN_SNAPSHOTS_FOR_DIFF):
             providers_list = registry.load_providers(ctx.obj["shell"])
-            after = discovery.scan(providers_list, ScanFilters(), datetime.now(timezone.utc))
+            after = discovery.scan(providers_list, ScanFilters(), datetime.now(UTC))
         elif to_:
             after = history.load_snapshot(Path(to_))
         else:
@@ -197,8 +200,6 @@ def build_cli(shell: Shell | None = None) -> click.Group:
     def providers(ctx: click.Context) -> None:
         providers_list = registry.load_providers(ctx.obj["shell"])
         console = Console()
-        from rich.table import Table
-
         table = Table(title="providers")
         table.add_column("Name")
         table.add_column("Risk")

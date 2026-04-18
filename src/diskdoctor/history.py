@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from os import environ
 from pathlib import Path
 
 from diskdoctor.types import DiffReport, DiffRow, Report
@@ -48,7 +49,5 @@ def latest_snapshots(directory: Path, n: int = 2) -> list[Path]:
 
 
 def default_snapshot_dir() -> Path:
-    from os import environ
-
     base = environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
     return Path(base) / "diskdoctor" / "snapshots"

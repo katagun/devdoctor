@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Iterator
 
 from rich.console import Console
-from rich.prompt import Confirm as RichConfirm, Prompt
+from rich.prompt import Confirm as RichConfirm
+from rich.prompt import Prompt
 from rich.table import Table
 
 from diskdoctor.types import Choice, Confirm, DiffReport, Entry, PromptChoice, Report, Risk
@@ -104,13 +105,18 @@ def _risk_label(risk: Risk) -> str:
     }[risk]
 
 
+_BYTES_UNIT_STEP = 1024
+_DAYS_PER_MONTH = 30
+_DAYS_PER_YEAR = 365
+
+
 def _human_bytes(n: int) -> str:
     sign = "-" if n < 0 else ""
     value: float = float(abs(n))
     for unit in ("B", "K", "M", "G", "T", "P"):
-        if value < 1024 or unit == "P":
+        if value < _BYTES_UNIT_STEP or unit == "P":
             return f"{sign}{value:.0f}{unit}" if unit == "B" else f"{sign}{value:.1f}{unit}"
-        value /= 1024
+        value /= _BYTES_UNIT_STEP
     return f"{sign}{value:.1f}P"
 
 
@@ -120,8 +126,8 @@ def _staleness(mtime: float | None) -> str:
     age_days = (datetime.now().timestamp() - mtime) / 86400
     if age_days < 1:
         return "today"
-    if age_days < 30:
+    if age_days < _DAYS_PER_MONTH:
         return f"{int(age_days)}d"
-    if age_days < 365:
-        return f"{int(age_days / 30)}mo"
-    return f"{age_days / 365:.1f}y"
+    if age_days < _DAYS_PER_YEAR:
+        return f"{int(age_days / _DAYS_PER_MONTH)}mo"
+    return f"{age_days / _DAYS_PER_YEAR:.1f}y"

@@ -33,6 +33,7 @@ def test_entry_is_frozen():
         recipe=["ollama rm llama3:8b"],
     )
     import pytest
+
     with pytest.raises(AttributeError):
         e.size_bytes = 0  # type: ignore[misc]
 
@@ -86,7 +87,10 @@ def test_clean_result_status_values():
     err = CleanResult(entry_id="x", status="error", freed_bytes=0, message="boom")
     skipped = CleanResult(entry_id="x", status="skipped", freed_bytes=0)
     assert (ok.status, dry.status, err.status, skipped.status) == (
-        "ok", "dry_run", "error", "skipped",
+        "ok",
+        "dry_run",
+        "error",
+        "skipped",
     )
 
 
@@ -114,6 +118,7 @@ def test_diff_row_and_report():
 
 def test_shell_result_is_frozen():
     import pytest
+
     sr = ShellResult(returncode=0, stdout="ok", stderr="")
     with pytest.raises(AttributeError):
         sr.returncode = 1  # type: ignore[misc]

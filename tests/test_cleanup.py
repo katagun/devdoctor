@@ -68,14 +68,17 @@ def test_preview_respects_provider_filter():
 def _scripted_choices(*choices):
     """Build a PromptChoice that returns the next scripted choice per call."""
     q = list(choices)
+
     def _prompt(_entry):
         return q.pop(0)
+
     return _prompt
 
 
 def _always(value):
     def _f(_msg):
         return value
+
     return _f
 
 

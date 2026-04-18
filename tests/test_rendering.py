@@ -4,7 +4,7 @@ from pathlib import Path
 
 from rich.console import Console
 
-from diskdoctor.rendering import render_report_table, render_diff_table
+from diskdoctor.rendering import render_diff_table, render_report_table
 from diskdoctor.types import DiffReport, DiffRow, Entry, Report, Risk
 
 
@@ -57,7 +57,9 @@ def test_render_diff_table_shows_deltas():
         before_at=datetime(2026, 4, 18, 9, 0, 0, tzinfo=UTC),
         after_at=datetime(2026, 4, 18, 10, 0, 0, tzinfo=UTC),
         rows=[
-            DiffRow(provider="a", before_bytes=1000, after_bytes=200, delta_bytes=-800, delta_pct=-80.0),
+            DiffRow(
+                provider="a", before_bytes=1000, after_bytes=200, delta_bytes=-800, delta_pct=-80.0
+            ),
             DiffRow(provider="b", before_bytes=0, after_bytes=500, delta_bytes=500, delta_pct=0.0),
         ],
     )

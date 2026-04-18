@@ -9,9 +9,9 @@ from diskdoctor.providers.base import Provider
 from diskdoctor.sizer import size_path
 from diskdoctor.types import Entry, Risk
 
-
 _SIZE_UNITS = {"B": 1, "KB": 1024, "MB": 1024**2, "GB": 1024**3, "TB": 1024**4}
 _SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(B|KB|MB|GB|TB)", re.IGNORECASE)
+_OLLAMA_LIST_MIN_COLS = 3  # name, id, size, ...
 
 
 class OllamaProvider(Provider):
@@ -32,7 +32,7 @@ class OllamaProvider(Provider):
         lines = [line for line in output.splitlines() if line.strip()]
         for line in lines[1:]:  # skip header
             parts = re.split(r"\s{2,}", line.strip())
-            if len(parts) < 3:
+            if len(parts) < _OLLAMA_LIST_MIN_COLS:
                 continue
             name = parts[0]
             size_str = parts[2]
