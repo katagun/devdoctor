@@ -33,62 +33,67 @@ A repeatable, inspectable CLI for analyzing disk usage on macOS and Linux, focus
 
 - **KISS**: prefer YAML + one generic provider over a new class.
 - **DRY**: shared behavior (platform gating, binary-on-PATH check, sizing, path interpolation) lives once in the base.
-- **DIP**: providers and core depend on narrow ports (`Shell`, `Clock`, `Filesystem`) — never on `subprocess`, `time`, or `os` directly. Real implementations are injected in production; fakes in tests.
-- **DDD**: bounded contexts (discovery, cleanup, history, rendering) are separate modules; the ubiquitous language (Entry, Recipe, Risk, Snapshot) is used consistently.
-- **TDD**: every unit has a failing test written first. Ports make this tractable — no `subprocess` mocking, just fake Shell.
+- **DIP**: providers and core depend on narrow seams. Only one true port — `Shell` — because that's the only side effect worth faking. Time is passed in as a `datetime` parameter. Filesystem work uses `pathlib` + `tmp_path` in tests. Prompting is a typed `Callable`.
+- **DDD**: three bounded contexts (`discovery`, `cleanup`, `history`) as separate modules. `rendering` is a cross-cutting presentation layer, not a domain. The ubiquitous language (Entry, Recipe, Risk, Report) is used consistently.
+- **TDD**: every unit has a failing test written first. The narrow Shell port + real `tmp_path` make this tractable without heavy mocking machinery.
 
 ## Architecture
 
-Four bounded contexts, one module each:
+Three bounded contexts, one module each:
 
-1. **discovery** — orchestrates providers, sizes entries, returns a `Report`. Pure function of `(registry, filters, clock, fs) -> Report`.
-2. **cleanup** — interactive prompt loop, dry-run vs execute, final confirm. Pure function of `(report, prompter, shell) -> list[CleanResult]`. Also builds the shell-script text for `recipe`.
-3. **history** — read/write snapshot JSON files, compute diffs between two reports (or snapshot vs live).
-4. **rendering** — Rich tables/progress/prompts and JSON serialization. Pure; takes a `Report` or `list[CleanResult]` and returns text or writes to a stream.
+1. **discovery** — orchestrates providers, returns a `Report`. `scan(providers, filters, now) -> Report`. `Provider.discover()` populates `Entry.size_bytes` itself (using the `sizer` helper for path-based entries); `discovery.scan` does not re-size.
+2. **cleanup** — interactive prompt loop, dry-run vs execute, final confirm, script emission. `run(report, shell, prompt, opts) -> list[CleanResult]` and `build_script(report) -> str`.
+3. **history** — snapshot JSON files on disk and diffing. `write_snapshot(report, dir) -> Path`, `load_snapshot(path) -> Report`, `diff(before, after) -> DiffReport`.
 
-A fifth module, **registry**, loads the list of providers (built-in classes + YAML-backed `PathProvider` instances) and is the composition root.
+Plus one presentation layer and one composition module:
 
-`cli.py` is the composition root at runtime: it wires real implementations of the ports (`RealShell`, `RealClock`, `RealFilesystem`) into `registry.load_providers()`, calls into the appropriate context, and prints the result via `rendering`.
+- **rendering** — Rich tables/progress/prompts; writes `Report.to_json()` to a stream for machine output. Pure; takes domain objects, returns or writes text.
+- **registry** — composition root for providers. Explicit imports of each class provider; constructs `PathProvider` instances from `paths.yaml`. `load_providers(shell) -> list[Provider]`.
+
+`cli.py` is the runtime composition root: constructs `RealShell`, builds the real Rich-backed `prompt` callable, calls `registry.load_providers(shell)`, dispatches to a context, renders the result.
 
 ### Data flow
 
 ```
 cli
- ↓  parse args; wire ports
-registry.load_providers()   → list[Provider]
+ ↓  parse args; construct RealShell, prompt callable, now=datetime.now()
+registry.load_providers(shell)   → list[Provider]
  ↓
-discovery.scan(providers, filters)
- ↓  Provider.discover(); sizer sizes Entry.path
+discovery.scan(providers, filters, now)   # providers self-populate Entry.size_bytes
 Report  (dataclass)
  ↓
-rendering.table(Report) → Rich      OR  rendering.json(Report) → stdout
-                                    OR  cleanup.run(Report, prompter, shell) → list[CleanResult]
-                                    OR  history.write_snapshot(Report) / history.diff(a, b)
+rendering.table(Report) → stdout           OR  Report.to_json() → stdout
+                                           OR  cleanup.run(Report, shell, prompt, opts) → list[CleanResult]
+                                           OR  history.write_snapshot(Report, dir) / history.diff(a, b)
 ```
 
 ## Ports (dependency inversion)
 
-Three small protocols. Every non-trivial unit depends on one or more of these — never on `subprocess`, `datetime`, or the real filesystem directly.
+One port — `Shell` — plus one typed callable alias — `Prompt`. That's it. Everything else is passed as plain data or uses the stdlib directly against `tmp_path` in tests.
 
 ```python
+@dataclass(frozen=True)
+class ShellResult:
+    returncode: int
+    stdout: str
+    stderr: str
+
 class Shell(Protocol):
-    def run(self, argv: list[str], *, check: bool = True) -> ShellResult: ...
+    def run(self, argv: list[str], *, check: bool = False) -> ShellResult: ...
     def which(self, binary: str) -> str | None: ...
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-class Filesystem(Protocol):
-    def exists(self, path: Path) -> bool: ...
-    def walk(self, root: Path) -> Iterator[tuple[Path, list[str], list[str]]]: ...
-    def lstat(self, path: Path) -> os.stat_result: ...
-    def rmtree(self, path: Path) -> None: ...
+Choice = Literal["y", "N", "a", "s", "q"]
+Prompt = Callable[[Entry], Choice]  # stateless; cleanup.run manages aggregate state
 ```
 
-Test doubles:
-- `FakeShell(responses: dict[tuple, ShellResult])` — deterministic
-- `FixedClock(value: datetime)`
-- `InMemoryFilesystem` — optional; for most tests real `tmp_path` is simpler than faking FS
+Why only one port:
+- `datetime` — pass as a parameter to `scan` / snapshot code. `datetime.now()` in CLI, fixed value in tests. Simpler than a Clock Protocol.
+- `filesystem` — `pathlib.Path` + `os.walk` work fine; tests use `tmp_path` fixtures (honest trees of real files). A `Filesystem` Protocol would be indirection with no test payoff.
+- `prompt` — single method, stateless, typed `Callable` beats a Protocol.
+
+Real impls live in `ports.py` (`RealShell`); the Rich-backed prompt is a one-line function in `rendering.py`. Fakes in tests:
+- `FakeShell(responses: dict[tuple[str, ...], ShellResult])` — argv-keyed, deterministic.
+- Test prompts are plain functions, often `itertools.cycle(...)` or a `list.pop(0)` closure.
 
 ## Components
 
@@ -102,15 +107,15 @@ diskdoctor/
 ├── .gitignore .python-version .pre-commit-config.yaml
 ├── src/diskdoctor/
 │   ├── __init__.py
-│   ├── cli.py                       Click group; composition root
-│   ├── types.py                     Risk, Entry, Report, CleanResult, ShellResult
-│   ├── ports.py                     Shell, Clock, Filesystem Protocols + Real impls
-│   ├── sizer.py                     size_path(fs, root) — symlink-safe, one device
-│   ├── registry.py                  load_providers(shell, fs)
-│   ├── discovery.py                 scan(providers, filters, clock) -> Report
-│   ├── cleanup.py                   run(report, shell, prompter, opts) -> list[CleanResult]; build_script(report)
+│   ├── cli.py                       Click group; runtime composition root
+│   ├── types.py                     Risk, Entry, Report, DiffReport, CleanResult, Choice, Prompt
+│   ├── ports.py                     Shell Protocol; ShellResult; RealShell
+│   ├── sizer.py                     size_path(root) -> (bytes, skipped) — symlink-safe, one device
+│   ├── registry.py                  explicit list of class providers + YAML loader; load_providers(shell)
+│   ├── discovery.py                 scan(providers, filters, now) -> Report
+│   ├── cleanup.py                   run(report, shell, prompt, opts) -> list[CleanResult]; build_script(report)
 │   ├── history.py                   write_snapshot, load_snapshot, diff
-│   ├── rendering.py                 Rich tables, progress, prompts; JSON serializer
+│   ├── rendering.py                 Rich tables/progress/prompts; real Prompt factory
 │   ├── data/paths.yaml              declarative entries for simple caches
 │   └── providers/
 │       ├── __init__.py
@@ -120,7 +125,7 @@ diskdoctor/
 │       ├── lm_studio.py             walks ~/.cache/lm-studio/models, groups by publisher/model
 │       └── huggingface.py           walks ~/.cache/huggingface/hub, groups by repo, symlink-safe
 ├── tests/
-│   ├── conftest.py                  fakes: FakeShell, FixedClock; fixture builders
+│   ├── conftest.py                  FakeShell; scripted-Prompt builder; tmp-tree fixtures
 │   ├── test_sizer.py
 │   ├── test_registry.py
 │   ├── test_path_provider.py
@@ -163,7 +168,14 @@ class Report:
     platform: str                   # "darwin" | "linux"
     note: str | None = None
     skipped_paths: list[str] = field(default_factory=list)  # permission denied etc.
-    # methods: by_provider(), total_bytes(), filter_by_risk(), to_json(), from_json()
+
+    def by_provider(self) -> dict[str, list[Entry]]: ...
+    def total_bytes(self) -> int: ...
+    def filter(self, risks: set[Risk] | None = None, min_size: int = 0,
+               providers: set[str] | None = None) -> "Report": ...
+    def to_json(self) -> str: ...
+    @classmethod
+    def from_json(cls, data: str) -> "Report": ...
 
 @dataclass
 class CleanResult:
@@ -172,12 +184,22 @@ class CleanResult:
     freed_bytes: int
     message: str | None = None
 
+@dataclass(frozen=True)
+class DiffRow:
+    provider: str
+    before_bytes: int
+    after_bytes: int
+    delta_bytes: int
+    delta_pct: float                # 0.0 when before_bytes == 0 and after_bytes == 0
+
 @dataclass
-class ShellResult:
-    returncode: int
-    stdout: str
-    stderr: str
+class DiffReport:
+    before_at: datetime
+    after_at: datetime
+    rows: list[DiffRow]             # includes added (before=0) and removed (after=0) providers
 ```
+
+`Report.to_json`/`from_json` is the single canonical serializer. `rendering.py` writes the string; snapshots store the string; `--json` prints the string. One representation everywhere.
 
 ### Provider contract
 
@@ -189,24 +211,26 @@ class Provider(ABC):
     risk: Risk
     required_binary: str | None = None   # e.g. "docker"; None for pure-path providers
 
-    def __init__(self, shell: Shell, fs: Filesystem): ...
+    def __init__(self, shell: Shell) -> None: ...
 
     def available(self) -> bool:
-        # default: current platform in self.platforms AND (required_binary is None or shell.which(required_binary))
+        # default: sys.platform in self.platforms
+        # AND (required_binary is None or shell.which(required_binary) is not None)
         ...
 
     @abstractmethod
     def discover(self) -> list[Entry]: ...
-
-    def recipe(self, entry: Entry) -> list[str]:
-        return list(entry.recipe)
-
-    def clean(self, entry: Entry, dry_run: bool) -> CleanResult:
-        # default: iterate entry.recipe, shell.run each; aggregate freed_bytes
-        ...
+        # Must fully populate each Entry — size_bytes, recipe, mtime, risk.
+        # Path-based providers call `sizer.size_path(path)`. Logical providers
+        # (ollama via `ollama list`, docker via `system df --format json`) derive
+        # size from the external tool's output. Recipes are fully-formed shell
+        # commands with any paths/IDs already interpolated — cleanup does not
+        # re-template.
 ```
 
-`PathProvider` is the workhorse: one instance per YAML entry, `discover()` expands globs in the configured paths, sizes via the injected FS, and builds Entries with the per-entry recipe string templated with `{path}`.
+`Provider` has exactly two responsibilities: tell us if it's available, and discover its entries. Execution is a uniform concern handled by `cleanup` against `entry.recipe`, so there is no `Provider.clean()`. Docker's per-category pruning is encoded as distinct Entries with the appropriate `docker system prune` / `volume prune` command each — the Provider is a pure read model.
+
+`PathProvider` is the workhorse: one instance per YAML entry. `discover()` expands `~`/`${HOME}` and globs in `paths`, calls `sizer.size_path` on each resolved path, builds Entries with the recipe string interpolated with the concrete `{path}`. The Entry's recipe is fully-formed — no downstream templating.
 
 ### `paths.yaml` schema
 
@@ -243,19 +267,22 @@ Rules:
 
 ### Non-trivial providers (why they need a class, not YAML)
 
-- **ollama.py** — `discover()` tries `shell.run(["ollama", "list"])` first (parsed to `Entry` per model with logical id `<name>:<tag>`); on daemon failure, falls back to walking `~/.ollama/models` and emitting one Entry per model directory. Clean uses `ollama rm <name>` when the CLI path succeeded, else `rm -rf` on the model path.
-- **docker.py** — `discover()` reads `docker system df --format json`; produces one Entry per category (images/containers/volumes/build-cache). Clean uses `docker system prune` variants.
-- **lm_studio.py** — walks `~/.cache/lm-studio/models`, groups into `publisher/model` entries, so users can cleanup individual models.
-- **huggingface.py** — walks `~/.cache/huggingface/hub` producing one Entry per `models--<org>--<name>` or `datasets--<org>--<name>` directory; the sizer handles the `blobs/`+`snapshots/` symlink structure (see below). Uses the optional `huggingface_hub` Python package if importable for nicer labels; never requires the CLI.
+Each stamps the Entry's recipe with fully-formed shell commands at discover time.
+
+- **ollama.py** — `discover()` tries `shell.run(["ollama", "list"])` first (parsed to one Entry per model, `id = "<name>:<tag>"`, `recipe = ["ollama rm <name>:<tag>"]`). On daemon failure (non-zero return), falls back to walking `~/.ollama/models` and emits one Entry per model directory with `recipe = ["rm -rf <path>"]`.
+- **docker.py** — `discover()` parses `docker system df --format json`; emits one Entry per category (images / containers / volumes / build-cache), each with its own targeted prune recipe (`docker image prune -a -f`, `docker volume prune -f`, etc.). Categories with zero bytes are omitted.
+- **lm_studio.py** — walks `~/.cache/lm-studio/models`, emits one Entry per `<publisher>/<model>` directory with `recipe = ["rm -rf <path>"]` so models can be cleaned individually.
+- **huggingface.py** — walks `~/.cache/huggingface/hub` and emits one Entry per `models--<org>--<name>` or `datasets--<org>--<name>` directory. The sizer handles the `blobs/`+`snapshots/` symlink structure. Optionally imports `huggingface_hub` for prettier labels if the package is installed; never requires the CLI binary.
 
 ### Sizer behavior (explicit)
 
-`size_path(fs, root) -> (bytes, skipped: list[Path])`:
-- Walks `root` with `followlinks=False`.
+`size_path(root: Path) -> tuple[int, list[Path]]`:
+- Walks `root` with `os.walk(..., followlinks=False)`.
 - Uses `lstat` on every entry; regular files → add `st_size`, symlinks → size of the link itself (usually negligible), directories → recurse.
-- If `lstat(root).st_dev != st_dev` of a subtree, skip that subtree (defends against nested mounts).
-- `PermissionError` / `FileNotFoundError` on any entry → add to `skipped` list, keep going.
+- Records `lstat(root).st_dev`; if any subtree's `st_dev` differs, skip that subtree (defends against nested mounts).
+- `PermissionError` / `FileNotFoundError` / `OSError` on any entry → append to `skipped`, continue.
 - HF cache: because snapshots are directories of symlinks pointing into `blobs/`, this strategy correctly counts blobs once and skips the symlinks — matching `huggingface-cli scan-cache`'s accounting.
+- Uses stdlib only; tests pass real `tmp_path` trees. No filesystem abstraction.
 
 ## CLI surface
 
@@ -324,7 +351,7 @@ Per-module coverage:
   - lm_studio: per-`publisher/model` entry generation from a `tmp_path` tree
   - huggingface: `hub/models--*` grouping; symlink-safe sizing verified against a constructed blob+snapshot tree
 - **discovery.scan** — with a small fake registry, confirms filtering, sorting, and totals.
-- **cleanup.run** — dry-run produces no shell calls; execute path with a scripted prompter covers y/N/a/s/q and the final confirm; failures propagate to `CleanResult.status`.
+- **cleanup.run** — dry-run produces no shell calls; execute path with a scripted `Prompt` callable covers y/N/a/s/q and the final confirm; failures propagate to `CleanResult.status`.
 - **cleanup.build_script** — golden-file style: given a Report, assert exact script text.
 - **history** — snapshot JSON round-trip; diff computes Δ correctly including added/removed providers.
 - **CLI** — Click `CliRunner` for one happy path and one error path per command; wiring is real but ports are injected via test-only factory to use fakes.
@@ -348,11 +375,22 @@ Coverage target: core modules (sizer, discovery, cleanup, history, registry) ≥
 
 ## Changes from v1 (self-review)
 
-- Split `core.py` into four domain-aligned modules (`discovery`, `cleanup`, `history`, `rendering`).
-- Collapsed `recipes.py` into `cleanup.py` (not enough there for its own module).
-- Introduced three ports (`Shell`, `Clock`, `Filesystem`) so providers and core don't touch `subprocess`/`datetime`/real FS directly — unlocks clean TDD.
-- Moved `available()` default behavior (platform gating + `which <binary>`) into `Provider` base class. Removed per-provider boilerplate.
-- Replaced `homebrew.py`, `browser.py`, and `claude_vm.py` provider classes with YAML entries (plus glob support in `PathProvider`). Four classes only for caches that actually need logic.
-- Called out HF cache symlink semantics; made `huggingface-cli` explicitly optional (binary not assumed present).
-- Added Ollama daemon-fallback behavior (daemon is commonly off while models sit on disk).
-- Expanded the testing section with per-module coverage and explicit TDD stance.
+- Split `core.py` into three domain-aligned modules (`discovery`, `cleanup`, `history`) plus `rendering` as a cross-cutting presentation layer.
+- Collapsed `recipes.py` into `cleanup.py`.
+- Moved `available()` default behavior (platform gating + `which <binary>`) into `Provider` base class.
+- Replaced `homebrew.py`, `browser.py`, and `claude_vm.py` provider classes with YAML entries (plus glob support in `PathProvider`).
+- Called out HF cache symlink semantics; made `huggingface-cli` explicitly optional.
+- Added Ollama daemon-fallback behavior.
+
+## Changes from v2 (second self-review)
+
+- **Dropped `Clock` port** — `scan(...)` takes `now: datetime` as a parameter.
+- **Dropped `Filesystem` port** — `sizer` and providers use `pathlib` + `os.walk` directly; tests use real `tmp_path` trees.
+- **Dropped `Provider.recipe()` method** — `entry.recipe` is the single source of truth, fully-formed at `discover()` time. No downstream templating.
+- **Dropped `Provider.clean()` method** — recipes are fully-formed shell; `cleanup.run` executes them uniformly. Providers are a pure read model (one responsibility: discover).
+- **Dropped `__init_subclass__`** — registry uses an explicit import list. Grep-findable, no magic.
+- **Added `Prompt` callable alias** — typed `Callable`, not a Protocol (single method, stateless).
+- **Specified `Entry.size_bytes` invariant** — always populated by `Provider.discover()`; `discovery.scan` never re-sizes.
+- **`Report.to_json` / `from_json` is the single canonical serializer** — used by `--json`, snapshots, and `rendering`. No duplicate serialization path.
+- **Added `DiffReport` / `DiffRow`** for `history.diff`.
+- **Clarified `rendering` is a presentation layer**, not a bounded context.
