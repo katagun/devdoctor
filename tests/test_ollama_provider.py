@@ -61,3 +61,19 @@ def test_available_false_when_binary_missing(monkeypatch):
     monkeypatch.setattr("sys.platform", "darwin")
     sh = FakeShell(which_table={"ollama": None})
     assert OllamaProvider(sh).available() is False
+
+
+def test_discover_shell_quotes_suspicious_model_names(monkeypatch):
+    """Guard against command injection via a malicious model tag."""
+    monkeypatch.setattr("sys.platform", "darwin")
+    malicious_list = (
+        "NAME                    ID              SIZE      MODIFIED\n"
+        "a; rm -rf /               abc123          1.0 GB    just now\n"
+    )
+    sh = FakeShell(
+        which_table={"ollama": "/x"},
+        responses={("ollama", "list"): ShellResult(0, malicious_list, "")},
+    )
+    [e] = OllamaProvider(sh).discover()
+    # The semicolon must be quoted, not left bare.
+    assert "rm -rf /" not in e.recipe[0] or "'" in e.recipe[0]

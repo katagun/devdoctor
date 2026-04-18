@@ -46,7 +46,7 @@ class OllamaProvider(Provider):
                     size_bytes=size_bytes,
                     mtime=None,
                     risk=self.risk,
-                    recipe=[f"ollama rm {name}"],
+                    recipe=[f"ollama rm {shlex.quote(name)}"],
                 )
             )
         return entries
