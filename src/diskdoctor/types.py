@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -117,10 +117,16 @@ class Report:
 
     def to_json(self) -> str:
         def serialize_entry(e: Entry) -> dict[str, object]:
-            d: dict[str, object] = asdict(e)
-            d["path"] = str(e.path) if e.path is not None else None
-            d["risk"] = e.risk.value
-            return d
+            return {
+                "provider": e.provider,
+                "id": e.id,
+                "path": str(e.path) if e.path is not None else None,
+                "label": e.label,
+                "size_bytes": e.size_bytes,
+                "mtime": e.mtime,
+                "risk": e.risk.value,
+                "recipe": list(e.recipe),
+            }
 
         payload = {
             "entries": [serialize_entry(e) for e in self.entries],
@@ -158,6 +164,7 @@ class Report:
         )
 
 
+# Choice letters: y=yes, n=no, a=all-remaining-in-provider, s=skip-provider, q=quit
 Choice = Literal["y", "n", "a", "s", "q"]
 PromptChoice = Callable[[Entry], Choice]
 Confirm = Callable[[str], bool]

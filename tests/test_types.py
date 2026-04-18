@@ -117,3 +117,17 @@ def test_shell_result_is_frozen():
     sr = ShellResult(returncode=0, stdout="ok", stderr="")
     with pytest.raises(AttributeError):
         sr.returncode = 1  # type: ignore[misc]
+
+
+def test_report_filter_combines_with_and():
+    now = datetime(2026, 4, 18, tzinfo=UTC)
+    entries = [
+        Entry("a", "1", Path("/x"), "a/1", 100, None, Risk.SAFE, ["rm -rf /x"]),
+        Entry("a", "2", Path("/y"), "a/2", 500, None, Risk.DANGEROUS, ["rm -rf /y"]),
+        Entry("b", "1", Path("/z"), "b/1", 200, None, Risk.SAFE, ["rm -rf /z"]),
+        Entry("b", "2", Path("/w"), "b/2", 50, None, Risk.SAFE, ["rm -rf /w"]),
+    ]
+    r = Report(entries=entries, scanned_at=now, hostname="h", platform="darwin")
+    filtered = r.filter(risks={Risk.SAFE}, min_size=150, providers={"b"})
+    # Only b/1 is SAFE AND >=150 AND provider=b
+    assert [(e.provider, e.id, e.size_bytes) for e in filtered.entries] == [("b", "1", 200)]
