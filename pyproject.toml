@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "diskdoctor"
+version = "0.1.0"
+description = "Repeatable disk-cache analyzer and interactive cleanup for macOS and Linux"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+authors = [{ name = "Shamil" }]
+dependencies = [
+  "click>=8.1",
+  "rich>=13.7",
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+hf = ["huggingface_hub>=0.23"]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+  "ruff>=0.5",
+  "mypy>=1.10",
+  "pre-commit>=3.7",
+  "types-PyYAML",
+]
+
+[project.scripts]
+diskdoctor = "diskdoctor.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/diskdoctor"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/diskdoctor/data/paths.yaml" = "diskdoctor/data/paths.yaml"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+source = ["src/diskdoctor"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "PL", "RUF"]
+ignore = ["PLR0913"]  # many args is fine for constructors
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/diskdoctor"]
