@@ -16,7 +16,16 @@ class FakeShell:
     which_table: dict[str, str | None] = field(default_factory=dict)
     calls: list[tuple[str, ...]] = field(default_factory=list)
 
-    def run(self, argv: list[str], *, check: bool = False) -> ShellResult:
+    def run(
+        self,
+        argv: list[str],
+        *,
+        check: bool = False,
+        timeout: float | None = None,
+    ) -> ShellResult:
+        # `check` and `timeout` are accepted for Protocol conformance but
+        # not enforced by the fake — tests configure their responses explicitly.
+        del check, timeout
         key = tuple(argv)
         self.calls.append(key)
         if key not in self.responses:
