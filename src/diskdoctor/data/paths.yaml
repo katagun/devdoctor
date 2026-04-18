@@ -1,0 +1,151 @@
+- name: uv-cache
+  description: uv package cache
+  risk: safe
+  platforms: [darwin, linux]
+  paths:
+    - ~/.cache/uv
+  recipe: "uv cache clean"
+
+- name: pip-cache
+  description: pip download cache
+  risk: safe
+  platforms: [darwin, linux]
+  paths:
+    - ~/.cache/pip
+    - ~/Library/Caches/pip
+  recipe: "rm -rf {path}"
+
+- name: poetry-cache
+  description: Poetry dependency cache
+  risk: safe
+  platforms: [darwin, linux]
+  paths:
+    - ~/.cache/pypoetry
+    - ~/Library/Caches/pypoetry
+  recipe: "rm -rf {path}"
+
+- name: npm-cache
+  description: npm package cache
+  risk: safe
+  platforms: [darwin, linux]
+  paths:
+    - ~/.npm/_cacache
+  recipe: "npm cache clean --force"
+
+- name: homebrew-downloads
+  description: Homebrew download cache
+  risk: safe
+  platforms: [darwin, linux]
+  paths:
+    - ~/Library/Caches/Homebrew
+  recipe: "brew cleanup --prune=all"
+
+- name: lm-studio-extensions
+  description: LM Studio extension downloads
+  risk: safe
+  platforms: [darwin, linux]
+  paths:
+    - ~/.cache/lm-studio/extensions
+  recipe: "rm -rf {path}"
+
+- name: huggingface-datasets-top
+  description: HuggingFace datasets cache (top level; use huggingface-hub provider for per-repo)
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.cache/huggingface/datasets
+    - ~/.cache/huggingface/modules
+    - ~/.cache/huggingface/xet
+  recipe: "rm -rf {path}"
+
+- name: playwright
+  description: Playwright downloaded browsers
+  risk: safe
+  platforms: [darwin]
+  paths:
+    - ~/Library/Caches/ms-playwright
+  recipe: "rm -rf {path}"
+
+- name: chrome-cache
+  description: Chrome browser cache (all profiles)
+  risk: safe
+  platforms: [darwin]
+  paths:
+    - ~/Library/Caches/Google/Chrome/*/Cache
+  recipe: "rm -rf {path}"
+
+- name: firefox-cache
+  description: Firefox browser cache
+  risk: safe
+  platforms: [darwin]
+  paths:
+    - ~/Library/Caches/Firefox
+  recipe: "rm -rf {path}"
+
+- name: arc-browser-cache
+  description: Arc browser cache
+  risk: safe
+  platforms: [darwin]
+  paths:
+    - ~/Library/Caches/Arc
+    - ~/Library/Caches/company.thebrowser.Browser
+  recipe: "rm -rf {path}"
+
+- name: docker-vm-disk
+  description: Docker Desktop VM disk image (shrinks only on docker-desktop restart)
+  risk: reclaimable
+  platforms: [darwin]
+  paths:
+    - ~/Library/Containers/com.docker.docker/Data/vms
+  recipe: "echo 'Use Docker Desktop > Troubleshoot > Clean/Purge data, or reset the VM. Do NOT rm -rf this path while Docker is running.'"
+
+- name: claude-vm-bundles
+  description: Claude Code VM bundles
+  risk: reclaimable
+  platforms: [darwin]
+  paths:
+    - ~/Library/Application Support/Claude/vm_bundles
+  recipe: "rm -rf {path}"
+
+- name: docker-installer
+  description: Docker installer leftovers
+  risk: safe
+  platforms: [darwin]
+  paths:
+    - ~/Library/Application Support/com.docker.install
+  recipe: "rm -rf {path}"
+
+- name: slack-service-worker
+  description: Slack desktop cache (login state preserved)
+  risk: reclaimable
+  platforms: [darwin]
+  paths:
+    - ~/Library/Application Support/Slack/Service Worker/CacheStorage
+  recipe: "rm -rf {path}"
+
+- name: vscode-cache
+  description: VS Code / Cursor cache directories
+  risk: safe
+  platforms: [darwin]
+  paths:
+    - ~/Library/Application Support/Code/Cache
+    - ~/Library/Application Support/Code/CachedData
+    - ~/Library/Application Support/Cursor/Cache
+    - ~/Library/Application Support/Cursor/CachedData
+  recipe: "rm -rf {path}"
+
+- name: gradle-caches
+  description: Gradle user caches
+  risk: safe
+  platforms: [darwin, linux]
+  paths:
+    - ~/.gradle/caches
+  recipe: "rm -rf {path}"
+
+- name: maven-repo
+  description: Maven local repository
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.m2/repository
+  recipe: "rm -rf {path}"
