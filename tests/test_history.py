@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from diskdoctor.history import load_snapshot, write_snapshot
+from diskdoctor.history import diff, load_snapshot, write_snapshot
 from diskdoctor.types import Entry, Report, Risk
 
 
@@ -51,3 +51,52 @@ def test_snapshot_round_trip(tmp_path: Path):
     assert r2.note == "post-cleanup"
     assert r2.skipped_paths == ["/forbidden"]
     assert r2.entries[0] == e
+
+
+def _entry(provider, id_, size):
+    return Entry(
+        provider=provider,
+        id=id_,
+        path=Path(f"/{provider}/{id_}"),
+        label=f"{provider}/{id_}",
+        size_bytes=size,
+        mtime=None,
+        risk=Risk.SAFE,
+        recipe=["rm -rf"],
+    )
+
+
+def test_diff_reports_shrinkage():
+    ts_before = datetime(2026, 4, 18, 9, 0, 0, tzinfo=UTC)
+    ts_after = datetime(2026, 4, 18, 10, 0, 0, tzinfo=UTC)
+    before = _rep(ts_before, entries=[_entry("a", "1", 1000)])
+    after = _rep(ts_after, entries=[_entry("a", "1", 200)])
+    d = diff(before, after)
+    assert [(r.provider, r.before_bytes, r.after_bytes, r.delta_bytes) for r in d.rows] == [
+        ("a", 1000, 200, -800)
+    ]
+    assert d.rows[0].delta_pct == -80.0
+
+
+def test_diff_handles_added_provider():
+    ts_before = datetime(2026, 4, 18, 9, 0, 0, tzinfo=UTC)
+    ts_after = datetime(2026, 4, 18, 10, 0, 0, tzinfo=UTC)
+    before = _rep(ts_before, entries=[_entry("a", "1", 1000)])
+    after = _rep(ts_after, entries=[_entry("a", "1", 1000), _entry("b", "1", 500)])
+    d = diff(before, after)
+    names = {r.provider for r in d.rows}
+    assert names == {"a", "b"}
+    b_row = next(r for r in d.rows if r.provider == "b")
+    assert (b_row.before_bytes, b_row.after_bytes, b_row.delta_bytes) == (0, 500, 500)
+    assert b_row.delta_pct == 0.0  # before=0 → pct defaults to 0
+
+
+def test_diff_handles_removed_provider():
+    ts_before = datetime(2026, 4, 18, 9, 0, 0, tzinfo=UTC)
+    ts_after = datetime(2026, 4, 18, 10, 0, 0, tzinfo=UTC)
+    before = _rep(ts_before, entries=[_entry("a", "1", 1000), _entry("b", "1", 500)])
+    after = _rep(ts_after, entries=[_entry("a", "1", 1000)])
+    d = diff(before, after)
+    b_row = next(r for r in d.rows if r.provider == "b")
+    assert (b_row.before_bytes, b_row.after_bytes, b_row.delta_bytes) == (500, 0, -500)
+    assert b_row.delta_pct == -100.0
