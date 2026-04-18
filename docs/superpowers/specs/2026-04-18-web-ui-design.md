@@ -1,7 +1,7 @@
 # diskdoctor web UI — Design
 
 Date: 2026-04-18
-Status: Draft v1
+Status: Draft v2 (post architectural review)
 
 Companion to [`2026-04-18-diskdoctor-design.md`](2026-04-18-diskdoctor-design.md). Read that first — this doc extends the same system.
 
@@ -61,9 +61,14 @@ One process. Two languages. One test seam.
 └───────────────────────────────────────────────┘
 ```
 
-**Reuse, don't re-implement.** The web layer is a thin adapter. Every route calls existing domain functions. `Report.to_json()` is the wire format. `registry.load_providers(shell)` constructs providers exactly like the CLI. `cleanup.run()` runs unchanged — the web layer just supplies different `PromptChoice` and `Confirm` callables (async-gated queues instead of Rich prompts).
+**Reuse, don't re-implement.** The web layer is a thin adapter. Every route calls existing domain functions. `Report.to_json()` is the wire format. `registry.load_providers(shell)` constructs providers exactly like the CLI.
 
-**The only domain change in v1:** `Shell.run` gains an optional `stream: Callable[[str, str], Awaitable[None]] | None` kwarg for line-by-line stdout/stderr streaming. `RealShell` reads the subprocess pipes incrementally when the callback is present; otherwise falls back to the current synchronous `subprocess.run` path. `FakeShell` accepts the kwarg and ignores it (no-op) to stay backward compatible with all v1 tests. Existing call sites pass no streaming callback, so their behavior is unchanged.
+**Two domain changes in v1:**
+
+1. **Lift the cleanup state machine into a pure generator.** The current `cleanup.run` holds a lot of logic (selection loop, DANGEROUS gating, provider overrides, confirm gate, shell dispatch). We refactor that logic into a core iterator `cleanup.iter_cleanup_events(report, opts) -> Iterator[CleanupEvent]` that yields `PromptRequired(entry)` / `ConfirmRequired(summary)` / `ExecuteStep(entry, recipe_line)` and consumes answers via `.send()`. Two thin adapters sit over it: the existing sync `cleanup.run` (which wraps it to produce the current behavior and preserves every v1 test) and a new async `cleanup.run_async` (which `await`s the web-side callables). Both adapters are ≤40 lines; the core state machine is tested once.
+2. **Add a web-only async subprocess helper** at `src/diskdoctor/web/subprocess_stream.py`. This helper uses `asyncio.create_subprocess_exec` and yields stdout/stderr lines as they arrive. **The `Shell` port is not modified**; an earlier draft extended `Shell.run` with a `stream` kwarg, which muddied the sync/async contract for every downstream consumer. The web layer uses this helper *instead of* `Shell.run` when executing a cleanup recipe; the CLI path keeps using `Shell.run` unchanged.
+
+These changes are additive and localized. The 4 class providers, the sync `cleanup.run` path, the CLI, and all 93 v1 tests are untouched.
 
 ## Repo layout
 
@@ -71,16 +76,23 @@ One process. Two languages. One test seam.
 diskdoctor/
 ├── src/diskdoctor/                     existing — unchanged unless noted
 │   ├── cli.py                          + `serve` subcommand
-│   ├── cleanup.py                      Provider.run accepts optional streaming Shell callback
-│   ├── ports.py                        Shell.run grows optional `stream` kwarg; RealShell implements
+│   ├── cleanup.py                      lift core state machine into iter_cleanup_events;
+│   │                                   existing `run` becomes a 30-line adapter over it
+│   │                                   (behavior preserved; all 15 cleanup tests still pass)
+│   │                                   new `run_async` adapter sits alongside for the web path
+│   ├── ports.py                        UNCHANGED — Shell stays sync-only
 │   └── web/                            NEW
 │       ├── __init__.py
-│       ├── app.py                      build_app(shell) → FastAPI; wires routes + static mount
-│       ├── routes_scan.py              /api/scan, /api/scan/stream, /api/providers
+│       ├── app.py                      build_app(shell) → FastAPI; wires routes + static mount;
+│       │                                enforces Host-header check middleware (see Security)
+│       ├── subprocess_stream.py        asyncio.create_subprocess_exec helper; line-by-line
+│       │                                async iterator of (stream, chunk) pairs
+│       ├── routes_scan.py              /api/scan, /api/providers, /api/recipe
 │       ├── routes_clean.py             /api/clean/jobs, /answer, /confirm, /cancel, /events
 │       ├── routes_history.py           /api/snapshots, /api/snapshots/<name>, /api/diff
-│       ├── routes_recipe.py            /api/recipe
-│       ├── job_registry.py             in-memory CleanJob registry (one active job)
+│       ├── cleanup_runner.py           CleanupRunner: an async task that drives
+│       │                                cleanup.run_async through SSE-backed callables
+│       ├── runner_registry.py          holds at most one active CleanupRunner
 │       ├── models.py                   pydantic request models (output uses Report.to_json)
 │       └── _static/dist/               built SPA assets (git-ignored; filled by vite build)
 ├── web/                                NEW — frontend source
@@ -103,12 +115,12 @@ diskdoctor/
 │   │   │   ├── TopStats.tsx
 │   │   │   ├── CacheTable.tsx
 │   │   │   ├── RiskBadge.tsx
-│   │   │   ├── CleanWizard/
+│   │   │   ├── CleanupWizard/
 │   │   │   │   ├── index.tsx           orchestrates the three steps
 │   │   │   │   ├── ReviewStep.tsx
 │   │   │   │   ├── ExecuteStep.tsx
 │   │   │   │   ├── SummaryStep.tsx
-│   │   │   │   └── CleanJobContext.tsx
+│   │   │   │   └── CleanupWizardState.tsx    — React context (renamed from CleanJobContext to avoid name-clash with backend CleanupRunner)
 │   │   │   ├── DiffTable.tsx
 │   │   │   └── ui/                     shadcn components (copied-in)
 │   │   ├── hooks/
@@ -117,12 +129,12 @@ diskdoctor/
 │   │   │   ├── useSnapshots.ts
 │   │   │   ├── useDiff.ts
 │   │   │   ├── useSSE.ts               EventSource wrapper
-│   │   │   └── useCleanJob.ts          wizard state machine
+│   │   │   └── useCleanupWizard.ts     wizard state machine (drives CleanupWizardState)
 │   │   ├── api/
 │   │   │   ├── client.ts               fetch helpers; base URL + error envelope
-│   │   │   └── types.ts                mirrors Report, Entry, CleanResult…
+│   │   │   └── types.ts                GENERATED from FastAPI OpenAPI; do not edit by hand
 │   │   └── lib/
-│   │       └── format.ts               humanBytes, risk label, staleness (matches rendering.py semantics)
+│   │       └── format.ts               humanBytes, staleness — own tests, no cross-language assertions
 │   └── tests/
 │       ├── unit/                       Vitest
 │       └── e2e/                        Playwright smoke test (serve → scan → preview clean)
@@ -155,33 +167,26 @@ The `src/diskdoctor/web/_static/dist/` directory is required to exist at build t
 
 All endpoints under `/api/*`. JSON request bodies with pydantic validation. Responses use the existing `Report.to_json()` / `DiffReport`-derived schemas — no duplicate DTO hierarchy.
 
-### Scan & providers
+### Scan, providers, recipe
 
 ```
-GET  /api/scan?min_size=<str>&risk=<csv>&provider=<csv>&fresh=0|1
+GET  /api/scan?min_size=<str>&risk=<csv>&provider=<csv>
   Returns: Report (full JSON)
-  Cached in-process 5s; ?fresh=1 bypasses. Any successful POST /api/clean/jobs completion invalidates.
-
-GET  /api/scan/stream
-  SSE. Emits one event per provider completion, then a terminal `done` event.
-    event: "provider" data: {name, entries: Entry[], elapsed_ms, skipped: string[]}
-    event: "done"     data: Report
-  Useful for pages that want live row streaming during a scan of many providers.
+  No server-side caching. Scans are cheap (~0.4s on reference machine) and TanStack Query
+  on the client handles any needed cache/stale-time behavior via `staleTime: 5000`.
 
 GET  /api/providers
   Returns: ProviderInfo[]
     { name, description, risk, platforms, available: bool,
       required_binary: string | null, kind: "class" | "yaml",
       reason_if_unavailable: string | null }
-```
 
-### Recipe
-
-```
 POST /api/recipe
   body: { providers?: string[] }
-  Returns: { script: string }  — always commented-out, matches cleanup.build_script.
+  Returns: { script: string }  — always commented-out, from cleanup.build_script.
 ```
+
+(`GET /api/scan/stream` was considered and dropped: a 400ms scan does not earn a streaming endpoint's code / test surface cost.)
 
 ### Cleanup
 
@@ -189,10 +194,12 @@ POST /api/recipe
 POST /api/clean/jobs
   body: { entry_ids: string[], yes_safe?: boolean, allow_dangerous?: boolean }
   Returns: { job_id: string }
-  If a job is already running → 409 { error: { code: "job_in_progress", ... } }
+  entry_ids are re-validated against a fresh scan at job start (no pre-baked "known ids" cache).
+  If any id is unknown → 400 { error: { code: "unknown_entry", ... } }
+  If a job is already active → 409 { error: { code: "job_in_progress", ... } }
 
 GET  /api/clean/jobs/<id>/events
-  SSE stream of the wizard lifecycle (see §3 of brainstorm + below).
+  SSE stream, heartbeat every 10s to survive idle connections during long prompt waits.
 
 POST /api/clean/jobs/<id>/answer
   body: { entry_id: string, choice: "y" | "n" | "a" | "s" | "q" }
@@ -203,7 +210,8 @@ POST /api/clean/jobs/<id>/confirm
   Unblocks the server-side Confirm wait. 204 No Content.
 
 POST /api/clean/jobs/<id>/cancel
-  Marks remaining entries as skipped (reason: "cancelled") and terminates the job cleanly. 204.
+  Cancels the runner task, marks remaining entries skipped (reason: "cancelled"),
+  emits a final `done` event, terminates. 204.
 ```
 
 **Clean job SSE event catalogue.** Emitted by `/api/clean/jobs/<id>/events` in order:
@@ -242,38 +250,62 @@ GET  /api/diff?from=<name>&to=<name | "live">
 
 Any unhandled server exception → `500 { error: { code, message, hint? } }`. Validation errors → `422 { error: { code: "validation", message, fields: {...} } }`. Conflict (job already running) → `409`. Missing snapshot → `404`.
 
-## Clean-job state machine (server side)
+## Cleanup: core state machine + adapters
 
-A `CleanJob` is an asyncio task with:
-
-- an outbound `asyncio.Queue[Event]` consumed by the SSE route,
-- a `dict[str, asyncio.Future[Choice]]` of pending per-entry answers,
-- an `asyncio.Future[bool]` for the final confirm.
-
-The job runs `cleanup.run(report, shell, prompt_choice=<adapter>, confirm=<adapter>, opts=...)` inside a worker task. The adapter callables look roughly like:
+The cleanup logic is refactored so the state machine lives in one place and the sync / async entry points are thin adapters. This replaces the v1 monolithic `cleanup.run`.
 
 ```python
-async def prompt_choice(entry: Entry) -> Choice:
-    await job.queue.put({"event": "prompt", "data": serialize(entry)})
-    job.pending[entry.id] = asyncio.get_event_loop().create_future()
-    return await job.pending[entry.id]  # unblocked by POST /answer
+# src/diskdoctor/cleanup.py (post-refactor)
 
-async def confirm(message: str) -> bool:
-    await job.queue.put({"event": "awaiting_confirm", "data": {"summary": message, ...}})
-    job.confirm_future = asyncio.get_event_loop().create_future()
-    return await job.confirm_future
+@dataclass
+class PromptRequired:   entry: Entry
+@dataclass
+class ConfirmRequired:  approved: list[Entry]; total_bytes: int
+@dataclass
+class ExecuteStep:      entry: Entry; line: str   # one recipe line
+@dataclass
+class EntryResolved:    result: CleanResult
+
+CleanupEvent = PromptRequired | ConfirmRequired | ExecuteStep | EntryResolved
+
+def iter_cleanup_events(
+    report: Report, opts: CleanupOpts
+) -> Generator[CleanupEvent, Choice | bool | ShellResult, list[CleanResult]]:
+    """Pure state machine. Never imports Shell, subprocess, Rich, or asyncio.
+
+    Yields events; consumers send back the answer the event requested:
+    - PromptRequired  → send Choice
+    - ConfirmRequired → send bool
+    - ExecuteStep     → send ShellResult (the adapter actually runs the shell)
+    Returns the final list[CleanResult] via StopIteration.value.
+    """
+    ...
 ```
 
-Because `cleanup.run` currently takes *sync* callables, v1 adds a sibling `cleanup.run_async` entry point that accepts awaitable `PromptChoice` / `Confirm` callables and uses `await` at the same points. This is the second (and only other) domain change — not a rewrite of the existing `run`. Rationale: keeping the sync `run` pristine preserves the CLI's current behavior and its 15 cleanup tests exactly as-is, while the web backend has a first-class async path that matches its event-loop model.
+Both adapters are ~30 lines:
 
-The job registry holds at most one active job. Completed jobs persist in memory for 60 seconds so the client can reconnect to replay the `done` event if the SSE stream dropped. After 60s the job GC runs.
+- **`cleanup.run(report, *, shell, prompt_choice, confirm, opts)` (sync, unchanged interface)** — drives the generator with sync calls to `shell.run`, `prompt_choice`, `confirm`. The CLI keeps using this; every v1 test keeps passing.
+- **`cleanup.run_async(report, *, run_line, prompt_choice, confirm, opts)` (async)** — same driver, but `await`s the callables and uses `run_line: Callable[[str], Awaitable[ShellResult]]` supplied by the web layer (a thin wrapper over `subprocess_stream.py`). The web layer chooses this path so the event loop is never blocked by subprocesses.
+
+Why this refactor is worth it: it eliminates the "two 150-line near-duplicates" failure mode, tests the state machine once (against scripted event sequences), and leaves the `Shell` port pure.
+
+### CleanupRunner (web-side)
+
+A `CleanupRunner` wraps one `cleanup.run_async` invocation:
+
+- an outbound `asyncio.Queue[Event]` drained by the SSE route,
+- a `dict[str, asyncio.Future[Choice]]` for pending per-entry answers,
+- an `asyncio.Future[bool]` for the final confirm,
+- an `asyncio.Task` for the runner itself (cancellable on SIGINT or `POST /cancel`).
+
+The runner registry holds **at most one active runner**; a completed runner is immediately discarded. If the SSE connection drops mid-run, the user's recourse is to cancel (or let it finish) and then re-scan. No replay buffer, no resurrection window — the extra code didn't earn its keep for this rare failure mode.
 
 ## Frontend state
 
 Three tiers, each with a clear owner:
 
 - **Server cache → TanStack Query.** Hooks: `useScan`, `useProviders`, `useSnapshots`, `useDiff`. Stale times: scan 5s, providers 60s, snapshots on-mount. Mutations (snapshot create, recipe download) invalidate their key.
-- **Wizard / job → `CleanJobContext`.** Lives under `<CleanWizard/>`. Holds `{step, entries, selection, jobId, events, error}`. Dies when the wizard unmounts. Never global.
+- **Wizard / runner → `CleanupWizardState`.** Lives under `<CleanupWizard/>`. Holds `{step, entries, selection, runnerId, events, error}`. Dies when the wizard unmounts. Never global. Names chosen deliberately to avoid clashing with the backend `CleanupRunner`.
 - **UI-local → URL querystring + localStorage.** Risk filter, search text, group/flat toggle, sort column all live in `?risk=…&q=…&group=…&sort=…`. Sidebar collapsed state in localStorage.
 
 No Redux / Zustand / global context provider above `AppShell` except `QueryClientProvider`.
@@ -321,18 +353,23 @@ shadcn's default Radix-coloured classes are overridden by editing the copied-in 
 ## UX details & non-visual behaviours
 
 **Launch (`diskdoctor serve`)**:
-- Binds `127.0.0.1:<port>`; port is `--port N` or a random free port.
+- Binds `127.0.0.1:<port>`; port is `--port N` or a random free port if omitted.
 - Opens the default browser via `webbrowser.open` unless `--no-browser`.
-- `--dev` disables the SPA static mount (expects Vite dev server to serve `/`). Also sets CORS to allow `http://localhost:5173`.
-- Prints the URL and a "Ctrl-C to stop" line. `SIGINT` shuts down cleanly.
-- Refuses to start with a clear error if the web extras are missing.
+- Prints the URL and a "Ctrl-C to stop" line. `SIGINT` triggers uvicorn's graceful shutdown.
+- **No `--dev` flag.** Developers run the Vite dev server separately on `http://localhost:5173` and Vite's built-in proxy forwards `/api/*` to the FastAPI port. No server-side toggle needed.
+- Refuses to start with a clear error if the `web` extra isn't installed: `"Install with 'uv tool install \".[web]\" --force' to use the web UI."`
+- If `--port N` is already bound → exit 1 with `"port N is in use; try --port 0 for a free one"`.
+
+**Logging**: uvicorn's default access log is sufficient for v1. No custom log format, no structured logging. If v2 wants this, it's a one-liner (`logging.basicConfig(...)` at startup).
+
+**SSE heartbeats**: every SSE route (currently just `/api/clean/jobs/<id>/events`) passes `ping=10` to `sse-starlette`'s `EventSourceResponse`. This emits a comment frame every 10s so idle intermediates don't drop the connection while the user is reading a `prompt` event before answering.
 
 **Loading / empty / error states** (every data view):
 - Loading → skeleton rows matching the final table geometry (8 placeholder rows).
 - Empty (with filters) → "(no entries match your filters)" with one-click "clear filters" link.
 - Empty (truly nothing) → "Nothing to reclaim. Your disk is in good shape." with timestamp.
 - Provider unavailable → grey dot + tooltip reason. No red for "not installed".
-- Scan in progress → rows stream in via `/api/scan/stream`; each arrives with a one-time flash animation; top stats update live.
+- Scan in progress → sidebar's accent dot pulses while `useScan` is fetching; on response the rows appear together (scan is ~0.4s; a skeleton placeholder covers the gap).
 - Clean job running → wizard takes over the main content area; sidebar shows a job badge; clicking anywhere in the sidebar reopens the wizard.
 - Network error → non-blocking toast + retry button; auto-retry on reconnect.
 - Fatal 500 → full-page error with the error envelope displayed + "Copy diagnostic" button.
@@ -357,33 +394,40 @@ shadcn's default Radix-coloured classes are overridden by editing the copied-in 
 |---|---|---|
 | Provider's `available()` False | Included in Report with `unavailable` marker; HTTP 200 | Row shown greyed with tooltip |
 | Provider raised inside discover() | Caught, reported in `Report.skipped_paths` | Footer note: "N providers errored" |
-| Scan timeout (provider hangs >30s) | Provider marked unavailable, scan completes | Row shown greyed, reason "timed out" |
-| Clean job: shell command fails | CleanResult(status="error"); job continues | Execute step marks ✗ on that entry, keeps going |
-| Clean job: user cancels mid-execute | Remaining marked skipped, job terminates cleanly | Wizard jumps to Summary with partial results |
-| Clean job: server crashes mid-execute | SSE stream closes; job lost | Client shows "Connection lost" toast with retry; on retry, client sees no active job and prompts user to rescan |
+| Shell hangs (e.g. `ollama list` wedged daemon) | `Shell.run(timeout=…)` in the relevant provider raises, provider marked unavailable | Row shown greyed; reason is the provider's own message |
+| Clean job: shell command fails | CleanResult(status="error"); runner continues | Execute step marks ✗ on that entry, keeps going |
+| Clean job: user cancels mid-execute | Runner task cancelled; remaining marked skipped; final `done` event emitted | Wizard jumps to Summary with partial results |
+| Clean job: server killed mid-execute | SSE stream closes abruptly | Client shows "Connection lost — re-scan to see current state"; no resurrection / replay |
 | Second concurrent `POST /api/clean/jobs` | 409 Conflict | Toast: "A cleanup is already in progress" |
+| `entry_ids` contains unknown ids | 400 with `{code: "unknown_entry", ids: [...]}` | Toast pointing at the stale IDs; force-refresh the scan |
 | Snapshot file malformed | 500 with error envelope | Toast on Snapshots page |
-| SSE reconnection | Replays the last `done` or `error` event if within 60s window | Transparent to user |
+
+(Neither a 30s web-layer scan timeout nor an SSE replay buffer exists; both were considered and dropped as unnecessary complexity.)
 
 ## Testing
 
 Existing Python v1 tests continue unchanged. New tests:
 
 **Backend (pytest)**:
-- `tests/web/test_routes_scan.py` — `/api/scan` happy path, filter passthrough, `?fresh=1` bypasses cache; `/api/scan/stream` emits provider events + done.
-- `tests/web/test_routes_clean.py` — full job lifecycle with `FakeShell`: POST job → consume SSE → POST /answer for each prompt → POST /confirm → assert final `done` event matches synchronous `cleanup.run` output for the same inputs.
-- `tests/web/test_routes_history.py` — snapshot write/list/get + diff round-trip.
-- `tests/web/test_job_registry.py` — second-concurrent job rejected with 409; job GC after 60s.
-- `tests/web/test_shell_streaming.py` — `RealShell.run(stream=cb)` yields stdout/stderr chunks in order; falls back to non-streaming when `stream=None`.
-- `tests/web/test_serve_cli.py` — `diskdoctor serve --help`; error message when web extras not installed.
+- `tests/test_cleanup_core.py` (≈15 tests) — `iter_cleanup_events` driven with scripted `.send()` inputs covers every path (y/n/a/s/q, yes-safe, DANGEROUS gate, final confirm, shell failure). This replaces the v1 `test_cleanup.py` execute-path coverage; the two adapters (`run`, `run_async`) keep just 1-2 tests each confirming they drive the core correctly.
+- `tests/test_cleanup.py` (v1, unchanged) — still passes, because `cleanup.run` keeps the same signature and behavior.
+- `tests/web/test_routes_scan.py` — `/api/scan` happy path, filter passthrough; `/api/providers`; `/api/recipe`.
+- `tests/web/test_routes_clean.py` — full job lifecycle with `FakeShell`: `POST /jobs` → `GET /events` (async SSE consumer via `httpx-sse`) → `POST /answer` per prompt → `POST /confirm` → assert the stream of events plus the final `done.results` matches the synchronous `cleanup.run` for the same inputs.
+- `tests/web/test_routes_history.py` — snapshot write / list / get + diff round-trip.
+- `tests/web/test_runner_registry.py` — second concurrent job rejected with 409; cancelled runner releases the lock immediately.
+- `tests/web/test_subprocess_stream.py` — helper yields stdout/stderr lines in arrival order; non-zero exit surfaces `ShellResult`; cancellation terminates the subprocess cleanly.
+- `tests/web/test_host_header.py` — requests with mismatched `Host` header are rejected with 403; matching requests proceed.
+- `tests/web/test_serve_cli.py` — `serve --help`; clear error when the `web` extra is missing; `--port` collision exits 1 with the expected message.
 
-Coverage targets: web routes ≥85%, job registry ≥90%, shell streaming ≥90%.
+Coverage targets: cleanup core ≥95%, web routes ≥85%, runner registry ≥90%, subprocess_stream ≥90%.
 
 **Frontend (Vitest)**:
-- `web/tests/unit/format.test.ts` — `humanBytes`, `staleness` match the Python `rendering.py` outputs exactly.
-- `web/tests/unit/hooks/useSSE.test.ts` — EventSource mocked; status transitions; reconnect logic.
-- `web/tests/unit/hooks/useCleanJob.test.ts` — state machine drives through a scripted sequence of prompt/confirm/execute events and reaches `done`.
+- `web/tests/unit/format.test.ts` — table-driven cases for `humanBytes` (e.g. `1024 → "1.0K"`, `1_500_000_000 → "1.5G"`, `0 → "0B"`) and `staleness` (today / N d / N mo / N y) tested independently. Not cross-referenced against Python.
+- `web/tests/unit/hooks/useSSE.test.ts` — EventSource mocked; status transitions; auto-reconnect on transient error.
+- `web/tests/unit/hooks/useCleanupWizard.test.ts` — wizard state machine driven through scripted event sequences and reaches `done`.
 - `web/tests/unit/components/RiskBadge.test.tsx`, `CacheTable.test.tsx` — rendering + interaction.
+
+**Type sharing**: `web/src/api/types.ts` is **generated**, not hand-written. The build step runs `openapi-typescript http://127.0.0.1:<port>/openapi.json -o web/src/api/types.ts` (or reads FastAPI's exported schema from a build artefact) so the TypeScript types always match the FastAPI pydantic models. Zero drift; no hand-mirrored type hierarchy.
 
 **Frontend (Playwright, smoke only)**:
 - One test: launch `diskdoctor serve --port 8731 --no-browser`, hit the URL with Playwright, assert the scan view loads, trigger a preview-mode (dry-run) clean job end-to-end, assert the Summary step shows the expected counts. Uses a controlled `paths.yaml` via `DISKDOCTOR_PATHS_YAML` so the test is deterministic.
@@ -391,12 +435,15 @@ Coverage targets: web routes ≥85%, job registry ≥90%, shell streaming ≥90%
 ## Security considerations
 
 - **Bind address**: `127.0.0.1` only. Refuse `0.0.0.0`. A future `--host` flag (not in v1) would require also setting a bearer token.
-- **CORS**: default off. Dev mode allows `http://localhost:5173` only.
+- **Host-header / DNS-rebinding protection** (REQUIRED): a middleware on `/api/*` rejects any request whose `Host` header isn't `127.0.0.1:<port>` or `localhost:<port>`. Without this, a malicious webpage can DNS-rebind the user's browser and POST destructive commands at `http://127.0.0.1:<port>`. With it, every cross-origin request is refused by the server before any handler runs.
+- **CORS**: disabled entirely. In dev, the frontend runs under Vite at `http://localhost:5173` and proxies `/api/*` to the FastAPI server — the proxy makes the requests same-origin from the browser's perspective, so no CORS is ever needed. Production-built SPA is served by the same FastAPI, also same-origin.
+- **Static / API routing order**: `app.mount("/api", api_router)` registered BEFORE `app.mount("/", StaticFiles(...))`. A SPA catch-all returns `index.html` for any GET that didn't match `/api/*` or a static file, so client-side routing works.
 - **SSRF**: no server-side URL fetching; no user-supplied URLs anywhere.
-- **Input validation**: pydantic on every POST body. `entry_ids` validated against the currently-known scan results (in-process set); unknown IDs are 400.
-- **Shell injection**: continues to use `entry.recipe` strings built by `cleanup.run`, which in turn uses the `shlex.quote`-tested path interpolation from the v1 providers. No new interpolation in the web layer.
-- **Concurrency**: one clean job at a time (hard invariant); scan is idempotent and parallel-safe with running clean.
-- **Shutdown**: `SIGINT` terminates uvicorn gracefully; any active clean job receives a cancel signal; in-flight subprocesses are allowed to finish (no orphaned children).
+- **Input validation**: pydantic on every POST body. `entry_ids` are validated at job-start against a fresh scan (not a cached set); unknown IDs → 400.
+- **Shell injection**: the web layer does not construct shell strings. `cleanup.iter_cleanup_events` yields `ExecuteStep(entry, line)` where `line` was already constructed by the provider in v1 using `shlex.quote`. The web adapter splits via `shlex.split` (same as CLI) before handing to `asyncio.create_subprocess_exec`.
+- **Concurrency**: one runner at a time; scan is idempotent and parallel-safe with a running clean.
+- **Shutdown**: `SIGINT` triggers uvicorn's graceful shutdown; the active runner task is cancelled (propagating to its in-flight subprocess via `terminate()`); the SSE stream emits a final `error: shutdown` event.
+- **Port collision**: if `--port N` is already bound, uvicorn raises `OSError`; the `serve` command catches it and exits 1 with `"port N is in use; try --port 0 for a free one"`.
 
 ## Out of scope for v1
 
@@ -419,9 +466,46 @@ Coverage targets: web routes ≥85%, job registry ≥90%, shell streaming ≥90%
 
 ## Key design choices (and what was considered)
 
-- **Reuse Python domain, don't re-model on the wire.** Earlier drafts had a DTO layer; dropped. `Report.to_json()` is the single source of truth and already used by `--json` and snapshots. Any field the CLI exposes, the web gets for free.
-- **One port still (`Shell`).** Other tempting abstractions (an `AsyncIO`-native provider interface, an async registry) were rejected — we add one async `cleanup.run` sibling and one optional `stream` kwarg on `Shell.run`. That's it.
-- **SSE over WebSockets.** One-way data flow today. If cancel-mid-shell-command becomes important later, WebSockets replace SSE in a single route file.
+- **Reuse Python domain, don't re-model on the wire.** `Report.to_json()` is the single source of truth — used by `--json`, snapshots, and the web. TypeScript types on the client are **generated from FastAPI's OpenAPI** via `openapi-typescript`; no hand-mirrored hierarchy, zero drift risk.
+- **Lift the cleanup state machine into a pure generator** (`iter_cleanup_events`). Both `cleanup.run` (sync, CLI) and `cleanup.run_async` (async, web) are ≈30-line adapters over the core. Tested once against scripted event sequences. Earlier drafts duplicated ~150 lines of near-identical logic between sync and async paths — rejected.
+- **`Shell` stays sync-only and unchanged.** An earlier draft extended `Shell.run` with an async `stream` callback kwarg; rejected as a DIP violation (the feature would be consumed by one caller — the web subprocess stream — but bolted onto every Shell user). The web layer uses its own async subprocess helper (`web/subprocess_stream.py`) and never touches `Shell`.
+- **SSE over WebSockets.** One-way data flow today. If cancel-mid-shell-command ever matters, WebSockets replace SSE in a single route file. SSE responses carry a 10s heartbeat so idle waits don't drop.
+- **Host-header / DNS-rebinding middleware** on `/api/*`. Without it, `127.0.0.1`-only binding isn't sufficient for destructive endpoints — a malicious webpage could DNS-rebind the user's browser.
+- **No server-side scan cache and no completed-job replay buffer.** TanStack Query handles any useful caching on the client with `staleTime: 5000`. If the SSE stream drops mid-job, the user re-scans to observe current state; rare scenario, not worth the code.
+- **No streaming scan endpoint.** Scan is ~0.4s on the reference machine; a second `/api/scan/stream` endpoint doubles the code / test surface for a negligible UX win. Dropped.
 - **Monorepo, no separate npm package.** diskdoctor is one app; shipping two version-locked releases is needless overhead. Users install with one `uv tool install .` and never touch Node.
 - **State lives where it belongs.** Server cache in TanStack Query; wizard state scoped to the wizard tree; UI state in the URL. No global store.
 - **Palette via CSS variables.** Tailwind v4 lets us keep CSS-variable-driven theming without fighting the utility-class model. Future light theme is a variable-swap, not a rewrite.
+
+## Changes from v1 (self-review)
+
+Architectural fixes:
+
+- **Dropped `Shell.run(stream=…)` extension.** Replaced with a web-only `subprocess_stream.py` helper that uses `asyncio.create_subprocess_exec` directly. The `Shell` port stays pristine sync-only.
+- **Lifted cleanup state machine into `iter_cleanup_events` generator.** Both sync `cleanup.run` and new async `cleanup.run_async` are thin adapters. Eliminates the "two 150-line near-duplicates" risk v1 glossed over.
+- **Host-header / DNS-rebinding middleware added** as a hard requirement on `/api/*` — previously implicit.
+- **Explicit static / API routing order**: `/api` mounted first; SPA catch-all returns `index.html` for non-matching GETs.
+- **SSE heartbeats** (`ping=10`) required on long-lived streams to survive idle prompt waits.
+
+Over-engineering removed:
+
+- **Dropped `GET /api/scan/stream`** — scan is 0.4s; streaming endpoint was not earning its cost.
+- **Dropped server-side scan cache** (5s TTL + invalidation). TanStack Query's client-side `staleTime` handles this. One fewer cache layer to reason about.
+- **Dropped 60-second completed-job replay buffer.** Real disconnect recovery: user re-scans. Simpler.
+- **Dropped `diskdoctor serve --dev` + CORS config.** Vite's proxy handles dev mode transparently; the flag was inventing complexity.
+- **Merged `routes_recipe.py` into `routes_scan.py`** — one endpoint didn't earn its own module.
+- **Dropped 30s web-layer scan timeout.** Per-provider timeouts are `Shell.run(timeout=…)`'s job already (added in v1).
+
+DRY / testability:
+
+- **`web/src/api/types.ts` is generated** from FastAPI's OpenAPI (`openapi-typescript`). Removed hand-mirrored type hierarchy.
+- **`format.ts` tests are independent**, not cross-referenced against `rendering.py`. Cross-language "they match" assertions were brittle.
+
+Naming:
+
+- **Backend `CleanJob` → `CleanupRunner`**; **frontend `CleanJobContext` → `CleanupWizardState`**; **`useCleanJob` → `useCleanupWizard`**. Three distinct concerns, three distinct names.
+
+Nits:
+
+- Fixed line 74 typo (`Provider.run` → `cleanup.run`) — moot after the Shell-kwarg decision reverted.
+- Added port-collision handling, logging default, clarified `--no-browser` interaction.
