@@ -9,6 +9,7 @@ import yaml
 from diskdoctor.ports import Shell
 from diskdoctor.providers.base import PathProvider, Provider
 from diskdoctor.providers.docker import DockerProvider
+from diskdoctor.providers.lm_studio import LMStudioProvider
 from diskdoctor.providers.ollama import OllamaProvider
 
 
@@ -18,7 +19,7 @@ class DuplicateProviderError(ValueError):
 
 # Class providers — populated when Task 16+ add them. Keep the import list
 # here and registry code will auto-include any class in _CLASS_PROVIDERS.
-_CLASS_PROVIDERS: list[type[Provider]] = [DockerProvider, OllamaProvider]
+_CLASS_PROVIDERS: list[type[Provider]] = [DockerProvider, LMStudioProvider, OllamaProvider]
 
 
 def load_providers(shell: Shell) -> list[Provider]:
