@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from diskdoctor.cleanup import run
+from diskdoctor.cleanup import build_script, run
 from diskdoctor.types import CleanupOpts, Entry, Report, Risk, ShellResult
 from tests.conftest import FakeShell
 
@@ -242,3 +242,12 @@ def test_execute_shell_failure_becomes_error_status():
     assert results[0].status == "error"
     assert "boom" in (results[0].message or "")
     assert results[0].freed_bytes == 0
+
+
+def test_build_script_labels_mixed_risk_provider():
+    rep = _report(
+        _e("p", "1", 100, Risk.SAFE, recipe=["rm -rf /1"]),
+        _e("p", "2", 200, Risk.DANGEROUS, recipe=["rm -rf /2"]),
+    )
+    script = build_script(rep)
+    assert "risk=mixed" in script

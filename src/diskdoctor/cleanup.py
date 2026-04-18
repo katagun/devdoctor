@@ -33,6 +33,8 @@ def run(
       - 's' skips all remaining in the current provider.
       - 'q' quits; remaining entries are marked skipped.
       - DANGEROUS entries without allow_dangerous are marked skipped with note.
+      - DANGEROUS entries are gated BEFORE provider overrides, so 'a' cannot
+        silently bypass --allow-dangerous.
       - After selection: Confirm with a summary. 'no' → nothing runs; every
         approved entry becomes skipped.
       - On confirm yes: run each approved entry.recipe via shell.
@@ -124,8 +126,7 @@ def _make_skipped_results(selections: list[tuple[Entry, str]]) -> list[CleanResu
 
 def _to_result(entry: Entry, state: str) -> CleanResult:
     if state == "approved":
-        # Should be replaced by _execute_entry in the execute phase; defensive.
-        return CleanResult(entry_id=entry.id, status="skipped", freed_bytes=0)
+        raise AssertionError(f"_to_result called with approved entry {entry.id!r}; should be routed to _execute_entry")
     reason = state.split(":", 1)[1] if ":" in state else state
     msg = _reason_message(reason)
     return CleanResult(entry_id=entry.id, status="skipped", freed_bytes=0, message=msg)
@@ -173,10 +174,10 @@ def build_script(report: Report) -> str:
     ]
     for provider, entries in report.by_provider().items():
         total = sum(e.size_bytes for e in entries)
-        risk = entries[0].risk.value
+        risks = {e.risk.value for e in entries}
+        risk = risks.pop() if len(risks) == 1 else "mixed"
         lines.append(f"# --- {provider}: {total} bytes freed, risk={risk} ---")
-        if entries[0].provider and entries[0].label:
-            lines.append(f"# {len(entries)} entr{'y' if len(entries) == 1 else 'ies'}")
+        lines.append(f"# {len(entries)} entr{'y' if len(entries) == 1 else 'ies'}")
         for e in entries:
             lines.append(f"#   [{e.size_bytes} B] {e.label}")
             for cmd in e.recipe:
