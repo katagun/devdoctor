@@ -14,8 +14,10 @@ from starlette.types import Scope
 
 from diskdoctor.ports import Shell
 from diskdoctor.web.middleware import HostHeaderMiddleware
+from diskdoctor.web.routes_clean import router as clean_router
 from diskdoctor.web.routes_history import router as history_router
 from diskdoctor.web.routes_scan import router as scan_router
+from diskdoctor.web.runner_registry import RunnerRegistry
 
 API_PREFIX = "/api"
 _API_ROOT = API_PREFIX.lstrip("/")
@@ -78,9 +80,13 @@ def build_app(
     app.add_middleware(HostHeaderMiddleware, allowed_hosts=allowed_hosts)
     app.state.shell = shell
 
+    # Single-slot registry for the active cleanup job.
+    app.state.runner_registry = RunnerRegistry()
+
     # /api routers — subsequent tasks attach additional routers the same way.
     app.include_router(scan_router)
     app.include_router(history_router)
+    app.include_router(clean_router)
 
     # Mount the SPA at /. Placed manually via Mount so we can keep a reference
     # and ensure it stays last in the route table as new routes are added.
