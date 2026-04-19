@@ -16,3 +16,8 @@ build/
 .env.local
 *.swp
 .superpowers/
+
+# Built SPA bundle is a build artefact; the .keep + placeholder index.html stay tracked
+src/diskdoctor/web/_static/dist/*
+!src/diskdoctor/web/_static/dist/.keep
+!src/diskdoctor/web/_static/dist/index.html
