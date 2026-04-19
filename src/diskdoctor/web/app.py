@@ -15,6 +15,9 @@ from starlette.types import Scope
 from diskdoctor.ports import Shell
 from diskdoctor.web.middleware import HostHeaderMiddleware
 
+API_PREFIX = "/api"
+_API_ROOT = API_PREFIX.lstrip("/")
+
 _HTTP_404_NOT_FOUND = 404
 
 
@@ -35,7 +38,7 @@ class _SPAStaticFiles(StaticFiles):
         except StarletteHTTPException as exc:
             if exc.status_code != _HTTP_404_NOT_FOUND:
                 raise
-            if path == "api" or path.startswith("api/"):
+            if path == _API_ROOT or path.startswith(f"{_API_ROOT}/"):
                 return JSONResponse(
                     status_code=_HTTP_404_NOT_FOUND,
                     content={
@@ -75,7 +78,7 @@ def build_app(
 
     # /api router — subsequent tasks attach routes via include_router or by
     # calling app.state.api_router.add_api_route(...).
-    api = APIRouter(prefix="/api")
+    api = APIRouter(prefix=API_PREFIX)
     app.include_router(api)
     app.state.api_router = api
 
