@@ -26,6 +26,21 @@ _SIZE_MULT = {"": 1, "K": 1_000, "M": 1_000_000, "G": 1_000_000_000, "T": 1_000_
 _MIN_SNAPSHOTS_FOR_DIFF = 2
 
 
+def _pick_free_port() -> int:
+    """Ask the kernel for an unused TCP port on 127.0.0.1.
+
+    We pick the port up-front (rather than letting uvicorn bind port=0) so
+    we can build `allowed_hosts` with the concrete port BEFORE uvicorn
+    starts — the host-header middleware needs the exact host:port to
+    accept requests.
+    """
+    import socket  # noqa: PLC0415 - stdlib; lazy to keep CLI import lightweight
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+
+
 def _parse_size(s: str) -> int:
     m = _SIZE_RE.match(s)
     if not m:
@@ -213,6 +228,64 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
                 "yes" if p.available() else "no",
             )
         console.print(table)
+
+    @cli.command()
+    @click.option(
+        "--port",
+        default=0,
+        type=int,
+        help="Port to bind (0 = random free port).",
+    )
+    @click.option(
+        "--no-browser",
+        is_flag=True,
+        help="Do not auto-open the default browser.",
+    )
+    @click.pass_context
+    def serve(ctx: click.Context, port: int, no_browser: bool) -> None:
+        """Launch the local web UI."""
+        # Imports are intentionally lazy: the `web` extra is optional, so we
+        # only import uvicorn and the FastAPI app when `serve` is actually
+        # invoked. Without the extra, users get a friendly install hint
+        # instead of an ImportError at CLI startup.
+        try:
+            import uvicorn  # noqa: PLC0415 - lazy: optional `web` extra
+
+            from diskdoctor.web.app import build_app  # noqa: PLC0415 - lazy
+        except ImportError:
+            click.echo(
+                "diskdoctor serve requires the 'web' extra. Install with:\n"
+                "  uv tool install '.[web]' --force",
+                err=True,
+            )
+            ctx.exit(1)
+            return
+
+        import contextlib  # noqa: PLC0415 - lazy; only needed in this path
+        import webbrowser  # noqa: PLC0415 - lazy; only needed in this path
+
+        bind_port = port or _pick_free_port()
+        allowed_hosts = {f"127.0.0.1:{bind_port}", f"localhost:{bind_port}"}
+        app = build_app(ctx.obj["shell"], allowed_hosts=allowed_hosts)
+
+        url = f"http://127.0.0.1:{bind_port}"
+        click.echo(f"diskdoctor web UI -> {url}\nCtrl-C to stop.")
+
+        if not no_browser:
+            # Swallow every error: headless CI, missing DISPLAY, broken
+            # BROWSER env var, Safari AppleScript hiccups — none of these
+            # should stop the server from starting.
+            with contextlib.suppress(Exception):
+                webbrowser.open(url)
+
+        try:
+            uvicorn.run(app, host="127.0.0.1", port=bind_port, log_level="info")
+        except OSError as exc:
+            click.echo(
+                f"Could not bind port {bind_port}: {exc}.\nTry --port 0 for a free one.",
+                err=True,
+            )
+            ctx.exit(1)
 
     return cli
 
