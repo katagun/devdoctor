@@ -83,3 +83,46 @@ def test_registry_single_active_job():
 
     reg.release(runner)
     assert reg.active() is None
+
+
+@pytest.mark.asyncio
+async def test_runner_multi_entry_attributes_events_to_correct_entry():
+    """Guards against a former bug where _current_entry got stale."""
+    rep = _report(
+        _e("a", "A", 100, recipe=["cmd-A"]),
+        _e("a", "B", 200, recipe=["cmd-B"]),
+    )
+
+    async def fake_run_line(line: str) -> ShellResult:
+        return ShellResult(0, "", "")
+
+    runner = CleanupRunner(report=rep, opts=CleanupOpts(execute=True), run_line=fake_run_line)
+    task = asyncio.create_task(runner.run())
+
+    # prompt + answer for A
+    ev = await runner.events.get()
+    assert ev["event"] == "prompt" and ev["data"]["entry_id"] == "A"
+    await runner.answer_prompt(entry_id="A", choice="y")
+
+    # prompt + answer for B
+    ev = await runner.events.get()
+    assert ev["event"] == "prompt" and ev["data"]["entry_id"] == "B"
+    await runner.answer_prompt(entry_id="B", choice="y")
+
+    # confirm
+    ev = await runner.events.get()
+    assert ev["event"] == "awaiting_confirm"
+    await runner.answer_confirm(True)
+
+    # Collect all execute_start events and verify their entry_ids
+    starts: list[str] = []
+    while True:
+        ev = await runner.events.get()
+        if ev["event"] == "execute_start":
+            starts.append(ev["data"]["entry_id"])
+        if ev["event"] == "done":
+            break
+
+    # Both entries should have an execute_start event with their own id.
+    assert set(starts) == {"A", "B"}
+    await asyncio.wait_for(task, timeout=1)

@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from diskdoctor.cleanup import run_async
+from diskdoctor import cleanup as cleanup_mod
 from diskdoctor.types import (
     AsyncRunLine,
     Choice,
@@ -20,20 +20,16 @@ from diskdoctor.web.subprocess_stream import OnChunk
 
 @dataclass
 class CleanupRunner:
-    """Drives cleanup.run_async with web-side callables and emits events.
+    """Drives the cleanup state machine with web-side callables and emits events.
 
     Events are dicts of the shape expected by the SSE route:
       {"event": str, "data": dict}
 
-    Mutable state note: ``_current_entry`` is set inside ``_prompt_choice`` and
-    read inside the ``run_line_emitting`` closure. This is safe because
-    ``cleanup.iter_cleanup_events`` processes candidates sequentially — the
-    state machine prompts for an entry, then (after the final confirm) runs
-    its recipe lines, and only advances to the next entry once the previous
-    one resolves. There is exactly one "current" entry in flight at any
-    moment. Concurrent event-driven tests do not invalidate this because the
-    events queue is consumed externally but the generator is still advanced
-    by the single ``run()`` coroutine.
+    Iterates ``cleanup.iter_cleanup_events`` directly (rather than going through
+    ``cleanup.run_async``) so that ``ExecuteStep.entry`` is available at the
+    moment each recipe line runs. This keeps per-entry event attribution correct
+    across multi-entry jobs where the selection phase (all prompts) completes
+    before any execute phase starts.
     """
 
     report: Report
@@ -45,46 +41,49 @@ class CleanupRunner:
     _pending_confirm: asyncio.Future[bool] | None = None
     _task: asyncio.Task[list[CleanResult]] | None = None
     _cancelled: bool = False
-    _current_entry: Entry | None = None
 
     async def run(self) -> list[CleanResult]:
         results: list[CleanResult] = []
         try:
-            # Wrap run_line so we emit execute_start/execute_progress/execute_result.
-            async def run_line_emitting(line: str) -> ShellResult:
-                # Identify which entry — stashed in _current_entry by _prompt_choice.
-                entry = self._current_entry
-                assert entry is not None, "run_line_emitting called outside an entry prompt cycle"
-                await self.events.put(
-                    {
-                        "event": "execute_start",
-                        "data": {"entry_id": entry.id, "cmd": line},
-                    }
-                )
-
-                async def on_chunk(stream: str, text: str) -> None:
-                    await self.events.put(
-                        {
-                            "event": "execute_progress",
-                            "data": {"entry_id": entry.id, "stream": stream, "chunk": text},
-                        }
-                    )
-
-                return await self.run_line_with_chunks(line, on_chunk)
-
-            results = await run_async(
-                self.report,
-                run_line=run_line_emitting,
-                prompt_choice=self._prompt_choice,
-                confirm=self._confirm,
-                opts=self.opts,
-            )
+            gen = cleanup_mod.iter_cleanup_events(self.report, self.opts)
+            try:
+                event = next(gen)
+                while True:
+                    if isinstance(event, cleanup_mod.PromptRequired):
+                        choice = await self._prompt_choice(event.entry)
+                        event = gen.send(choice)
+                    elif isinstance(event, cleanup_mod.ConfirmRequired):
+                        summary = (
+                            f"Execute cleanup for {len(event.approved)} entries, "
+                            f"freeing ~{event.total_bytes} bytes?"
+                        )
+                        confirmed = await self._confirm(summary)
+                        event = gen.send(confirmed)
+                    elif isinstance(event, cleanup_mod.ExecuteStep):
+                        result = await self._run_execute_step(event.entry, event.line)
+                        event = gen.send(result)
+                    elif isinstance(event, cleanup_mod.EntryResolved):
+                        results.append(event.result)
+                        event = next(gen)
+            except StopIteration:
+                pass
             await self._emit_results(results)
         except asyncio.CancelledError:
             await self.events.put(
                 {
                     "event": "done",
-                    "data": {"results": [], "cancelled": True},
+                    "data": {
+                        "results": [
+                            {
+                                "entry_id": r.entry_id,
+                                "status": r.status,
+                                "freed_bytes": r.freed_bytes,
+                                "message": r.message,
+                            }
+                            for r in results
+                        ],
+                        "cancelled": True,
+                    },
                 }
             )
             raise
@@ -95,8 +94,27 @@ class CleanupRunner:
                     "data": {"code": "internal", "message": str(exc)},
                 }
             )
-            return []
+            return results
         return results
+
+    async def _run_execute_step(self, entry: Entry, line: str) -> ShellResult:
+        """Emit execute_start, stream progress, return the final ShellResult."""
+        await self.events.put(
+            {
+                "event": "execute_start",
+                "data": {"entry_id": entry.id, "cmd": line},
+            }
+        )
+
+        async def on_chunk(stream: str, text: str) -> None:
+            await self.events.put(
+                {
+                    "event": "execute_progress",
+                    "data": {"entry_id": entry.id, "stream": stream, "chunk": text},
+                }
+            )
+
+        return await self.run_line_with_chunks(line, on_chunk)
 
     async def run_line_with_chunks(self, line: str, on_chunk: OnChunk) -> ShellResult:
         """Default impl: ignore chunks and call run_line.
@@ -107,7 +125,6 @@ class CleanupRunner:
         return await self.run_line(line)
 
     async def _prompt_choice(self, entry: Entry) -> Choice:
-        self._current_entry = entry
         fut: asyncio.Future[Choice] = asyncio.get_event_loop().create_future()
         self._pending_prompts[entry.id] = fut
         await self.events.put(
