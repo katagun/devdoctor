@@ -3,7 +3,7 @@ from __future__ import annotations
 import shlex
 from collections.abc import Generator
 from dataclasses import dataclass
-from typing import cast
+from typing import Literal
 
 from diskdoctor.ports import Shell
 from diskdoctor.types import (
@@ -16,6 +16,14 @@ from diskdoctor.types import (
     Risk,
     ShellResult,
 )
+
+SelectionState = Literal[
+    "approved",
+    "skipped:user",
+    "skipped:provider-skip",
+    "skipped:quit",
+    "skipped:dangerous",
+]
 
 
 @dataclass
@@ -82,9 +90,9 @@ def iter_cleanup_events(report: Report, opts: CleanupOpts) -> Generator[CleanupE
 
 def _iter_selection(
     candidates: list[Entry], opts: CleanupOpts
-) -> Generator[CleanupEvent, object, list[tuple[Entry, str]]]:
+) -> Generator[CleanupEvent, object, list[tuple[Entry, SelectionState]]]:
     """Walk candidates, prompting as needed; produce a list of (entry, state) pairs."""
-    selections: list[tuple[Entry, str]] = []
+    selections: list[tuple[Entry, SelectionState]] = []
     provider_override: dict[str, str] = {}
     quit_signalled = False
 
@@ -108,7 +116,7 @@ def _auto_state(
     opts: CleanupOpts,
     provider_override: dict[str, str],
     quit_signalled: bool,
-) -> str | None:
+) -> SelectionState | None:
     """Return the pre-determined state for an entry, or None if a prompt is required."""
     if quit_signalled:
         return "skipped:quit"
@@ -124,7 +132,9 @@ def _auto_state(
     return None
 
 
-def _apply_choice(choice: object, entry: Entry, provider_override: dict[str, str]) -> str:
+def _apply_choice(
+    choice: object, entry: Entry, provider_override: dict[str, str]
+) -> SelectionState:
     """Translate a prompt choice into a selection state; may mutate provider_override."""
     if choice == "y":
         return "approved"
@@ -138,11 +148,11 @@ def _apply_choice(choice: object, entry: Entry, provider_override: dict[str, str
         return "skipped:provider-skip"
     if choice == "q":
         return "skipped:quit"
-    return f"skipped:unknown-choice:{choice}"
+    return f"skipped:unknown-choice:{choice}"  # type: ignore[return-value]
 
 
 def _resolve_aborted(
-    selections: list[tuple[Entry, str]],
+    selections: list[tuple[Entry, SelectionState]],
 ) -> Generator[CleanupEvent, object, None]:
     """Emit EntryResolved for every selection after the user declined at final confirm."""
     for e, state in selections:
@@ -160,7 +170,7 @@ def _resolve_aborted(
 
 
 def _iter_execute(
-    selections: list[tuple[Entry, str]],
+    selections: list[tuple[Entry, SelectionState]],
 ) -> Generator[CleanupEvent, object, None]:
     """Run each approved entry's recipe via ExecuteStep yields; resolve every selection."""
     for entry, state in selections:
@@ -181,7 +191,8 @@ def _iter_execute(
 def _run_recipe(entry: Entry) -> Generator[CleanupEvent, object, str | None]:
     """Yield ExecuteStep per recipe line; return error message on failure, None on success."""
     for line in entry.recipe:
-        result = cast(ShellResult, (yield ExecuteStep(entry=entry, line=line)))
+        result = yield ExecuteStep(entry=entry, line=line)
+        assert isinstance(result, ShellResult)
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or "").strip()
             return detail or f"exit {result.returncode}"
