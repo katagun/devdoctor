@@ -7,8 +7,8 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
-dist/
-build/
+/dist/
+/build/
 .DS_Store
 .idea/
 .vscode/
