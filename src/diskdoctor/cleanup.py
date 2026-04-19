@@ -7,6 +7,9 @@ from typing import Literal
 
 from diskdoctor.ports import Shell
 from diskdoctor.types import (
+    AsyncConfirm,
+    AsyncPromptChoice,
+    AsyncRunLine,
     CleanResult,
     CleanupOpts,
     Confirm,
@@ -224,6 +227,39 @@ def run(
             elif isinstance(event, ExecuteStep):
                 argv = shlex.split(event.line)
                 event = gen.send(shell.run(argv, check=False))
+            elif isinstance(event, EntryResolved):
+                results.append(event.result)
+                event = next(gen)
+    except StopIteration:
+        pass
+    return results
+
+
+async def run_async(
+    report: Report,
+    *,
+    run_line: AsyncRunLine,
+    prompt_choice: AsyncPromptChoice,
+    confirm: AsyncConfirm,
+    opts: CleanupOpts,
+) -> list[CleanResult]:
+    """Async adapter over iter_cleanup_events. The web backend uses this."""
+    gen = iter_cleanup_events(report, opts)
+    results: list[CleanResult] = []
+    try:
+        event = next(gen)
+        while True:
+            if isinstance(event, PromptRequired):
+                answer = await prompt_choice(event.entry)
+                event = gen.send(answer)
+            elif isinstance(event, ConfirmRequired):
+                summary = (
+                    f"Execute cleanup for {len(event.approved)} entries, "
+                    f"freeing ~{event.total_bytes} bytes?"
+                )
+                event = gen.send(await confirm(summary))
+            elif isinstance(event, ExecuteStep):
+                event = gen.send(await run_line(event.line))
             elif isinstance(event, EntryResolved):
                 results.append(event.result)
                 event = next(gen)

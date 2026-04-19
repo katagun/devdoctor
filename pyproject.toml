@@ -21,6 +21,7 @@ hf = ["huggingface_hub>=0.23"]
 dev = [
   "pytest>=8.0",
   "pytest-cov>=5.0",
+  "pytest-asyncio>=0.23",
   "ruff>=0.5",
   "mypy>=1.10",
   "pre-commit>=3.7",
@@ -39,6 +40,7 @@ packages = ["src/diskdoctor"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+asyncio_mode = "auto"
 
 [tool.coverage.run]
 source = ["src/diskdoctor"]

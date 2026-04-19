@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -167,3 +167,7 @@ class Report:
 Choice = Literal["y", "n", "a", "s", "q"]
 PromptChoice = Callable[[Entry], Choice]
 Confirm = Callable[[str], bool]
+
+AsyncPromptChoice = Callable[[Entry], Awaitable[Choice]]
+AsyncConfirm = Callable[[str], Awaitable[bool]]
+AsyncRunLine = Callable[[str], Awaitable[ShellResult]]
