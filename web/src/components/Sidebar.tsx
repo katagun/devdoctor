@@ -9,6 +9,7 @@ function Item({ to, label, count }: { to: string; label: string; count?: number 
   return (
     <NavLink
       to={to}
+      end={to === "/"}
       className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkIdle}`}
     >
       <span>{label}</span>
