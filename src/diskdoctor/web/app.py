@@ -14,6 +14,7 @@ from starlette.types import Scope
 
 from diskdoctor.ports import Shell
 from diskdoctor.web.middleware import HostHeaderMiddleware
+from diskdoctor.web.routes_history import router as history_router
 from diskdoctor.web.routes_scan import router as scan_router
 
 API_PREFIX = "/api"
@@ -79,6 +80,7 @@ def build_app(
 
     # /api routers — subsequent tasks attach additional routers the same way.
     app.include_router(scan_router)
+    app.include_router(history_router)
 
     # Mount the SPA at /. Placed manually via Mount so we can keep a reference
     # and ensure it stays last in the route table as new routes are added.
