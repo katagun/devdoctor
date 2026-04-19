@@ -1,7 +1,19 @@
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import AppShell from "./AppShell";
+import Scan from "./pages/Scan";
+import Snapshots from "./pages/Snapshots";
+import Providers from "./pages/Providers";
+
 export default function App() {
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="text-text-dim font-mono">diskdoctor web UI scaffold</div>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<AppShell />}>
+          <Route index element={<Scan />} />
+          <Route path="snapshots" element={<Snapshots />} />
+          <Route path="providers" element={<Providers />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }
