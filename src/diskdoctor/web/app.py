@@ -5,7 +5,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, FastAPI
+from fastapi import FastAPI
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount
@@ -14,6 +14,7 @@ from starlette.types import Scope
 
 from diskdoctor.ports import Shell
 from diskdoctor.web.middleware import HostHeaderMiddleware
+from diskdoctor.web.routes_scan import router as scan_router
 
 API_PREFIX = "/api"
 _API_ROOT = API_PREFIX.lstrip("/")
@@ -61,8 +62,8 @@ def build_app(
 
     Routing order is strict:
       1. Host-header middleware (rejects anything before routing)
-      2. /api/* routes (explicit; registered on app.state.api_router or via
-         @app.get — see below for ordering details)
+      2. /api/* routes (explicit; registered via include_router or @app.get —
+         see below for ordering details)
       3. StaticFiles at / with SPA fallback (serves the built SPA; unknown
          paths return index.html for client-side routing; unknown /api/*
          paths return JSON 404 instead)
@@ -76,11 +77,8 @@ def build_app(
     app.add_middleware(HostHeaderMiddleware, allowed_hosts=allowed_hosts)
     app.state.shell = shell
 
-    # /api router — subsequent tasks attach routes via include_router or by
-    # calling app.state.api_router.add_api_route(...).
-    api = APIRouter(prefix=API_PREFIX)
-    app.include_router(api)
-    app.state.api_router = api
+    # /api routers — subsequent tasks attach additional routers the same way.
+    app.include_router(scan_router)
 
     # Mount the SPA at /. Placed manually via Mount so we can keep a reference
     # and ensure it stays last in the route table as new routes are added.
