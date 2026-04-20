@@ -18,6 +18,30 @@ export function useSnapshots() {
   });
 }
 
+interface SnapshotReportEntry {
+  id: string;
+  provider: string;
+  label: string;
+  size_bytes: number;
+  risk: string;
+}
+
+export interface SnapshotReport {
+  scanned_at: string;
+  hostname: string;
+  platform: string;
+  note: string | null;
+  entries: SnapshotReportEntry[];
+}
+
+export function useSnapshot(name: string | null) {
+  return useQuery({
+    enabled: !!name,
+    queryKey: ["snapshot", name],
+    queryFn: () => apiFetch<SnapshotReport>(`/snapshots/${encodeURIComponent(name!)}`),
+  });
+}
+
 export function useCreateSnapshot() {
   const qc = useQueryClient();
   return useMutation({

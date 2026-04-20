@@ -21,6 +21,41 @@ export function staleness(mtime: number | null): string {
   return `${(ageDays / 365).toFixed(1)}y`;
 }
 
+// Compact relative time ("5 min ago", "yesterday", "Apr 20") for display.
+export function timeAgo(iso: string, now: Date = new Date()): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const secs = Math.floor((now.getTime() - d.getTime()) / 1000);
+  if (secs < 5) return "just now";
+  if (secs < 60) return `${secs}s ago`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days}d ago`;
+  // Same year: drop year; else include it.
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: sameYear ? undefined : "numeric",
+  });
+}
+
+// Absolute local date-time for the secondary line, e.g. "Apr 20, 2:48 PM".
+export function formatAbsTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export type RiskValue = "safe" | "reclaimable" | "dangerous";
 export function riskLabel(risk: RiskValue): string {
   return { safe: "safe", reclaimable: "reclaim", dangerous: "DANGER" }[risk];

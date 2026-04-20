@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { humanBytes, staleness, riskLabel, parseRecipeHint } from "@/lib/format";
+import {
+  humanBytes,
+  staleness,
+  riskLabel,
+  parseRecipeHint,
+  timeAgo,
+  formatAbsTime,
+} from "@/lib/format";
 
 describe("humanBytes", () => {
   it("formats bytes", () => expect(humanBytes(0)).toBe("0B"));
@@ -24,6 +31,36 @@ describe("riskLabel", () => {
     expect(riskLabel("safe")).toBe("safe");
     expect(riskLabel("reclaimable")).toBe("reclaim");
     expect(riskLabel("dangerous")).toBe("DANGER");
+  });
+});
+
+describe("timeAgo", () => {
+  const now = new Date("2026-04-20T15:00:00Z");
+  it("formats seconds", () => {
+    expect(timeAgo("2026-04-20T14:59:50Z", now)).toBe("10s ago");
+  });
+  it("treats near-zero as 'just now'", () => {
+    expect(timeAgo("2026-04-20T14:59:58Z", now)).toBe("just now");
+  });
+  it("formats minutes", () => {
+    expect(timeAgo("2026-04-20T14:45:00Z", now)).toBe("15 min ago");
+  });
+  it("formats hours", () => {
+    expect(timeAgo("2026-04-20T13:00:00Z", now)).toBe("2h ago");
+  });
+  it("says yesterday", () => {
+    expect(timeAgo("2026-04-19T15:00:00Z", now)).toBe("yesterday");
+  });
+  it("formats older dates", () => {
+    // 10 days ago → fall through to locale short date
+    const got = timeAgo("2026-04-10T15:00:00Z", now);
+    expect(got).toMatch(/Apr/);
+  });
+});
+
+describe("formatAbsTime", () => {
+  it("includes month abbreviation", () => {
+    expect(formatAbsTime("2026-04-20T14:48:00Z")).toMatch(/Apr/);
   });
 });
 
