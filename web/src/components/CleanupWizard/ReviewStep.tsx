@@ -9,8 +9,8 @@ export function ReviewStep() {
     .reduce((a, b) => a + b.size_bytes, 0);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-auto p-4 space-y-2 font-mono text-[11px]">
+    <div className="flex flex-col h-full font-mono text-[11px]">
+      <div className="flex-1 overflow-auto p-4 space-y-2">
         {state.entries.map((e) => {
           const on = state.enabled.has(e.id);
           return (
