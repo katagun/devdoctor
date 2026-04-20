@@ -25,3 +25,23 @@ export type RiskValue = "safe" | "reclaimable" | "dangerous";
 export function riskLabel(risk: RiskValue): string {
   return { safe: "safe", reclaimable: "reclaim", dangerous: "DANGER" }[risk];
 }
+
+export interface RecipeHint {
+  kind: "advice" | "command";
+  text: string;
+  sentences: string[];
+}
+
+// Classify a recipe line into advice (`echo '...'`, rendered as bullets) or a
+// raw shell command (rendered as-is). Sentence splitting for advice uses
+// ". " before an uppercase letter or digit to avoid breaking abbreviations.
+export function parseRecipeHint(line: string): RecipeHint {
+  const m = /^echo\s+'([\s\S]+)'$/.exec(line.trim());
+  if (!m) return { kind: "command", text: line, sentences: [line] };
+  const msg = m[1];
+  const sentences = msg
+    .split(/(?<=\.)\s+(?=[A-Z0-9])/g)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return { kind: "advice", text: msg, sentences: sentences.length ? sentences : [msg] };
+}

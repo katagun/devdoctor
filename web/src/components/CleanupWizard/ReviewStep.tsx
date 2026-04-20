@@ -1,5 +1,5 @@
 import { RiskBadge } from "@/components/RiskBadge";
-import { humanBytes } from "@/lib/format";
+import { humanBytes, parseRecipeHint } from "@/lib/format";
 import { useWizardContext } from "./CleanupWizardState";
 
 export function ReviewStep() {
@@ -44,9 +44,31 @@ export function ReviewStep() {
                   </button>
                 </div>
               </div>
-              <div className="bg-[#060a0f] border border-[#13241a] rounded px-2.5 py-1.5 mt-2 text-risk-safe text-[10.5px]">
-                ▸ {e.recipeHint}
-              </div>
+              {(() => {
+                const hint = parseRecipeHint(e.recipeHint);
+                if (hint.kind === "command") {
+                  return (
+                    <div className="bg-[#060a0f] border border-[#13241a] rounded px-2.5 py-1.5 mt-2 text-risk-safe text-[10.5px] break-all">
+                      ▸ {hint.text}
+                    </div>
+                  );
+                }
+                return (
+                  <div className="bg-[#060a0f] border border-border rounded px-3 py-2 mt-2 text-[10.5px] leading-relaxed">
+                    <div className="text-risk-reclaim text-[9px] uppercase tracking-widest mb-1.5">
+                      advice
+                    </div>
+                    <ul className="space-y-1 text-text-dim">
+                      {hint.sentences.map((s, i) => (
+                        <li key={i} className="flex gap-2">
+                          <span className="text-text-muted shrink-0">·</span>
+                          <span className="break-words">{s}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })()}
               {e.risk === "dangerous" && !on && (
                 <div className="text-risk-danger text-[10px] mt-1.5 pl-2 border-l-2 border-risk-danger">
                   ⚠ Dangerous providers are off by default. Enable only if you understand the consequence.
