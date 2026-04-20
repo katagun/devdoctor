@@ -1,6 +1,0 @@
-- name: e2e-sample
-  description: smoke
-  risk: safe
-  platforms: [darwin, linux]
-  paths: [/tmp]
-  recipe: "echo noop"
