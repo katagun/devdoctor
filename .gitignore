@@ -16,6 +16,8 @@ htmlcov/
 .env.local
 *.swp
 .superpowers/
+web/test-results/
+web/playwright-report/
 
 # Built SPA bundle is a build artefact; the .keep + placeholder index.html stay tracked
 src/diskdoctor/web/_static/dist/*
