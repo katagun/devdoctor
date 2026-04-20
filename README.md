@@ -43,6 +43,46 @@ diskdoctor providers                  # show registered providers and their avai
 
 See [docs/superpowers/specs/2026-04-18-diskdoctor-design.md](docs/superpowers/specs/2026-04-18-diskdoctor-design.md).
 
+## Web UI
+
+```bash
+# Install with the web extra
+uv tool install '.[web]' --force
+
+# Launch
+diskdoctor serve
+# → opens http://127.0.0.1:<random-port> in your browser
+```
+
+Flags:
+
+- `--port N` — bind a specific port (0 = random free port, default).
+- `--no-browser` — do not auto-open the default browser.
+
+Dev loop:
+
+```bash
+# One-time: install the SPA's node deps
+cd web && npm install && cd ..
+
+# Terminal 1: FastAPI
+uv run diskdoctor serve --port 8731 --no-browser
+
+# Terminal 2: Vite with HMR (proxies /api to 8731)
+cd web && npm run dev
+```
+
+Open http://localhost:5173.
+
+For a production-style run, build the SPA first (hatchling force-includes the
+built bundle into the package on release):
+
+```bash
+cd web && npm run build && cd ..
+uv tool install '.[web]' --force
+diskdoctor serve
+```
+
 ## Development
 
 ```bash

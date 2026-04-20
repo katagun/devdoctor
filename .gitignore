@@ -7,8 +7,8 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
-dist/
-build/
+/dist/
+/build/
 .DS_Store
 .idea/
 .vscode/
@@ -16,3 +16,10 @@ build/
 .env.local
 *.swp
 .superpowers/
+web/test-results/
+web/playwright-report/
+
+# Built SPA bundle is a build artefact; the .keep + placeholder index.html stay tracked
+src/diskdoctor/web/_static/dist/*
+!src/diskdoctor/web/_static/dist/.keep
+!src/diskdoctor/web/_static/dist/index.html

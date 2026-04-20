@@ -1,0 +1,18 @@
+@import "tailwindcss";
+@import "./theme.css";
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elev-1: var(--bg-elev-1);
+  --color-bg-elev-2: var(--bg-elev-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-text-dim: var(--text-dim);
+  --color-text-muted: var(--text-muted);
+  --color-risk-safe: var(--risk-safe);
+  --color-risk-reclaim: var(--risk-reclaim);
+  --color-risk-danger: var(--risk-danger);
+  --color-accent: var(--accent);
+  --font-mono: var(--font-mono);
+  --font-sans: var(--font-ui);
+}

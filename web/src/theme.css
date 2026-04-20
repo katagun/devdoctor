@@ -1,0 +1,18 @@
+:root[data-theme="terminal-refined"] {
+  --bg:           #0b0e13;
+  --bg-elev-1:    #0d1218;
+  --bg-elev-2:    #13181f;
+  --border:       #1a2128;
+  --text:         #d7e3e8;
+  --text-dim:     #8a9aa8;
+  --text-muted:   #566876;
+  --risk-safe:    #7fe4b1;
+  --risk-reclaim: #c4a5ff;
+  --risk-danger:  #ff8897;
+  --accent:       #7fe4b1;
+  --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+  --font-ui:      "Inter", system-ui, -apple-system, sans-serif;
+}
+
+html, body, #root { background: var(--bg); color: var(--text); }
+body { font-family: var(--font-ui); margin: 0; }
