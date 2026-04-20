@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { CacheTable } from "@/components/CacheTable";
+import { CleanupWizard } from "@/components/CleanupWizard";
 import { TopStats } from "@/components/TopStats";
 import { useScan } from "@/hooks/useScan";
 import { humanBytes, RiskValue } from "@/lib/format";
@@ -18,8 +19,10 @@ export default function Scan() {
 
   const { data, isLoading, error } = useScan({ risk: riskParam });
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const rows = data?.rows ?? [];
+  const selectedRows = rows.filter((r) => selected.has(r.id));
   const totalSelected = useMemo(
     () => rows.filter((r) => selected.has(r.id)).reduce((a, b) => a + b.size_bytes, 0),
     [rows, selected],
@@ -73,11 +76,13 @@ export default function Scan() {
         </span>
         <button
           disabled={selected.size === 0}
+          onClick={() => setWizardOpen(true)}
           className="bg-gradient-to-b from-[#3aa670] to-[#2a7f55] text-[#e8fff3] px-4 py-1.5 rounded border border-[#3aa670] font-medium text-[11px] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           ▸ clean up {selected.size > 0 ? `${selected.size} items` : ""}
         </button>
       </div>
+      {wizardOpen && <CleanupWizard entries={selectedRows} onClose={() => setWizardOpen(false)} />}
     </div>
   );
 }
