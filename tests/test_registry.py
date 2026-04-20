@@ -19,6 +19,20 @@ def test_load_providers_includes_yaml_entries():
     assert "pip-cache" in names
 
 
+def test_downloads_provider_is_dangerous_and_advice_only():
+    """Downloads holds user files we can't auto-reclaim, so it must default
+    to dangerous risk and use an advice echo (never a raw rm -rf)."""
+    providers = load_providers(FakeShell())
+    downloads = next((p for p in providers if p.name == "downloads"), None)
+    assert downloads is not None, "downloads provider missing from paths.yaml"
+    assert downloads.risk.value == "dangerous"
+    # PathProvider keeps the raw recipe template as _recipe_template.
+    tmpl = downloads._recipe_template  # type: ignore[attr-defined]
+    assert len(tmpl) == 1
+    assert tmpl[0].startswith("echo '")
+    assert "rm -rf {path}" not in tmpl[0]
+
+
 def test_duplicate_yaml_names_raises(tmp_path: Path, monkeypatch):
     yaml_text = """
 - name: same

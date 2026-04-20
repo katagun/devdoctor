@@ -149,3 +149,11 @@
   paths:
     - ~/.m2/repository
   recipe: "rm -rf {path}"
+
+- name: downloads
+  description: Downloads folder (review manually — may contain files you still need)
+  risk: dangerous
+  platforms: [darwin, linux]
+  paths:
+    - ~/Downloads
+  recipe: "echo 'Review ~/Downloads manually before deleting anything — it usually mixes disposable installers with files you still need. List the largest items: du -sh ~/Downloads/* | sort -rh | head -20. Find files older than 90 days: find ~/Downloads -type f -mtime +90 -print. Delete what you confirm is junk: rm ~/Downloads/<filename>. Do NOT rm -rf this folder.'"
