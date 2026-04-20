@@ -44,4 +44,30 @@ describe("CacheTable", () => {
     render(<CacheTable rows={[]} selected={new Set()} onToggle={() => {}} />);
     expect(screen.getByText(/no entries/i)).toBeInTheDocument();
   });
+
+  it("defaults to sorting by size descending", () => {
+    render(<CacheTable rows={rows} selected={new Set()} onToggle={() => {}} />);
+    const providerCells = screen.getAllByText(/^(docker|uv-cache)$/);
+    // 80 GB docker row should come before the 1.5 GB uv-cache row.
+    expect(providerCells[0].textContent).toBe("docker");
+    expect(providerCells[1].textContent).toBe("uv-cache");
+  });
+
+  it("clicking a header reverses sort direction on the second click", () => {
+    render(<CacheTable rows={rows} selected={new Set()} onToggle={() => {}} />);
+    const sizeHeader = screen.getByRole("button", { name: /size/i });
+    // First click on the already-active 'size' header flips asc → now smallest first.
+    fireEvent.click(sizeHeader);
+    const providerCells = screen.getAllByText(/^(docker|uv-cache)$/);
+    expect(providerCells[0].textContent).toBe("uv-cache");
+    expect(providerCells[1].textContent).toBe("docker");
+  });
+
+  it("sorts alphabetically when the provider header is clicked", () => {
+    render(<CacheTable rows={rows} selected={new Set()} onToggle={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /provider/i }));
+    const providerCells = screen.getAllByText(/^(docker|uv-cache)$/);
+    expect(providerCells[0].textContent).toBe("docker");
+    expect(providerCells[1].textContent).toBe("uv-cache");
+  });
 });
