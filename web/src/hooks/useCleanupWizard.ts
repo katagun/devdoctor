@@ -212,12 +212,16 @@ export function useCleanupWizard({ entries }: { entries: CacheTableRow[] }) {
 
   const startJob = useCallback(async () => {
     const ids = Array.from(enabledRef.current);
-    const res = await apiFetch<{ job_id: string }>("/clean/jobs", {
-      method: "POST",
-      body: JSON.stringify({ entry_ids: ids, allow_dangerous: false }),
-    });
-    dispatch({ type: "START", jobId: res.job_id });
-    openStream(res.job_id);
+    try {
+      const res = await apiFetch<{ job_id: string }>("/clean/jobs", {
+        method: "POST",
+        body: JSON.stringify({ entry_ids: ids, allow_dangerous: false }),
+      });
+      dispatch({ type: "START", jobId: res.job_id });
+      openStream(res.job_id);
+    } catch (err) {
+      console.error("Failed to start cleanup job:", err);
+    }
   }, [openStream]);
 
   const answerPrompt = useCallback(

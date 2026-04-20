@@ -75,6 +75,9 @@ export function ExecuteStep() {
             <span className={`text-center ${icoColor(p.status)}`}>{ico(p.status)}</span>
             <div>
               <div className="text-text">{p.entry_id}</div>
+              {p.status === "error" && p.message && (
+                <div className="text-risk-danger text-[10px]">{p.message}</div>
+              )}
               {p.consoleLines.slice(-1).map((c, i) => (
                 <div key={i} className="text-text-muted text-[10px] truncate">{c}</div>
               ))}
