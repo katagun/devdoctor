@@ -79,9 +79,15 @@ built bundle into the package on release):
 
 ```bash
 cd web && npm run build && cd ..
+uv cache clean diskdoctor  # drop any stale wheel built from an older dist/
 uv tool install '.[web]' --force
 diskdoctor serve
 ```
+
+> Gotcha: `uv tool install --force` reuses a cached wheel if the source path
+> hasn't changed. Whenever you rebuild the SPA and want `diskdoctor serve` to
+> pick it up, clean the cached wheel first (`uv cache clean diskdoctor`),
+> otherwise you'll keep seeing the "assets are not built yet" placeholder.
 
 ## Development
 
