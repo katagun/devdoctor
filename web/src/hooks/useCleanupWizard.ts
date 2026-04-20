@@ -22,6 +22,7 @@ type Action =
       message?: string;
     }
   | { type: "DONE"; results: CleanupResult[] }
+  | { type: "JOB_ERROR"; message: string }
   | { type: "TOGGLE_ENABLED"; id: string; next: boolean }
   | { type: "CLOSE" };
 
@@ -92,6 +93,8 @@ export function reducer(state: WizardState, action: Action): WizardState {
     }
     case "DONE":
       return { ...state, step: "summary", results: action.results };
+    case "JOB_ERROR":
+      return { ...state, step: "summary", error: action.message };
     case "TOGGLE_ENABLED": {
       const copy = new Set(state.enabled);
       if (action.next) copy.add(action.id);
@@ -204,6 +207,15 @@ export function useCleanupWizard({ entries }: { entries: CacheTableRow[] }) {
       dispatch({
         type: "DONE",
         results: Array.isArray(d.results) ? (d.results as CleanupResult[]) : [],
+      });
+      es.close();
+      if (esRef.current === es) esRef.current = null;
+    });
+    es.addEventListener("job_error", (e) => {
+      const d = parseEvent(e as MessageEvent);
+      dispatch({
+        type: "JOB_ERROR",
+        message: String(d.message ?? "cleanup failed"),
       });
       es.close();
       if (esRef.current === es) esRef.current = null;

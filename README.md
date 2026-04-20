@@ -62,6 +62,9 @@ Flags:
 Dev loop:
 
 ```bash
+# One-time: install the SPA's node deps
+cd web && npm install && cd ..
+
 # Terminal 1: FastAPI
 uv run diskdoctor serve --port 8731 --no-browser
 
@@ -70,6 +73,15 @@ cd web && npm run dev
 ```
 
 Open http://localhost:5173.
+
+For a production-style run, build the SPA first (hatchling force-includes the
+built bundle into the package on release):
+
+```bash
+cd web && npm run build && cd ..
+uv tool install '.[web]' --force
+diskdoctor serve
+```
 
 ## Development
 

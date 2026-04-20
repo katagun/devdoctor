@@ -85,11 +85,19 @@ async def events(job_id: str, request: Request) -> EventSourceResponse:
         raise HTTPException(status_code=404, detail="no active job with that id")
 
     async def _stream() -> Any:
-        while True:
-            ev = await runner.events.get()
-            yield {"event": ev["event"], "data": json.dumps(ev["data"])}
-            if ev["event"] in ("done", "error"):
-                return
+        completed = False
+        try:
+            while True:
+                ev = await runner.events.get()
+                yield {"event": ev["event"], "data": json.dumps(ev["data"])}
+                if ev["event"] in ("done", "job_error"):
+                    completed = True
+                    return
+        finally:
+            # If the client disconnected mid-job, cancel the runner so the
+            # registry slot is released and no orphan task keeps it busy.
+            if not completed:
+                await runner.cancel()
 
     return EventSourceResponse(_stream(), ping=10)
 

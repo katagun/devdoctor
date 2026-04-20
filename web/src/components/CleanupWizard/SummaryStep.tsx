@@ -9,8 +9,16 @@ export function SummaryStep() {
 
   return (
     <div className="p-6 font-mono text-[11px] space-y-4">
+      {state.error && (
+        <div className="border border-risk-danger bg-risk-danger/10 rounded p-3 text-risk-danger">
+          <div className="font-medium">Cleanup failed</div>
+          <div className="text-[10px] mt-1">{state.error}</div>
+        </div>
+      )}
       <div>
-        <div className="text-[14px] text-text">Cleanup complete.</div>
+        <div className="text-[14px] text-text">
+          {state.error ? "Cleanup stopped." : "Cleanup complete."}
+        </div>
         <div className="text-text-dim mt-1">
           Freed <b className="text-risk-safe">{humanBytes(freed)}</b>. {errors.length} error{errors.length === 1 ? "" : "s"}.
         </div>

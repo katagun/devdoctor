@@ -87,10 +87,12 @@ class CleanupRunner:
                 }
             )
             raise
-        except Exception as exc:  # surface anything as an SSE error event
+        except Exception as exc:  # surface anything as an SSE job_error event
+            # Named 'job_error' (not 'error') to avoid colliding with the
+            # browser EventSource's built-in 'error' event for connection issues.
             await self.events.put(
                 {
-                    "event": "error",
+                    "event": "job_error",
                     "data": {"code": "internal", "message": str(exc)},
                 }
             )
@@ -125,7 +127,7 @@ class CleanupRunner:
         return await self.run_line(line)
 
     async def _prompt_choice(self, entry: Entry) -> Choice:
-        fut: asyncio.Future[Choice] = asyncio.get_event_loop().create_future()
+        fut: asyncio.Future[Choice] = asyncio.get_running_loop().create_future()
         self._pending_prompts[entry.id] = fut
         await self.events.put(
             {
@@ -142,7 +144,7 @@ class CleanupRunner:
         return await fut
 
     async def _confirm(self, message: str) -> bool:
-        fut: asyncio.Future[bool] = asyncio.get_event_loop().create_future()
+        fut: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
         self._pending_confirm = fut
         await self.events.put(
             {
