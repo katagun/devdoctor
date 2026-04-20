@@ -23,6 +23,27 @@ def test_size_path_sums_file_bytes(tmp_path: Path):
     assert skipped == []
 
 
+def test_size_path_reports_actual_disk_usage_for_sparse_files(tmp_path: Path):
+    """Sparse files (e.g. Docker.raw) report huge apparent size but tiny blocks."""
+
+    sparse = tmp_path / "sparse.bin"
+    with sparse.open("wb") as f:
+        # Seek past the end creates a hole; only the final byte is allocated.
+        f.seek(10 * 1024 * 1024)  # 10 MB apparent
+        f.write(b"!")
+
+    st = sparse.stat()
+    assert st.st_size >= 10 * 1024 * 1024  # apparent size is huge
+    actual = st.st_blocks * 512 if hasattr(st, "st_blocks") else st.st_size
+    if actual >= st.st_size:
+        # Filesystem does not support sparse files; skip the assertion.
+        return
+
+    size, skipped = size_path(tmp_path)
+    assert size < 1024 * 1024  # well under 1 MB, far less than 10 MB apparent
+    assert skipped == []
+
+
 def test_size_path_does_not_follow_symlinks(tmp_path: Path):
     # Real file outside the tree.
     real_dir = tmp_path / "real"

@@ -92,12 +92,12 @@
   recipe: "rm -rf {path}"
 
 - name: docker-vm-disk
-  description: Docker Desktop VM disk image (shrinks only on docker-desktop restart)
+  description: Docker Desktop VM disk image (sparse on APFS; check actual usage first)
   risk: reclaimable
   platforms: [darwin]
   paths:
     - ~/Library/Containers/com.docker.docker/Data/vms
-  recipe: "echo 'Use Docker Desktop > Troubleshoot > Clean/Purge data, or reset the VM. Do NOT rm -rf this path while Docker is running.'"
+  recipe: "echo 'Docker.raw is sparse on APFS — run: du -h ~/Library/Containers/com.docker.docker/Data/vms/*.raw. If actual usage is small, shrink the Docker Desktop disk-image quota (Settings > Resources > Disk image size). If large, use Docker Desktop > Troubleshoot > Clean/Purge data. Do NOT rm -rf this path while Docker is running.'"
 
 - name: claude-vm-bundles
   description: Claude Code VM bundles

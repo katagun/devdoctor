@@ -45,8 +45,15 @@ def size_path(root: Path) -> tuple[int, list[Path]]:
         for name in filenames:
             p = dp / name
             try:
-                total += p.lstat().st_size
+                st = p.lstat()
             except (FileNotFoundError, PermissionError, OSError):
                 skipped.append(p)
+                continue
+            # Actual on-disk usage via st_blocks handles sparse files correctly
+            # (e.g. Docker.raw reports 80 GB apparent but uses only megabytes).
+            # For non-sparse files st_blocks*512 rounds up to a block boundary,
+            # so we cap at st_size to preserve per-byte accuracy for normal files.
+            blocks = getattr(st, "st_blocks", 0) * 512
+            total += min(st.st_size, blocks) if blocks else st.st_size
 
     return total, skipped
