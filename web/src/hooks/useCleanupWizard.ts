@@ -139,6 +139,8 @@ function parseEvent(e: MessageEvent): Record<string, unknown> {
 export function useCleanupWizard({ entries }: { entries: CacheTableRow[] }) {
   const [state, dispatch] = useReducer(reducer, entries, initial);
   const esRef = useRef<EventSource | null>(null);
+  // Refs so startJob/answerPrompt/confirm keep stable identities across state
+  // changes — switching to useCallback deps would reintroduce stale-closure bugs.
   const enabledRef = useRef(state.enabled);
   enabledRef.current = state.enabled;
   const jobIdRef = useRef<string | null>(state.jobId);
