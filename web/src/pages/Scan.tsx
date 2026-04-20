@@ -3,6 +3,8 @@ import { CacheTable } from "@/components/CacheTable";
 import { CleanupWizard } from "@/components/CleanupWizard";
 import { TopStats } from "@/components/TopStats";
 import { useScan } from "@/hooks/useScan";
+import { useProviders } from "@/hooks/useProviders";
+import { useSelectedProviders } from "@/hooks/useSelectedProviders";
 import { humanBytes, RiskValue } from "@/lib/format";
 
 const RISK_CHIPS: Array<{ key: string; label: string; risks: RiskValue[] }> = [
@@ -17,7 +19,17 @@ export default function Scan() {
   const riskParam =
     activeChip === "all" ? undefined : RISK_CHIPS.find((c) => c.key === activeChip)?.risks.join(",");
 
-  const { data, isLoading, error } = useScan({ risk: riskParam });
+  const { data: providers } = useProviders();
+  const { disabled } = useSelectedProviders();
+  const providerParam = useMemo(() => {
+    if (!providers || disabled.size === 0) return undefined;
+    const enabled = providers.filter((p) => !disabled.has(p.name)).map((p) => p.name);
+    // All disabled → send a name no real provider uses so the server filters
+    // everything out and scan returns an empty report.
+    return enabled.length ? enabled.join(",") : "__diskdoctor_nothing_enabled__";
+  }, [providers, disabled]);
+
+  const { data, isLoading, error } = useScan({ risk: riskParam, provider: providerParam });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [wizardOpen, setWizardOpen] = useState(false);
 
