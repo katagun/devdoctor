@@ -71,3 +71,58 @@ def test_diff_live_compares_against_current(tmp_path, monkeypatch):
 
     r = client.get(f"/api/diff?from_={a['name']}&to_=live", headers={"Host": "testserver"})
     assert r.status_code == 200
+
+
+def test_history_includes_snapshot_events(tmp_path, monkeypatch):
+    from diskdoctor.history import default_snapshot_dir
+
+    client = _client(tmp_path, monkeypatch)
+    # Pre-seed two snapshots with distinct filenames — POSTing twice in-process
+    # would race on the second-precision filename stamp.
+    snapshot_dir = default_snapshot_dir()
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    (snapshot_dir / "2026-01-01T00-00-00.json").write_text(
+        '{"scanned_at": "2026-01-01T00:00:00+00:00", "hostname": "h", "platform": "darwin", '
+        '"entries": [], "skipped_paths": [], "note": "first"}'
+    )
+    (snapshot_dir / "2026-01-02T00-00-00.json").write_text(
+        '{"scanned_at": "2026-01-02T00:00:00+00:00", "hostname": "h", "platform": "darwin", '
+        '"entries": [], "skipped_paths": [], "note": "second"}'
+    )
+
+    r = client.get("/api/history", headers={"Host": "testserver"})
+    assert r.status_code == 200
+    events = r.json()["events"]
+    snapshot_events = [e for e in events if e["type"] == "snapshot"]
+    assert len(snapshot_events) == 2
+    notes = {e["note"] for e in snapshot_events}
+    assert notes == {"first", "second"}
+    # Newest first.
+    assert snapshot_events[0]["note"] == "second"
+
+
+def test_history_includes_audit_log_cleanup_events(tmp_path, monkeypatch):
+    from diskdoctor import history_log
+
+    client = _client(tmp_path, monkeypatch)
+    # Append must happen AFTER _client() sets XDG_DATA_HOME so the log lands
+    # in the test's isolated audit dir.
+    history_log.append_event(
+        {
+            "type": "cleanup",
+            "job_id": "job-123",
+            "outcome": "ok",
+            "total_freed_bytes": 4096,
+            "results": [
+                {"entry_id": "e1", "status": "ok", "freed_bytes": 4096, "message": None},
+            ],
+        }
+    )
+
+    r = client.get("/api/history", headers={"Host": "testserver"})
+    assert r.status_code == 200
+    events = r.json()["events"]
+    cleanup = [e for e in events if e["type"] == "cleanup"]
+    assert len(cleanup) == 1
+    assert cleanup[0]["job_id"] == "job-123"
+    assert cleanup[0]["total_freed_bytes"] == 4096

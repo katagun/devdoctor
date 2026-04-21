@@ -34,6 +34,7 @@ export function Sidebar() {
       <nav className="flex flex-col gap-0.5 mb-4">
         <Item to="/" label="◆ scan" />
         <Item to="/snapshots" label="⏱ snapshots" />
+        <Item to="/history" label="≡ history" />
         <Item to="/providers" label="⚙ providers" />
         <Item to="/settings" label="⚡ settings" />
       </nav>

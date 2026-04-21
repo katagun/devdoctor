@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from diskdoctor import cleanup as cleanup_mod
+from diskdoctor import history_log
 from diskdoctor.types import (
     AsyncRunLine,
     Choice,
@@ -44,6 +45,7 @@ class CleanupRunner:
 
     async def run(self) -> list[CleanResult]:
         results: list[CleanResult] = []
+        outcome: str = "ok"
         try:
             gen = cleanup_mod.iter_cleanup_events(self.report, self.opts)
             try:
@@ -69,6 +71,7 @@ class CleanupRunner:
                 pass
             await self._emit_results(results)
         except asyncio.CancelledError:
+            outcome = "cancelled"
             await self.events.put(
                 {
                     "event": "done",
@@ -86,18 +89,53 @@ class CleanupRunner:
                     },
                 }
             )
+            self._write_audit(results, outcome)
             raise
         except Exception as exc:  # surface anything as an SSE job_error event
             # Named 'job_error' (not 'error') to avoid colliding with the
             # browser EventSource's built-in 'error' event for connection issues.
+            outcome = "error"
             await self.events.put(
                 {
                     "event": "job_error",
                     "data": {"code": "internal", "message": str(exc)},
                 }
             )
+            self._write_audit(results, outcome, error=str(exc))
             return results
+        self._write_audit(results, outcome)
         return results
+
+    def _write_audit(
+        self,
+        results: list[CleanResult],
+        outcome: str,
+        *,
+        error: str | None = None,
+    ) -> None:
+        """Persist the job outcome to the audit log. Errors here are non-fatal."""
+        try:
+            payload: dict[str, Any] = {
+                "type": "cleanup",
+                "job_id": self.id,
+                "outcome": outcome,
+                "total_freed_bytes": sum(r.freed_bytes for r in results),
+                "results": [
+                    {
+                        "entry_id": r.entry_id,
+                        "status": r.status,
+                        "freed_bytes": r.freed_bytes,
+                        "message": r.message,
+                    }
+                    for r in results
+                ],
+            }
+            if error is not None:
+                payload["error"] = error
+            history_log.append_event(payload)
+        except Exception:
+            # Never let audit logging break the job outcome.
+            pass
 
     async def _run_execute_step(self, entry: Entry, line: str) -> ShellResult:
         """Emit execute_start, stream progress, return the final ShellResult."""

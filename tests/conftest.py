@@ -1,8 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
+
+import pytest
 
 from diskdoctor.types import ShellResult
+
+
+@pytest.fixture(autouse=True)
+def _isolate_xdg_data_home(tmp_path: Path, monkeypatch):
+    """Pin XDG_DATA_HOME to a fresh tmp dir for every test so snapshot and
+    audit writes (e.g. CleanupRunner's audit log) never touch the real
+    ~/.local/share/diskdoctor."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
 
 
 @dataclass

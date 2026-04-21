@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, HTTPException, Request
 from starlette.responses import JSONResponse
 
-from diskdoctor import discovery, history, registry
+from diskdoctor import discovery, history, history_log, registry
 from diskdoctor.types import Report, ScanFilters
 from diskdoctor.web.models import SnapshotCreate, SnapshotMeta
 
@@ -51,6 +51,36 @@ def get_snapshot(name: str) -> JSONResponse:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="snapshot not found")
     return JSONResponse(content=json.loads(path.read_text()))
+
+
+@router.get("/history")
+def history_timeline(limit: int = 200) -> JSONResponse:
+    """Merged audit timeline: cleanup events + snapshot creations, newest-first."""
+    events: list[dict[str, object]] = []
+    for ev in history_log.read_events(limit=limit):
+        events.append(ev)
+
+    directory = history.default_snapshot_dir()
+    if directory.exists():
+        for path in directory.glob("*.json"):
+            try:
+                report = Report.from_json(path.read_text())
+            except Exception:
+                continue
+            events.append(
+                {
+                    "type": "snapshot",
+                    "at": report.scanned_at.isoformat(),
+                    "name": path.name,
+                    "total_bytes": report.total_bytes(),
+                    "entry_count": len(report.entries),
+                    "note": report.note,
+                }
+            )
+
+    # Sort newest-first; events without `at` sink to the bottom.
+    events.sort(key=lambda e: str(e.get("at", "")), reverse=True)
+    return JSONResponse(content={"events": events[:limit]})
 
 
 @router.get("/diff")
