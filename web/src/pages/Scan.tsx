@@ -43,15 +43,17 @@ export default function Scan() {
   const [wizardOpen, setWizardOpen] = useState(false);
 
   const allRows = data?.rows ?? [];
-  const { visibleRows, hiddenRows, hiddenBytes } = useMemo(() => {
+  const { visibleRows, hiddenRows, hiddenBytes, visibleBytes } = useMemo(() => {
     const threshold = settings.minSizeBytes;
     if (threshold <= 0) {
-      return { visibleRows: allRows, hiddenRows: [], hiddenBytes: 0 };
+      const totalBytes = allRows.reduce((a, b) => a + b.size_bytes, 0);
+      return { visibleRows: allRows, hiddenRows: [], hiddenBytes: 0, visibleBytes: totalBytes };
     }
     const visible = allRows.filter((r) => r.size_bytes >= threshold);
     const hidden = allRows.filter((r) => r.size_bytes < threshold);
-    const bytes = hidden.reduce((a, b) => a + b.size_bytes, 0);
-    return { visibleRows: visible, hiddenRows: hidden, hiddenBytes: bytes };
+    const hBytes = hidden.reduce((a, b) => a + b.size_bytes, 0);
+    const vBytes = visible.reduce((a, b) => a + b.size_bytes, 0);
+    return { visibleRows: visible, hiddenRows: hidden, hiddenBytes: hBytes, visibleBytes: vBytes };
   }, [allRows, settings.minSizeBytes]);
 
   const selectedRows = visibleRows.filter((r) => selected.has(r.id));
@@ -131,16 +133,21 @@ export default function Scan() {
               onToggle={toggle}
               density={settings.density}
             />
-            {hiddenRows.length > 0 && (
-              <div className="px-4 py-3 border-t border-border bg-bg-elev-1 font-mono text-[11px] flex items-center justify-between">
-                <span className="text-text-muted">
-                  <b className="text-text-dim">{hiddenRows.length}</b> item
-                  {hiddenRows.length === 1 ? "" : "s"} below{" "}
-                  <b className="text-text-dim">{humanBytes(settings.minSizeBytes)}</b>{" "}
-                  threshold
-                </span>
-                <span className="tabular-nums text-text-dim">
-                  total <b className="text-text">{humanBytes(hiddenBytes)}</b>
+            {(visibleRows.length > 0 || hiddenRows.length > 0) && (
+              <div className="px-4 py-3 border-t border-border bg-bg-elev-1 font-mono text-[11px] flex items-center justify-between gap-4">
+                <span className="text-text-dim">
+                  <b className="text-text">{visibleRows.length}</b> shown ·{" "}
+                  <b className="text-text tabular-nums">{humanBytes(visibleBytes)}</b>
+                  {hiddenRows.length > 0 && (
+                    <>
+                      <span className="text-text-muted"> · </span>
+                      <span className="text-text-muted">
+                        +{hiddenRows.length} under {humanBytes(settings.minSizeBytes)}
+                        {" "}totalling{" "}
+                        <span className="tabular-nums">{humanBytes(hiddenBytes)}</span>
+                      </span>
+                    </>
+                  )}
                 </span>
               </div>
             )}

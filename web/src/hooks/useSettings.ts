@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 const KEY = "diskdoctor.settings.v1";
 
@@ -72,28 +72,49 @@ function write(s: Settings): void {
   }
 }
 
-export function useSettings() {
-  const [settings, setSettings] = useState<Settings>(read);
+// Module-level store so every `useSettings()` caller shares the same state.
+// With plain `useState`, each component's hook had its own copy — updating
+// the Settings page didn't reach AppShell's useApplyTheme, so theme flips
+// weren't taking effect live.
+let currentSettings: Settings = read();
+const listeners = new Set<() => void>();
 
+function setStore(next: Settings): void {
+  currentSettings = next;
+  write(next);
+  listeners.forEach((l) => l());
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function getSnapshot(): Settings {
+  return currentSettings;
+}
+
+export function useSettings() {
+  const settings = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+
+  // Cross-tab sync: fires only for changes in other tabs.
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key === KEY) setSettings(read());
+      if (e.key === KEY) {
+        currentSettings = read();
+        listeners.forEach((l) => l());
+      }
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   const update = useCallback((patch: Partial<Settings>) => {
-    setSettings((prev) => {
-      const next = { ...prev, ...patch };
-      write(next);
-      return next;
-    });
+    setStore({ ...currentSettings, ...patch });
   }, []);
 
   const reset = useCallback(() => {
-    setSettings(DEFAULTS);
-    write(DEFAULTS);
+    setStore(DEFAULTS);
   }, []);
 
   return { settings, update, reset };
