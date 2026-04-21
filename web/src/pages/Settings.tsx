@@ -4,6 +4,7 @@ import {
   SIZE_PRESETS,
   useSettings,
   type CadenceId,
+  type Density,
 } from "@/hooks/useSettings";
 import { humanBytes } from "@/lib/format";
 
@@ -36,6 +37,10 @@ export default function Settings() {
 
   function setCadence(id: CadenceId) {
     applyAndFlash({ cadence: id });
+  }
+
+  function setDensity(d: Density) {
+    applyAndFlash({ density: d });
   }
 
   function setCustom(mbRaw: string) {
@@ -95,6 +100,20 @@ export default function Settings() {
             </span>
           )}
         </label>
+      </Section>
+
+      <Section
+        title="Row density"
+        description="Scan table row height. Dense collapses provider and label onto one line so more entries fit on screen without scrolling."
+      >
+        <div className="flex gap-2">
+          <Chip active={settings.density === "sparse"} onClick={() => setDensity("sparse")}>
+            sparse
+          </Chip>
+          <Chip active={settings.density === "dense"} onClick={() => setDensity("dense")}>
+            dense
+          </Chip>
+        </div>
       </Section>
 
       <Section

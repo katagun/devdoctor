@@ -23,14 +23,18 @@ export const SIZE_PRESETS = [
   { label: "1 GB", bytes: 1_000_000_000 },
 ] as const;
 
+export type Density = "sparse" | "dense";
+
 export interface Settings {
   minSizeBytes: number;
   cadence: CadenceId;
+  density: Density;
 }
 
 const DEFAULTS: Settings = {
   minSizeBytes: 0,
   cadence: "live",
+  density: "sparse",
 };
 
 function read(): Settings {
@@ -46,7 +50,8 @@ function read(): Settings {
     const cadence: CadenceId = CADENCE_PRESETS.some((c) => c.id === parsed.cadence)
       ? parsed.cadence
       : DEFAULTS.cadence;
-    return { minSizeBytes, cadence };
+    const density: Density = parsed.density === "dense" ? "dense" : DEFAULTS.density;
+    return { minSizeBytes, cadence, density };
   } catch {
     return DEFAULTS;
   }

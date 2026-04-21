@@ -125,7 +125,12 @@ export default function Scan() {
         )}
         {!isLoading && !error && (
           <>
-            <CacheTable rows={visibleRows} selected={selected} onToggle={toggle} />
+            <CacheTable
+              rows={visibleRows}
+              selected={selected}
+              onToggle={toggle}
+              density={settings.density}
+            />
             {hiddenRows.length > 0 && (
               <div className="px-4 py-3 border-t border-border bg-bg-elev-1 font-mono text-[11px] flex items-center justify-between">
                 <span className="text-text-muted">
