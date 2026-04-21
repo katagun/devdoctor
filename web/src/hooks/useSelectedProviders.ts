@@ -46,7 +46,20 @@ export function useSelectedProviders() {
     });
   }, []);
 
+  // Bulk toggle a set of provider names to the same enabled state.
+  const setMany = useCallback((names: string[], enabled: boolean) => {
+    setDisabled((prev) => {
+      const next = new Set(prev);
+      for (const n of names) {
+        if (enabled) next.delete(n);
+        else next.add(n);
+      }
+      write(next);
+      return next;
+    });
+  }, []);
+
   const isEnabled = useCallback((name: string) => !disabled.has(name), [disabled]);
 
-  return { disabled, isEnabled, setEnabled };
+  return { disabled, isEnabled, setEnabled, setMany };
 }
