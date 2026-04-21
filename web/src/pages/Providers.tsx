@@ -32,7 +32,7 @@ export default function Providers() {
         return (
           <div
             key={p.name}
-            className="grid grid-cols-[60px_1.3fr_0.8fr_1fr_0.6fr_0.9fr] gap-3 px-3 py-2 items-center border-b border-[#10151b] hover:bg-bg-elev-1"
+            className="grid grid-cols-[60px_1.3fr_0.8fr_1fr_0.6fr_0.9fr] gap-3 px-3 py-2 items-center border-b border-border-subtle hover:bg-bg-elev-1"
           >
             <button
               type="button"
@@ -40,7 +40,7 @@ export default function Providers() {
               aria-pressed={on}
               aria-label={`Toggle ${p.name}`}
               className={`w-[30px] h-[16px] rounded-full relative transition-colors ${
-                on ? "bg-[#2a7f55]" : "bg-[#1e2630]"
+                on ? "bg-[#2a7f55]" : "bg-bg-control-off"
               }`}
             >
               <span

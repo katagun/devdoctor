@@ -23,7 +23,7 @@ export function Checkbox({
       className={`relative inline-block w-[13px] h-[13px] rounded-sm border cursor-pointer ${
         checked
           ? "bg-risk-safe border-risk-safe after:content-[''] after:absolute after:inset-[2px] after:border-l-2 after:border-b-2 after:border-[#0b0e13] after:rotate-[-45deg]"
-          : "border-[#2a3441]"
+          : "border-border-strong"
       }`}
     />
   );

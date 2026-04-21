@@ -16,9 +16,9 @@ export function DiffTable({ diff }: { diff: DiffReport }) {
         return (
           <div
             key={r.provider}
-            className="grid grid-cols-[1.5fr_1fr_1fr_1fr_0.8fr] gap-3 px-3 py-1.5 items-center border-b border-[#10151b]"
+            className="grid grid-cols-[1.5fr_1fr_1fr_1fr_0.8fr] gap-3 px-3 py-1.5 items-center border-b border-border-subtle"
           >
-            <div className="text-[#9fb5c5]">{r.provider}</div>
+            <div className="text-text-accent">{r.provider}</div>
             <div className="text-right tabular-nums">{humanBytes(r.before_bytes)}</div>
             <div className="text-right tabular-nums">{humanBytes(r.after_bytes)}</div>
             <div className={`text-right tabular-nums ${color}`}>

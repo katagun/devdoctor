@@ -17,7 +17,7 @@ export function ReviewStep() {
             <div
               key={e.id}
               className={`border border-border rounded p-3 bg-bg-elev-1 ${
-                e.risk === "dangerous" ? "border-[#8a2a3a]" : ""
+                e.risk === "dangerous" ? "border-border-danger" : ""
               }`}
             >
               <div className="flex items-center justify-between gap-3">
@@ -33,7 +33,7 @@ export function ReviewStep() {
                   <button
                     onClick={() => toggleEnabled(e.id, !on)}
                     className={`w-[30px] h-[16px] rounded-full relative ${
-                      on ? "bg-[#2a7f55]" : "bg-[#1e2630]"
+                      on ? "bg-[#2a7f55]" : "bg-bg-control-off"
                     }`}
                   >
                     <span
@@ -48,13 +48,13 @@ export function ReviewStep() {
                 const hint = parseRecipeHint(e.recipeHint);
                 if (hint.kind === "command") {
                   return (
-                    <div className="bg-[#060a0f] border border-[#13241a] rounded px-2.5 py-1.5 mt-2 text-risk-safe text-[10.5px] break-all">
+                    <div className="bg-bg-code border border-bg-safe-tint rounded px-2.5 py-1.5 mt-2 text-risk-safe text-[10.5px] break-all">
                       ▸ {hint.text}
                     </div>
                   );
                 }
                 return (
-                  <div className="bg-[#060a0f] border border-border rounded px-3 py-2 mt-2 text-[10.5px] leading-relaxed">
+                  <div className="bg-bg-code border border-border rounded px-3 py-2 mt-2 text-[10.5px] leading-relaxed">
                     <div className="text-risk-reclaim text-[9px] uppercase tracking-widest mb-1.5">
                       advice
                     </div>

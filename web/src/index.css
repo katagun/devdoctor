@@ -5,10 +5,18 @@
   --color-bg: var(--bg);
   --color-bg-elev-1: var(--bg-elev-1);
   --color-bg-elev-2: var(--bg-elev-2);
+  --color-bg-code: var(--bg-code);
+  --color-bg-control-off: var(--bg-control-off);
+  --color-bg-safe-tint: var(--bg-safe-tint);
   --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-border-danger: var(--border-danger);
   --color-text: var(--text);
   --color-text-dim: var(--text-dim);
   --color-text-muted: var(--text-muted);
+  --color-text-accent: var(--text-accent);
+  --color-text-path: var(--text-path);
   --color-risk-safe: var(--risk-safe);
   --color-risk-reclaim: var(--risk-reclaim);
   --color-risk-danger: var(--risk-danger);

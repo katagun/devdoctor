@@ -25,7 +25,7 @@ export function SummaryStep() {
       </div>
       <div className="border border-border rounded">
         {results.map((r) => (
-          <div key={r.entry_id} className="grid grid-cols-[1fr_100px_80px] gap-3 px-3 py-2 border-b border-[#10151b] last:border-b-0">
+          <div key={r.entry_id} className="grid grid-cols-[1fr_100px_80px] gap-3 px-3 py-2 border-b border-border-subtle last:border-b-0">
             <div>
               <div className="text-text">{r.entry_id}</div>
               {r.status === "error" && r.message && (

@@ -71,7 +71,7 @@ export function ExecuteStep() {
 
       <div className="p-4 space-y-1">
         {progressList.map((p) => (
-          <div key={p.entry_id} className="grid grid-cols-[18px_1fr_90px] gap-2.5 items-center py-1.5 border-b border-[#10151b]">
+          <div key={p.entry_id} className="grid grid-cols-[18px_1fr_90px] gap-2.5 items-center py-1.5 border-b border-border-subtle">
             <span className={`text-center ${icoColor(p.status)}`}>{ico(p.status)}</span>
             <div>
               <div className="text-text">{p.entry_id}</div>

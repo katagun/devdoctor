@@ -5,6 +5,7 @@ import {
   useSettings,
   type CadenceId,
   type Density,
+  type Theme,
 } from "@/hooks/useSettings";
 import { humanBytes } from "@/lib/format";
 
@@ -43,6 +44,10 @@ export default function Settings() {
     applyAndFlash({ density: d });
   }
 
+  function setTheme(t: Theme) {
+    applyAndFlash({ theme: t });
+  }
+
   function setCustom(mbRaw: string) {
     setCustomMb(mbRaw);
     const mb = Number(mbRaw);
@@ -67,6 +72,23 @@ export default function Settings() {
           ● saved
         </div>
       </header>
+
+      <Section
+        title="Appearance"
+        description="Light follows the Terminal Refined palette on a warm off-white background; dark is the default neon-on-black. System tracks your OS preference and flips live when you toggle macOS appearance."
+      >
+        <div className="flex gap-2">
+          <Chip active={settings.theme === "light"} onClick={() => setTheme("light")}>
+            ☀ light
+          </Chip>
+          <Chip active={settings.theme === "dark"} onClick={() => setTheme("dark")}>
+            ☾ dark
+          </Chip>
+          <Chip active={settings.theme === "system"} onClick={() => setTheme("system")}>
+            ⌘ system
+          </Chip>
+        </div>
+      </Section>
 
       <Section
         title="Minimum size cutoff"
@@ -187,7 +209,7 @@ function Chip({
       className={`px-3 py-1 rounded text-[11px] border transition-colors ${
         active
           ? "border-risk-reclaim bg-risk-reclaim/10 text-risk-reclaim"
-          : "border-border text-text-dim hover:text-text hover:border-[#2a3441]"
+          : "border-border text-text-dim hover:text-text hover:border-border-strong"
       }`}
     >
       {children}

@@ -149,9 +149,9 @@ export default function Snapshots() {
                 <button
                   key={s.name}
                   onClick={() => togglePick(s.name)}
-                  className={`block w-full text-left px-3 py-2.5 border-b border-[#10151b] transition-colors ${
+                  className={`block w-full text-left px-3 py-2.5 border-b border-border-subtle transition-colors ${
                     flashing
-                      ? "bg-[#13241a] text-risk-safe"
+                      ? "bg-bg-safe-tint text-risk-safe"
                       : slot
                         ? "bg-bg-elev-2 text-text"
                         : "text-text-dim hover:bg-bg-elev-1"

@@ -6,7 +6,7 @@ const variants: Record<RiskValue, string> = {
   reclaimable:
     "bg-gradient-to-b from-[#2a1f4a] to-[#1f1838] text-risk-reclaim border-[#5a3fa0]",
   dangerous:
-    "bg-gradient-to-b from-[#3a1520] to-[#2a0f17] text-risk-danger border-[#8a2a3a]",
+    "bg-gradient-to-b from-[#3a1520] to-[#2a0f17] text-risk-danger border-border-danger",
 };
 
 export function RiskBadge({ risk }: { risk: RiskValue }) {

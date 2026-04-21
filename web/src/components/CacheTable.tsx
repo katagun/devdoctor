@@ -124,7 +124,7 @@ export function CacheTable({
         return (
           <div
             key={r.id}
-            className={`grid grid-cols-[28px_1.4fr_2fr_0.8fr_0.9fr_0.6fr] gap-2.5 px-4 ${rowPad} items-center border-b border-[#10151b] hover:bg-bg-elev-1`}
+            className={`grid grid-cols-[28px_1.4fr_2fr_0.8fr_0.9fr_0.6fr] gap-2.5 px-4 ${rowPad} items-center border-b border-border-subtle hover:bg-bg-elev-1`}
           >
             <Checkbox
               checked={isSelected}
@@ -133,16 +133,16 @@ export function CacheTable({
             />
             {density === "dense" ? (
               <div className="flex items-baseline gap-2 min-w-0">
-                <span className="text-[#9fb5c5] font-medium truncate">{r.provider}</span>
+                <span className="text-text-accent font-medium truncate">{r.provider}</span>
                 <span className="text-text-muted text-[10px] truncate">{r.label}</span>
               </div>
             ) : (
               <div>
-                <div className="text-[#9fb5c5] font-medium">{r.provider}</div>
+                <div className="text-text-accent font-medium">{r.provider}</div>
                 <div className="text-text-muted text-[9.5px] mt-px">{r.label}</div>
               </div>
             )}
-            <div className="text-[#7a8b99] truncate" title={r.path}>
+            <div className="text-text-path truncate" title={r.path}>
               {r.path}
             </div>
             <div className="text-right tabular-nums font-medium">

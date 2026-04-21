@@ -83,7 +83,7 @@ export default function Scan() {
             onClick={() => setActiveChip(chip.key)}
             className={`px-2.5 py-[3px] rounded text-[10px] font-mono border ${
               activeChip === chip.key
-                ? "border-[#2a7f55] bg-[#13241a] text-risk-safe"
+                ? "border-[#2a7f55] bg-bg-safe-tint text-risk-safe"
                 : "border-border bg-bg-elev-1 text-text-dim hover:text-text"
             }`}
           >

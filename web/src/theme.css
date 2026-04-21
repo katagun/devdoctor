@@ -1,17 +1,49 @@
 :root[data-theme="terminal-refined"] {
-  --bg:           #0b0e13;
-  --bg-elev-1:    #0d1218;
-  --bg-elev-2:    #13181f;
-  --border:       #1a2128;
-  --text:         #d7e3e8;
-  --text-dim:     #8a9aa8;
-  --text-muted:   #566876;
-  --risk-safe:    #7fe4b1;
-  --risk-reclaim: #c4a5ff;
-  --risk-danger:  #ff8897;
-  --accent:       #7fe4b1;
-  --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
-  --font-ui:      "Inter", system-ui, -apple-system, sans-serif;
+  --bg:            #0b0e13;
+  --bg-elev-1:     #0d1218;
+  --bg-elev-2:     #13181f;
+  --bg-code:       #060a0f;
+  --bg-control-off:#1e2630;
+  --bg-safe-tint:  #13241a;
+  --border:        #1a2128;
+  --border-subtle: #10151b;
+  --border-strong: #2a3441;
+  --border-danger: #8a2a3a;
+  --text:          #d7e3e8;
+  --text-dim:      #8a9aa8;
+  --text-muted:    #566876;
+  --text-accent:   #9fb5c5;
+  --text-path:     #7a8b99;
+  --risk-safe:     #7fe4b1;
+  --risk-reclaim:  #c4a5ff;
+  --risk-danger:   #ff8897;
+  --accent:        #7fe4b1;
+  --font-mono:     "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+  --font-ui:       "Inter", system-ui, -apple-system, sans-serif;
+}
+
+:root[data-theme="terminal-refined-light"] {
+  --bg:            #fafaf8;
+  --bg-elev-1:     #f2f2ef;
+  --bg-elev-2:     #e7e7e3;
+  --bg-code:       #f0eeea;
+  --bg-control-off:#dddddb;
+  --bg-safe-tint:  #e3f3ea;
+  --border:        #d8d8d4;
+  --border-subtle: #ededeb;
+  --border-strong: #b5b5b0;
+  --border-danger: #e0a0aa;
+  --text:          #1a1a17;
+  --text-dim:      #555552;
+  --text-muted:    #8a8a87;
+  --text-accent:   #2563a8;
+  --text-path:     #666666;
+  --risk-safe:     #1a7a4a;
+  --risk-reclaim:  #6a45b0;
+  --risk-danger:   #c72e4a;
+  --accent:        #1a7a4a;
+  --font-mono:     "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+  --font-ui:       "Inter", system-ui, -apple-system, sans-serif;
 }
 
 html, body, #root { background: var(--bg); color: var(--text); }

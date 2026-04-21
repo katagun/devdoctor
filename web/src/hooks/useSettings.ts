@@ -24,17 +24,20 @@ export const SIZE_PRESETS = [
 ] as const;
 
 export type Density = "sparse" | "dense";
+export type Theme = "light" | "dark" | "system";
 
 export interface Settings {
   minSizeBytes: number;
   cadence: CadenceId;
   density: Density;
+  theme: Theme;
 }
 
 const DEFAULTS: Settings = {
   minSizeBytes: 0,
   cadence: "live",
   density: "sparse",
+  theme: "system",
 };
 
 function read(): Settings {
@@ -51,7 +54,11 @@ function read(): Settings {
       ? parsed.cadence
       : DEFAULTS.cadence;
     const density: Density = parsed.density === "dense" ? "dense" : DEFAULTS.density;
-    return { minSizeBytes, cadence, density };
+    const theme: Theme =
+      parsed.theme === "light" || parsed.theme === "dark" || parsed.theme === "system"
+        ? parsed.theme
+        : DEFAULTS.theme;
+    return { minSizeBytes, cadence, density, theme };
   } catch {
     return DEFAULTS;
   }

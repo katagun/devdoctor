@@ -30,7 +30,7 @@ export function CleanupWizard({
                   key={s}
                   className={`px-2.5 py-[3px] rounded border ${
                     step === s
-                      ? "bg-bg-elev-2 text-text border-[#2a3441]"
+                      ? "bg-bg-elev-2 text-text border-border-strong"
                       : step === "summary" || (step === "execute" && i === 0)
                         ? "text-risk-safe border-[#2a7f55]"
                         : "text-text-muted border-border"
