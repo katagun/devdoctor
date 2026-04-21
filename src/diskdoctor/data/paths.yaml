@@ -157,3 +157,91 @@
   paths:
     - ~/Downloads
   recipe: "echo 'Review ~/Downloads manually before deleting anything — it usually mixes disposable installers with files you still need. List the largest items: du -sh ~/Downloads/* | sort -rh | head -20. Find files older than 90 days: find ~/Downloads -type f -mtime +90 -print. Delete what you confirm is junk: rm ~/Downloads/<filename>. Do NOT rm -rf this folder.'"
+
+# --- Open-source local-LLM ecosystems ---------------------------------------
+
+- name: gpt4all-models
+  description: GPT4All downloaded models
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/Library/Application Support/nomic.ai/GPT4All
+    - ~/.local/share/nomic.ai/GPT4All
+  recipe: "rm -rf {path}"
+
+- name: jan-models
+  description: Jan desktop downloaded models
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/jan/models
+    - ~/Library/Application Support/Jan/data/models
+  recipe: "rm -rf {path}"
+
+- name: msty-models
+  description: Msty local model storage
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/Library/Application Support/Msty/models
+    - ~/.msty/models
+  recipe: "rm -rf {path}"
+
+- name: mlc-llm-cache
+  description: MLC LLM compiled model cache
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.cache/mlc_llm
+    - ~/.cache/mlc-llm
+  recipe: "rm -rf {path}"
+
+- name: text-generation-webui-models
+  description: Text Generation WebUI (oobabooga) models dir (if in default location)
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/text-generation-webui/models
+  recipe: "rm -rf {path}"
+
+- name: anythingllm-models
+  description: AnythingLLM local model storage
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.anythingllm/models
+    - ~/Library/Application Support/anythingllm-desktop/models
+  recipe: "rm -rf {path}"
+
+- name: koboldcpp-models
+  description: KoboldCpp default model directory
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/koboldcpp/models
+  recipe: "rm -rf {path}"
+
+- name: whisper-models
+  description: Whisper / whisper.cpp model cache (~/.cache/whisper)
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.cache/whisper
+  recipe: "rm -rf {path}"
+
+- name: vllm-cache
+  description: vLLM download cache (compiled kernels + torch weights)
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.cache/vllm
+  recipe: "rm -rf {path}"
+
+- name: torch-hub-cache
+  description: PyTorch Hub / torch.hub downloaded checkpoints
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.cache/torch/hub
+    - ~/.cache/torch/checkpoints
+  recipe: "rm -rf {path}"

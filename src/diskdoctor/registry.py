@@ -10,6 +10,7 @@ from diskdoctor.ports import Shell
 from diskdoctor.providers.base import PathProvider, Provider
 from diskdoctor.providers.docker import DockerProvider
 from diskdoctor.providers.huggingface import HuggingFaceProvider
+from diskdoctor.providers.large_files import LargeFilesProvider
 from diskdoctor.providers.lm_studio import LMStudioProvider
 from diskdoctor.providers.ollama import OllamaProvider
 
@@ -23,6 +24,7 @@ class DuplicateProviderError(ValueError):
 _CLASS_PROVIDERS: list[type[Provider]] = [
     DockerProvider,
     HuggingFaceProvider,
+    LargeFilesProvider,
     LMStudioProvider,
     OllamaProvider,
 ]
