@@ -126,33 +126,31 @@ export default function Scan() {
           <div className="p-8 text-text-muted font-mono text-sm animate-pulse">scanning…</div>
         )}
         {!isLoading && !error && (
-          <>
-            <CacheTable
-              rows={visibleRows}
-              selected={selected}
-              onToggle={toggle}
-              density={settings.density}
-            />
-            {(visibleRows.length > 0 || hiddenRows.length > 0) && (
-              <div className="px-4 py-3 border-t border-border bg-bg-elev-1 font-mono text-[11px] flex items-center justify-between gap-4">
-                <span className="text-text-dim">
-                  <b className="text-text">{visibleRows.length}</b> shown ·{" "}
-                  <b className="text-text tabular-nums">{humanBytes(visibleBytes)}</b>
-                  {hiddenRows.length > 0 && (
-                    <>
-                      <span className="text-text-muted"> · </span>
-                      <span className="text-text-muted">
-                        +{hiddenRows.length} under {humanBytes(settings.minSizeBytes)}
-                        {" "}totalling{" "}
-                        <span className="tabular-nums">{humanBytes(hiddenBytes)}</span>
-                      </span>
-                    </>
-                  )}
-                </span>
-              </div>
-            )}
-          </>
+          <CacheTable
+            rows={visibleRows}
+            selected={selected}
+            onToggle={toggle}
+            density={settings.density}
+          />
         )}
+      </div>
+
+      {/* Pinned totals row — always visible above the action bar, independent of scroll. */}
+      <div className="px-4 py-2 border-t border-border bg-bg-elev-1 font-mono text-[11px] flex items-center justify-between gap-4 shrink-0">
+        <span className="text-text-dim">
+          <b className="text-text">{visibleRows.length}</b> shown ·{" "}
+          <b className="text-text tabular-nums">{humanBytes(visibleBytes)}</b>
+          {hiddenRows.length > 0 && (
+            <>
+              <span className="text-text-muted"> · </span>
+              <span className="text-text-muted">
+                +{hiddenRows.length} under {humanBytes(settings.minSizeBytes)}
+                {" "}totalling{" "}
+                <span className="tabular-nums">{humanBytes(hiddenBytes)}</span>
+              </span>
+            </>
+          )}
+        </span>
       </div>
 
       <div className="px-4 py-3 bg-bg-elev-1 border-t border-border flex justify-between items-center">
