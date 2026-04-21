@@ -167,6 +167,7 @@
   paths:
     - ~/Library/Application Support/nomic.ai/GPT4All
     - ~/.local/share/nomic.ai/GPT4All
+    - ~/.cache/gpt4all
   recipe: "rm -rf {path}"
 
 - name: jan-models
@@ -362,4 +363,48 @@
   platforms: [darwin, linux]
   paths:
     - ~/nltk_data
+  recipe: "rm -rf {path}"
+
+# --- llama.cpp ecosystem + adjacent runtimes --------------------------------
+
+- name: llama-cpp-cache
+  description: llama.cpp own model cache (populated by `-hf` flag or LLAMA_CACHE env var)
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/Library/Caches/llama.cpp
+    - ~/.cache/llama.cpp
+  recipe: "rm -rf {path}"
+
+- name: cortex-models
+  description: Cortex.cpp (Jan team's headless engine) model store
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/cortexcpp/models
+    - ~/.cortexcpp/models
+  recipe: "rm -rf {path}"
+
+- name: torchchat-models
+  description: torchchat (PyTorch team's native LLM runner) local state
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.torchchat
+  recipe: "rm -rf {path}"
+
+- name: open-webui-data
+  description: Open WebUI local data (when run outside Docker; uploads + RAG vectors + chat DB)
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.open-webui
+  recipe: "rm -rf {path}"
+
+- name: ramalama-store
+  description: RamaLama OCI-artifact model store
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.local/share/ramalama
   recipe: "rm -rf {path}"
