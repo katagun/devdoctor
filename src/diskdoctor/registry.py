@@ -13,6 +13,7 @@ from diskdoctor.providers.huggingface import HuggingFaceProvider
 from diskdoctor.providers.large_files import LargeFilesProvider
 from diskdoctor.providers.lm_studio import LMStudioProvider
 from diskdoctor.providers.ollama import OllamaProvider
+from diskdoctor.providers.venv import VenvProvider
 
 
 class DuplicateProviderError(ValueError):
@@ -27,6 +28,7 @@ _CLASS_PROVIDERS: list[type[Provider]] = [
     LargeFilesProvider,
     LMStudioProvider,
     OllamaProvider,
+    VenvProvider,
 ]
 
 

@@ -245,3 +245,121 @@
     - ~/.cache/torch/hub
     - ~/.cache/torch/checkpoints
   recipe: "rm -rf {path}"
+
+# --- Additional ML / LLM inference tools ------------------------------------
+
+- name: stable-diffusion-webui-models
+  description: Automatic1111 / stable-diffusion-webui model checkpoints
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/stable-diffusion-webui/models
+  recipe: "rm -rf {path}"
+
+- name: comfyui-models
+  description: ComfyUI model directory
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/ComfyUI/models
+    - ~/comfyui/models
+  recipe: "rm -rf {path}"
+
+- name: invokeai-models
+  description: InvokeAI models and checkpoints
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/invokeai/models
+    - ~/.invokeai
+  recipe: "rm -rf {path}"
+
+- name: fooocus-models
+  description: Fooocus models directory
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/Fooocus/models
+    - ~/fooocus/models
+  recipe: "rm -rf {path}"
+
+- name: localai-models
+  description: LocalAI downloaded models
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.localai/models
+    - ~/localai/models
+  recipe: "rm -rf {path}"
+
+- name: tabby-models
+  description: Tabby code-completion model cache
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.tabby
+  recipe: "rm -rf {path}"
+
+- name: helix-cache
+  description: Helix LLM cache
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.helix/cache
+  recipe: "rm -rf {path}"
+
+- name: modelscope-cache
+  description: ModelScope Hub model cache (Alibaba)
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.cache/modelscope
+  recipe: "rm -rf {path}"
+
+- name: sentence-transformers-cache
+  description: sentence-transformers downloaded models (under torch cache)
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.cache/torch/sentence_transformers
+  recipe: "rm -rf {path}"
+
+- name: spacy-cache
+  description: spaCy downloaded models cache
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.cache/spacy
+  recipe: "rm -rf {path}"
+
+- name: tiktoken-cache
+  description: tiktoken BPE rank files
+  risk: safe
+  platforms: [darwin, linux]
+  paths:
+    - ~/.cache/tiktoken
+  recipe: "rm -rf {path}"
+
+- name: wandb-cache
+  description: Weights & Biases local cache
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.cache/wandb
+  recipe: "rm -rf {path}"
+
+- name: flair-cache
+  description: Flair NLP model cache
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/.flair
+  recipe: "rm -rf {path}"
+
+- name: nltk-data
+  description: NLTK downloaded corpora and models
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths:
+    - ~/nltk_data
+  recipe: "rm -rf {path}"

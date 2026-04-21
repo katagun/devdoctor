@@ -102,6 +102,23 @@ def test_size_path_skips_file_that_vanishes_between_walk_and_lstat(tmp_path: Pat
     assert any(str(target) in str(p) for p in skipped)
 
 
+def test_size_path_dedupes_hard_links_within_tree(tmp_path: Path):
+    """Hard-linking a file from another path inside the same tree shouldn't
+    double-count the bytes — the inode owns them once."""
+    src = tmp_path / "real.bin"
+    src.write_bytes(b"x" * 4096)
+    link = tmp_path / "sub" / "link-to-real.bin"
+    link.parent.mkdir()
+    import os as _os
+
+    _os.link(src, link)  # hard link, both names → same inode
+
+    size, skipped = size_path(tmp_path)
+    # Without dedup we'd get ~8192; with dedup we get ~4096.
+    assert 4000 < size < 8000
+    assert skipped == []
+
+
 def test_size_path_prunes_subdir_on_lstat_error(tmp_path: Path, monkeypatch):
     """A subdir whose lstat() raises is pruned and recorded as skipped."""
     (tmp_path / "sub").mkdir()
