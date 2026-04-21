@@ -35,6 +35,7 @@ export function Sidebar() {
         <Item to="/" label="◆ scan" />
         <Item to="/snapshots" label="⏱ snapshots" />
         <Item to="/providers" label="⚙ providers" />
+        <Item to="/settings" label="⚡ settings" />
       </nav>
     </aside>
   );

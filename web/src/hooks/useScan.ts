@@ -21,14 +21,26 @@ interface ScanResponse {
   skipped_paths: string[];
 }
 
-export function useScan(params: { risk?: string; minSize?: string; provider?: string } = {}) {
+export interface UseScanOptions {
+  risk?: string;
+  minSize?: string;
+  provider?: string;
+  // Cadence control — maps to React Query's staleTime. `Infinity` + refetchOnMount=false == manual only.
+  staleTime?: number;
+  refetchOnMount?: boolean;
+}
+
+export function useScan(params: UseScanOptions = {}) {
+  const { staleTime, refetchOnMount, ...filters } = params;
   return useQuery({
-    queryKey: ["scan", params],
+    queryKey: ["scan", filters],
+    staleTime,
+    refetchOnMount,
     queryFn: async () => {
       const qs = new URLSearchParams();
-      if (params.risk) qs.set("risk", params.risk);
-      if (params.minSize) qs.set("min_size", params.minSize);
-      if (params.provider) qs.set("provider", params.provider);
+      if (filters.risk) qs.set("risk", filters.risk);
+      if (filters.minSize) qs.set("min_size", filters.minSize);
+      if (filters.provider) qs.set("provider", filters.provider);
       const query = qs.toString() ? `?${qs}` : "";
       const raw = await apiFetch<ScanResponse>(`/scan${query}`);
       const rows: CacheTableRow[] = raw.entries.map((e) => ({
@@ -41,7 +53,11 @@ export function useScan(params: { risk?: string; minSize?: string; provider?: st
         mtime: e.mtime,
         recipeHint: e.recipe[0] ?? "",
       }));
-      return { rows, totalBytes: raw.entries.reduce((a, b) => a + b.size_bytes, 0) };
+      return {
+        rows,
+        totalBytes: raw.entries.reduce((a, b) => a + b.size_bytes, 0),
+        scannedAt: raw.scanned_at,
+      };
     },
   });
 }

@@ -5,7 +5,8 @@ import { TopStats } from "@/components/TopStats";
 import { useScan } from "@/hooks/useScan";
 import { useProviders } from "@/hooks/useProviders";
 import { useSelectedProviders } from "@/hooks/useSelectedProviders";
-import { humanBytes, RiskValue } from "@/lib/format";
+import { cadenceMs, useSettings } from "@/hooks/useSettings";
+import { humanBytes, RiskValue, timeAgo } from "@/lib/format";
 
 const RISK_CHIPS: Array<{ key: string; label: string; risks: RiskValue[] }> = [
   { key: "all", label: "all", risks: [] },
@@ -24,20 +25,39 @@ export default function Scan() {
   const providerParam = useMemo(() => {
     if (!providers || disabled.size === 0) return undefined;
     const enabled = providers.filter((p) => !disabled.has(p.name)).map((p) => p.name);
-    // All disabled → send a name no real provider uses so the server filters
-    // everything out and scan returns an empty report.
     return enabled.length ? enabled.join(",") : "__diskdoctor_nothing_enabled__";
   }, [providers, disabled]);
 
-  const { data, isLoading, error } = useScan({ risk: riskParam, provider: providerParam });
+  const { settings } = useSettings();
+  const staleTime = cadenceMs(settings.cadence);
+  const manualOnly = settings.cadence === "manual";
+
+  const { data, isLoading, error, refetch, isFetching } = useScan({
+    risk: riskParam,
+    provider: providerParam,
+    staleTime,
+    refetchOnMount: !manualOnly,
+  });
+
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [wizardOpen, setWizardOpen] = useState(false);
 
-  const rows = data?.rows ?? [];
-  const selectedRows = rows.filter((r) => selected.has(r.id));
+  const allRows = data?.rows ?? [];
+  const { visibleRows, hiddenRows, hiddenBytes } = useMemo(() => {
+    const threshold = settings.minSizeBytes;
+    if (threshold <= 0) {
+      return { visibleRows: allRows, hiddenRows: [], hiddenBytes: 0 };
+    }
+    const visible = allRows.filter((r) => r.size_bytes >= threshold);
+    const hidden = allRows.filter((r) => r.size_bytes < threshold);
+    const bytes = hidden.reduce((a, b) => a + b.size_bytes, 0);
+    return { visibleRows: visible, hiddenRows: hidden, hiddenBytes: bytes };
+  }, [allRows, settings.minSizeBytes]);
+
+  const selectedRows = visibleRows.filter((r) => selected.has(r.id));
   const totalSelected = useMemo(
-    () => rows.filter((r) => selected.has(r.id)).reduce((a, b) => a + b.size_bytes, 0),
-    [rows, selected],
+    () => selectedRows.reduce((a, b) => a + b.size_bytes, 0),
+    [selectedRows],
   );
 
   function toggle(id: string, next: boolean) {
@@ -53,10 +73,10 @@ export default function Scan() {
     <div className="flex flex-col h-screen">
       <TopStats
         reclaimable={data?.totalBytes ?? 0}
-        cacheCount={rows.length}
+        cacheCount={allRows.length}
         diskUsedPct={null}
       />
-      <div className="px-4 py-2.5 border-b border-border flex gap-2 items-center">
+      <div className="px-4 py-2.5 border-b border-border flex gap-2 items-center flex-wrap">
         {RISK_CHIPS.map((chip) => (
           <button
             key={chip.key}
@@ -70,6 +90,32 @@ export default function Scan() {
             {chip.label}
           </button>
         ))}
+
+        <div className="ml-auto flex items-center gap-3 font-mono text-[10px] text-text-dim">
+          {data?.scannedAt && (
+            <span title={data.scannedAt}>
+              scanned {timeAgo(data.scannedAt)}
+            </span>
+          )}
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className={`px-2.5 py-[3px] rounded text-[10px] font-mono border transition-colors ${
+              isFetching
+                ? "border-border text-text-muted cursor-wait"
+                : "border-border text-text-dim hover:text-text hover:border-risk-reclaim"
+            }`}
+          >
+            {isFetching ? (
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-risk-reclaim animate-pulse" />
+                rescanning…
+              </span>
+            ) : (
+              "↻ rescan now"
+            )}
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto">
@@ -78,7 +124,22 @@ export default function Scan() {
           <div className="p-8 text-text-muted font-mono text-sm animate-pulse">scanning…</div>
         )}
         {!isLoading && !error && (
-          <CacheTable rows={rows} selected={selected} onToggle={toggle} />
+          <>
+            <CacheTable rows={visibleRows} selected={selected} onToggle={toggle} />
+            {hiddenRows.length > 0 && (
+              <div className="px-4 py-3 border-t border-border bg-bg-elev-1 font-mono text-[11px] flex items-center justify-between">
+                <span className="text-text-muted">
+                  <b className="text-text-dim">{hiddenRows.length}</b> item
+                  {hiddenRows.length === 1 ? "" : "s"} below{" "}
+                  <b className="text-text-dim">{humanBytes(settings.minSizeBytes)}</b>{" "}
+                  threshold
+                </span>
+                <span className="tabular-nums text-text-dim">
+                  total <b className="text-text">{humanBytes(hiddenBytes)}</b>
+                </span>
+              </div>
+            )}
+          </>
         )}
       </div>
 
