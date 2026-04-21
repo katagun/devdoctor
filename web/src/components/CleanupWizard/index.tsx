@@ -1,4 +1,5 @@
 import { CleanupWizardContext } from "./CleanupWizardState";
+import type { CleanupResult } from "./CleanupWizardState";
 import { useCleanupWizard } from "@/hooks/useCleanupWizard";
 import type { CacheTableRow } from "@/components/CacheTable";
 import { ReviewStep } from "./ReviewStep";
@@ -8,11 +9,13 @@ import { SummaryStep } from "./SummaryStep";
 export function CleanupWizard({
   entries,
   onClose,
+  onSuccess,
 }: {
   entries: CacheTableRow[];
   onClose: () => void;
+  onSuccess?: (results: CleanupResult[]) => void;
 }) {
-  const wizard = useCleanupWizard({ entries });
+  const wizard = useCleanupWizard({ entries, onSuccess });
   const step = wizard.state.step;
 
   return (

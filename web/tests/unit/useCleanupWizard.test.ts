@@ -1,5 +1,7 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createElement, type ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const { postJson } = vi.hoisted(() => ({ postJson: vi.fn() }));
 vi.mock("@/api", () => ({
@@ -55,7 +57,10 @@ describe("useCleanupWizard", () => {
         recipeHint: "",
       },
     ];
-    const { result } = renderHook(() => useCleanupWizard({ entries }));
+    const qc = new QueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children);
+    const { result } = renderHook(() => useCleanupWizard({ entries }), { wrapper });
 
     await act(async () => {
       await result.current.startJob();

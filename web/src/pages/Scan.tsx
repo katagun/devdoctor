@@ -155,17 +155,36 @@ export default function Scan() {
 
       <div className="px-4 py-3 bg-bg-elev-1 border-t border-border flex justify-between items-center">
         <span className="font-mono text-[11px] text-text-dim">
-          {selected.size} selected · <b className="text-text">{humanBytes(totalSelected)}</b>
+          {selectedRows.length} selected ·{" "}
+          <b className="text-text">{humanBytes(totalSelected)}</b>
         </span>
         <button
-          disabled={selected.size === 0}
+          disabled={selectedRows.length === 0}
           onClick={() => setWizardOpen(true)}
           className="bg-gradient-to-b from-[#3aa670] to-[#2a7f55] text-[#e8fff3] px-4 py-1.5 rounded border border-[#3aa670] font-medium text-[11px] disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          ▸ clean up {selected.size > 0 ? `${selected.size} items` : ""}
+          ▸ clean up {selectedRows.length > 0 ? `${selectedRows.length} items` : ""}
         </button>
       </div>
-      {wizardOpen && <CleanupWizard entries={selectedRows} onClose={() => setWizardOpen(false)} />}
+      {wizardOpen && (
+        <CleanupWizard
+          entries={selectedRows}
+          onClose={() => setWizardOpen(false)}
+          onSuccess={(results) => {
+            // Drop only the entries that actually got cleaned so a retry of
+            // failed/skipped ones keeps its selection intact.
+            const cleaned = new Set(
+              results.filter((r) => r.status === "ok").map((r) => r.entry_id),
+            );
+            if (cleaned.size === 0) return;
+            setSelected((prev) => {
+              const next = new Set(prev);
+              for (const id of cleaned) next.delete(id);
+              return next;
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

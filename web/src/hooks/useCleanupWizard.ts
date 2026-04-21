@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { CacheTableRow } from "@/components/CacheTable";
 import { apiFetch } from "@/api";
 import type {
@@ -139,15 +140,26 @@ function parseEvent(e: MessageEvent): Record<string, unknown> {
   }
 }
 
-export function useCleanupWizard({ entries }: { entries: CacheTableRow[] }) {
+export function useCleanupWizard({
+  entries,
+  onSuccess,
+}: {
+  entries: CacheTableRow[];
+  onSuccess?: (results: CleanupResult[]) => void;
+}) {
   const [state, dispatch] = useReducer(reducer, entries, initial);
   const esRef = useRef<EventSource | null>(null);
+  const queryClient = useQueryClient();
   // Refs so startJob/answerPrompt/confirm keep stable identities across state
   // changes — switching to useCallback deps would reintroduce stale-closure bugs.
   const enabledRef = useRef(state.enabled);
   enabledRef.current = state.enabled;
   const jobIdRef = useRef<string | null>(state.jobId);
   jobIdRef.current = state.jobId;
+  // Ref the callback so openStream's deps stay empty and the listener reads the
+  // latest caller-supplied handler at dispatch time.
+  const onSuccessRef = useRef(onSuccess);
+  onSuccessRef.current = onSuccess;
 
   useEffect(() => {
     return () => {
@@ -204,12 +216,15 @@ export function useCleanupWizard({ entries }: { entries: CacheTableRow[] }) {
     });
     es.addEventListener("done", (e) => {
       const d = parseEvent(e as MessageEvent);
-      dispatch({
-        type: "DONE",
-        results: Array.isArray(d.results) ? (d.results as CleanupResult[]) : [],
-      });
+      const results = Array.isArray(d.results) ? (d.results as CleanupResult[]) : [];
+      dispatch({ type: "DONE", results });
       es.close();
       if (esRef.current === es) esRef.current = null;
+      // Refresh any view sitting on stale post-cleanup data. Invalidate rather
+      // than refetch: consumers that aren't mounted just get marked stale.
+      queryClient.invalidateQueries({ queryKey: ["scan"] });
+      queryClient.invalidateQueries({ queryKey: ["history"] });
+      onSuccessRef.current?.(results);
     });
     es.addEventListener("job_error", (e) => {
       const d = parseEvent(e as MessageEvent);
@@ -219,8 +234,10 @@ export function useCleanupWizard({ entries }: { entries: CacheTableRow[] }) {
       });
       es.close();
       if (esRef.current === es) esRef.current = null;
+      // The job_error path also wrote an audit entry; refresh history.
+      queryClient.invalidateQueries({ queryKey: ["history"] });
     });
-  }, []);
+  }, [queryClient]);
 
   const startJob = useCallback(async () => {
     const ids = Array.from(enabledRef.current);
