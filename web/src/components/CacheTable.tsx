@@ -14,7 +14,7 @@ export interface CacheTableRow {
   recipeHint: string;
 }
 
-type SortKey = "provider" | "path" | "size" | "risk" | "stale";
+type SortKey = "provider" | "size" | "risk" | "stale";
 type SortDir = "asc" | "desc";
 
 // Rank risk so "desc" shows DANGER at top.
@@ -24,11 +24,9 @@ const RISK_RANK: Record<RiskValue, number> = {
   dangerous: 2,
 };
 
-// Click a fresh column → jump to the "interesting" end: size/risk/stale land
-// on worst-first; alphabetical columns on A-first.
+// Click a fresh column → jump to the "interesting" end.
 const DEFAULT_DIR: Record<SortKey, SortDir> = {
   provider: "asc",
-  path: "asc",
   size: "desc",
   risk: "desc",
   stale: "desc",
@@ -48,16 +46,12 @@ function makeComparator(
         return (
           sign * (a.provider.localeCompare(b.provider) || a.label.localeCompare(b.label))
         );
-      case "path":
-        return sign * a.path.localeCompare(b.path);
       case "risk":
-        // Fall through to size as tiebreaker so "all safe" still ranks by size.
         return (
           sign * (RISK_RANK[a.risk] - RISK_RANK[b.risk]) ||
           b.size_bytes - a.size_bytes
         );
       case "stale": {
-        // Unknown mtime always sinks to the bottom regardless of direction.
         if (a.mtime === null && b.mtime === null) return 0;
         if (a.mtime === null) return 1;
         if (b.mtime === null) return -1;
@@ -70,6 +64,9 @@ function makeComparator(
 }
 
 export type CacheTableDensity = "sparse" | "dense";
+
+// Column layout — provider+detail flexes, the rest are fixed so sizes align.
+const COLS = "grid-cols-[28px_1fr_90px_96px_64px]";
 
 export function CacheTable({
   rows,
@@ -110,10 +107,9 @@ export function CacheTable({
 
   return (
     <div className="font-mono text-[11px]">
-      <div className="grid grid-cols-[28px_1.4fr_2fr_0.8fr_0.9fr_0.6fr] gap-2.5 px-4 py-2 border-b border-border">
+      <div className={`grid ${COLS} gap-3 px-4 py-2 border-b border-border`}>
         <div />
         <SortHeader label="provider" col="provider" sort={sort} onClick={headerClick} />
-        <SortHeader label="path" col="path" sort={sort} onClick={headerClick} />
         <SortHeader label="size" col="size" align="right" sort={sort} onClick={headerClick} />
         <SortHeader label="risk" col="risk" sort={sort} onClick={headerClick} />
         <SortHeader label="stale" col="stale" align="right" sort={sort} onClick={headerClick} />
@@ -124,7 +120,7 @@ export function CacheTable({
         return (
           <div
             key={r.id}
-            className={`grid grid-cols-[28px_1.4fr_2fr_0.8fr_0.9fr_0.6fr] gap-2.5 px-4 ${rowPad} items-center border-b border-border-subtle hover:bg-bg-elev-1`}
+            className={`grid ${COLS} gap-3 px-4 ${rowPad} items-center border-b border-border-subtle hover:bg-bg-elev-1`}
           >
             <Checkbox
               checked={isSelected}
@@ -133,26 +129,33 @@ export function CacheTable({
             />
             {density === "dense" ? (
               <div className="flex items-baseline gap-2 min-w-0">
-                <span className="text-text-accent font-medium truncate">{r.provider}</span>
-                <span className="text-text-muted text-[10px] truncate">{r.label}</span>
+                <span className="text-text-accent font-medium shrink-0">{r.provider}</span>
+                <span
+                  className="text-text-muted text-[10px] truncate"
+                  title={r.path !== "—" ? r.path : r.label}
+                >
+                  {r.label}
+                </span>
               </div>
             ) : (
-              <div>
-                <div className="text-text-accent font-medium">{r.provider}</div>
-                <div className="text-text-muted text-[9.5px] mt-px">{r.label}</div>
+              <div className="min-w-0">
+                <div className="text-text-accent font-medium truncate">{r.provider}</div>
+                <div
+                  className="text-text-muted text-[9.5px] mt-px truncate"
+                  title={r.path !== "—" ? r.path : r.label}
+                >
+                  {r.label}
+                </div>
               </div>
             )}
-            <div className="text-text-path truncate" title={r.path}>
-              {r.path}
-            </div>
             <div className="text-right tabular-nums font-medium">
               {humanBytes(r.size_bytes)}
             </div>
             <div>
               <RiskBadge risk={r.risk} />
             </div>
-            <div className="text-right text-text-muted text-[10px]">
-              {staleness(r.mtime)}
+            <div className="text-right text-text-muted text-[10px] tabular-nums">
+              {r.mtime === null ? "" : staleness(r.mtime)}
             </div>
           </div>
         );
