@@ -63,9 +63,26 @@ export default function Snapshots() {
     });
   }
 
-  const slotANameForDiff = selected[0];
-  const slotBNameForDiff = compareToLive ? "live" : selected[1];
-  const diff = useDiff(slotANameForDiff, slotBNameForDiff);
+  // Determine chronological order for the diff: from_ = earlier, to_ = later.
+  // The A/B slots are just selection identifiers — clicking order (which in a
+  // newest-first list naturally puts the new snapshot in A) must not silently
+  // invert the delta sign.
+  const diffArgs = useMemo(() => {
+    const [aName, bName] = selected;
+    if (!aName) return { from: null, to: null, fromMeta: null, toMeta: null };
+    const aMeta = snapshots.find((s) => s.name === aName) ?? null;
+    if (compareToLive) {
+      // Live is always "now", so the snapshot is always the 'before'.
+      return { from: aName, to: "live", fromMeta: aMeta, toMeta: null };
+    }
+    if (!bName) return { from: aName, to: null, fromMeta: aMeta, toMeta: null };
+    const bMeta = snapshots.find((s) => s.name === bName) ?? null;
+    const at = aMeta ? new Date(aMeta.scanned_at).getTime() : 0;
+    const bt = bMeta ? new Date(bMeta.scanned_at).getTime() : 0;
+    if (at <= bt) return { from: aName, to: bName, fromMeta: aMeta, toMeta: bMeta };
+    return { from: bName, to: aName, fromMeta: bMeta, toMeta: aMeta };
+  }, [selected, snapshots, compareToLive]);
+  const diff = useDiff(diffArgs.from, diffArgs.to);
 
   return (
     <div className="flex flex-col h-screen font-mono text-[11px]">
@@ -187,12 +204,14 @@ export default function Snapshots() {
               meta={snapshots.find((x) => x.name === selected[0])!}
               onCompareToLive={() => setCompareToLive(true)}
             />
-          ) : slotANameForDiff && slotBNameForDiff ? (
+          ) : diffArgs.from && diffArgs.to ? (
             <DiffPane
-              a={selected[0]}
-              b={compareToLive ? "live" : selected[1]}
-              aMeta={snapshots.find((x) => x.name === selected[0]) ?? null}
-              bMeta={compareToLive ? null : snapshots.find((x) => x.name === selected[1]) ?? null}
+              fromName={diffArgs.from}
+              toName={diffArgs.to}
+              fromMeta={diffArgs.fromMeta}
+              toMeta={diffArgs.toMeta}
+              fromSlot={selected[0] === diffArgs.from ? "A" : "B"}
+              toSlot={diffArgs.to === "live" ? null : selected[0] === diffArgs.to ? "A" : "B"}
               loading={diff.isLoading}
               error={diff.error}
               data={diff.data}
@@ -424,29 +443,35 @@ function Stat({ label, value, big }: { label: string; value: string; big?: boole
 }
 
 function DiffPane({
-  a,
-  b,
-  aMeta,
-  bMeta,
+  fromName,
+  toName,
+  fromMeta,
+  toMeta,
+  fromSlot,
+  toSlot,
   loading,
   error,
   data,
 }: {
-  a: string | null;
-  b: string | "live" | null;
-  aMeta: SnapshotMeta | null;
-  bMeta: SnapshotMeta | null;
+  fromName: string;
+  toName: string | "live";
+  fromMeta: SnapshotMeta | null;
+  toMeta: SnapshotMeta | null;
+  fromSlot: SlotLabel | null;
+  toSlot: SlotLabel | null;
   loading: boolean;
   error: unknown;
-  data: { rows: { provider: string; before_bytes: number; after_bytes: number; delta_bytes: number; delta_pct: number }[] } | undefined;
+  data:
+    | { rows: { provider: string; before_bytes: number; after_bytes: number; delta_bytes: number; delta_pct: number }[] }
+    | undefined;
 }) {
-  const bLabel =
-    b === "live"
+  const toLabel =
+    toName === "live"
       ? "live (current disk)"
-      : bMeta
-        ? timeAgo(bMeta.scanned_at)
-        : b;
-  const aLabel = aMeta ? timeAgo(aMeta.scanned_at) : a;
+      : toMeta
+        ? timeAgo(toMeta.scanned_at)
+        : toName;
+  const fromLabel = fromMeta ? timeAgo(fromMeta.scanned_at) : fromName;
 
   const totalDelta = useMemo(
     () => data?.rows.reduce((acc, r) => acc + r.delta_bytes, 0) ?? 0,
@@ -457,21 +482,11 @@ function DiffPane({
     <div className="p-6 space-y-4">
       <header className="flex items-end gap-3 flex-wrap">
         <div>
-          <div className="text-[9.5px] uppercase tracking-widest text-text-muted">diff</div>
-          <div className="flex items-center gap-2 text-[13px] mt-1">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-risk-reclaim/20 text-risk-reclaim border border-risk-reclaim text-[9px] font-bold">
-                A
-              </span>
-              <span className="text-text">{aLabel}</span>
-            </span>
+          <div className="text-[9.5px] uppercase tracking-widest text-text-muted">diff · earlier → later</div>
+          <div className="flex items-center gap-3 text-[13px] mt-1">
+            <RoleChip role="before" slot={fromSlot} label={fromLabel} absTime={fromMeta?.scanned_at ?? null} />
             <span className="text-text-muted">→</span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-risk-safe/20 text-risk-safe border border-risk-safe text-[9px] font-bold">
-                B
-              </span>
-              <span className="text-text">{bLabel}</span>
-            </span>
+            <RoleChip role="after" slot={toSlot} label={toLabel} absTime={toMeta?.scanned_at ?? null} />
           </div>
         </div>
         {data && (
@@ -489,6 +504,9 @@ function DiffPane({
               {totalDelta > 0 ? "+" : totalDelta < 0 ? "−" : ""}
               {humanBytes(Math.abs(totalDelta))}
             </div>
+            <div className="text-text-muted text-[9px] mt-0.5">
+              {totalDelta > 0 ? "disk grew" : totalDelta < 0 ? "disk shrank" : "no net change"}
+            </div>
           </div>
         )}
       </header>
@@ -497,6 +515,28 @@ function DiffPane({
       {!!error && <div className="text-risk-danger">{String(error)}</div>}
       {data && <DiffTable diff={data as unknown as DiffData} />}
     </div>
+  );
+}
+
+function RoleChip({
+  role,
+  slot,
+  label,
+  absTime,
+}: {
+  role: "before" | "after";
+  slot: SlotLabel | null;
+  label: string;
+  absTime: string | null;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="text-[9px] uppercase tracking-widest text-text-muted">{role}</span>
+      {slot ? <SlotBadge slot={slot} /> : null}
+      <span className="text-text" title={absTime ?? undefined}>
+        {label}
+      </span>
+    </span>
   );
 }
 
