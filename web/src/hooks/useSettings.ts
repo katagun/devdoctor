@@ -2,6 +2,26 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 const KEY = "diskdoctor.settings.v1";
 
+// Sidebar width clamps. Min = icons-only state (matches the currently-shipped
+// 48px collapsed width). Max = min(20% of viewport, 320px); recomputed from the
+// live viewport on every read to keep stored values from exceeding the current
+// display.
+export const SIDEBAR_MIN_WIDTH = 48;
+export const SIDEBAR_MAX_CAP = 320;
+export const SIDEBAR_DEFAULT_WIDTH = 180;
+
+export function sidebarMaxWidth(viewportWidth: number): number {
+  return Math.min(Math.floor(viewportWidth * 0.2), SIDEBAR_MAX_CAP);
+}
+
+export function clampSidebarWidth(px: number, viewportWidth: number): number {
+  const max = sidebarMaxWidth(viewportWidth);
+  if (!Number.isFinite(px)) return SIDEBAR_DEFAULT_WIDTH;
+  if (px < SIDEBAR_MIN_WIDTH) return SIDEBAR_MIN_WIDTH;
+  if (px > max) return max;
+  return Math.round(px);
+}
+
 // Cadence in milliseconds for TanStack Query's staleTime. `Infinity` disables
 // automatic refetching — only manual "Rescan now" forces a refetch.
 export const CADENCE_PRESETS = [
@@ -31,7 +51,9 @@ export interface Settings {
   cadence: CadenceId;
   density: Density;
   theme: Theme;
-  sidebarCollapsed: boolean;
+  sidebarCollapsed: boolean;      // kept for backward compat; removed in Task 6
+  sidebarWidth: number;
+  sidebarExpandedWidth: number;
 }
 
 const DEFAULTS: Settings = {
@@ -40,6 +62,8 @@ const DEFAULTS: Settings = {
   density: "sparse",
   theme: "system",
   sidebarCollapsed: false,
+  sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
+  sidebarExpandedWidth: SIDEBAR_DEFAULT_WIDTH,
 };
 
 function read(): Settings {
@@ -48,6 +72,7 @@ function read(): Settings {
     if (!raw) return DEFAULTS;
     const parsed = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return DEFAULTS;
+
     const minSizeBytes =
       typeof parsed.minSizeBytes === "number" && parsed.minSizeBytes >= 0
         ? parsed.minSizeBytes
@@ -64,7 +89,44 @@ function read(): Settings {
       typeof parsed.sidebarCollapsed === "boolean"
         ? parsed.sidebarCollapsed
         : DEFAULTS.sidebarCollapsed;
-    return { minSizeBytes, cadence, density, theme, sidebarCollapsed };
+
+    // Sidebar width migration:
+    //   * Prefer new fields when present and sensible.
+    //   * Otherwise fall back to the old sidebarCollapsed boolean.
+    //   * Otherwise default.
+    const vw = typeof window === "undefined" ? 1024 : window.innerWidth;
+    let sidebarWidth: number;
+    let sidebarExpandedWidth: number;
+    if (
+      typeof parsed.sidebarWidth === "number" &&
+      parsed.sidebarWidth >= SIDEBAR_MIN_WIDTH
+    ) {
+      sidebarWidth = clampSidebarWidth(parsed.sidebarWidth, vw);
+      const parsedExpanded =
+        typeof parsed.sidebarExpandedWidth === "number" &&
+        parsed.sidebarExpandedWidth > SIDEBAR_MIN_WIDTH
+          ? parsed.sidebarExpandedWidth
+          : Math.max(sidebarWidth, SIDEBAR_DEFAULT_WIDTH);
+      sidebarExpandedWidth = clampSidebarWidth(parsedExpanded, vw);
+    } else if (typeof parsed.sidebarCollapsed === "boolean") {
+      sidebarWidth = parsed.sidebarCollapsed
+        ? SIDEBAR_MIN_WIDTH
+        : SIDEBAR_DEFAULT_WIDTH;
+      sidebarExpandedWidth = SIDEBAR_DEFAULT_WIDTH;
+    } else {
+      sidebarWidth = SIDEBAR_DEFAULT_WIDTH;
+      sidebarExpandedWidth = SIDEBAR_DEFAULT_WIDTH;
+    }
+
+    return {
+      minSizeBytes,
+      cadence,
+      density,
+      theme,
+      sidebarCollapsed,
+      sidebarWidth,
+      sidebarExpandedWidth,
+    };
   } catch {
     return DEFAULTS;
   }
