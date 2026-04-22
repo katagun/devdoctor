@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./components/Sidebar";
 import { useApplyTheme } from "./hooks/useApplyTheme";
-import { useSidebarCollapsed } from "./hooks/useSidebarCollapsed";
+import { useSidebarWidth } from "./hooks/useSidebarWidth";
 
 const MAC_LIKE = /^Mac/.test(
   typeof navigator !== "undefined" ? navigator.platform : "",
@@ -17,7 +17,7 @@ function isEditableTarget(target: EventTarget | null): boolean {
 
 export default function AppShell() {
   useApplyTheme();
-  const { collapsed, toggle, forceCollapsedByViewport } = useSidebarCollapsed();
+  const { width, toggle, forceCollapsedByViewport } = useSidebarWidth();
 
   useEffect(() => {
     function onKeydown(e: KeyboardEvent) {
@@ -34,10 +34,11 @@ export default function AppShell() {
     return () => window.removeEventListener("keydown", onKeydown);
   }, [toggle, forceCollapsedByViewport]);
 
-  const gridCols = collapsed ? "grid-cols-[48px_1fr]" : "grid-cols-[180px_1fr]";
-
   return (
-    <div className={`min-h-screen grid ${gridCols} bg-bg text-text font-sans`}>
+    <div
+      className="min-h-screen grid bg-bg text-text font-sans"
+      style={{ gridTemplateColumns: `${width}px 1fr` }}
+    >
       <Sidebar />
       <main className="flex flex-col min-w-0">
         <Outlet />
