@@ -48,21 +48,47 @@ function Item({
   );
 }
 
+function ChevronToggle({
+  collapsed,
+  onClick,
+}: {
+  collapsed: boolean;
+  onClick: () => void;
+}) {
+  const label = collapsed ? "Expand sidebar" : "Collapse sidebar";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-expanded={!collapsed}
+      className="text-text-muted hover:text-text text-[11px] px-1 leading-none"
+    >
+      {collapsed ? "▶" : "◀"}
+    </button>
+  );
+}
+
 export function Sidebar() {
-  const { collapsed } = useSidebarCollapsed();
+  const { collapsed, toggle, forceCollapsedByViewport } = useSidebarCollapsed();
   return (
     <aside className="bg-bg-elev-1 border-r border-border p-3 sticky top-0 h-screen">
       <div
         className={`flex gap-2 items-center pb-3 mb-4 border-b border-border ${
-          collapsed ? "justify-center" : ""
+          collapsed ? "flex-col" : ""
         }`}
       >
-        <span
-          className="w-[7px] h-[7px] rounded-full bg-risk-reclaim"
-          style={{ boxShadow: "0 0 10px var(--risk-reclaim)" }}
-        />
-        {!collapsed && (
-          <span className="font-mono font-semibold text-[12px]">diskdoctor</span>
+        <div className={`flex items-center gap-2 ${collapsed ? "" : "flex-1"}`}>
+          <span
+            className="w-[7px] h-[7px] rounded-full bg-risk-reclaim"
+            style={{ boxShadow: "0 0 10px var(--risk-reclaim)" }}
+          />
+          {!collapsed && (
+            <span className="font-mono font-semibold text-[12px]">diskdoctor</span>
+          )}
+        </div>
+        {!forceCollapsedByViewport && (
+          <ChevronToggle collapsed={collapsed} onClick={toggle} />
         )}
       </div>
       {!collapsed && (

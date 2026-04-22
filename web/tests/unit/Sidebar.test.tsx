@@ -17,6 +17,14 @@ describe("Sidebar", () => {
     localStorage.clear();
     __testReloadSettings();
   });
+
+  it("renders a chevron toggle with aria-expanded=true when expanded", () => {
+    renderSidebar();
+    const btn = screen.getByRole("button", { name: /collapse sidebar/i });
+    expect(btn).toBeInTheDocument();
+    expect(btn.getAttribute("aria-expanded")).toBe("true");
+  });
+
   it("renders all five workspace nav links with their labels", () => {
     renderSidebar();
     for (const label of ["scan", "snapshots", "history", "providers", "settings"]) {
@@ -78,6 +86,42 @@ describe("Sidebar", () => {
         expect(link).toBeDefined();
         expect(link?.getAttribute("title")).toBe(label);
       }
+    });
+
+    it("renders a chevron toggle with aria-expanded=false when collapsed", () => {
+      renderSidebar();
+      const btn = screen.getByRole("button", { name: /expand sidebar/i });
+      expect(btn).toBeInTheDocument();
+      expect(btn.getAttribute("aria-expanded")).toBe("false");
+    });
+  });
+
+  describe("when the viewport forces collapsed", () => {
+    beforeEach(() => {
+      localStorage.clear();
+      __testReloadSettings();
+      // Force matchMedia to match so useSidebarCollapsed sees
+      // forceCollapsedByViewport=true.
+      const originalMatchMedia = window.matchMedia;
+      window.matchMedia = ((query: string) => {
+        if (query.includes("max-width: 767px")) {
+          return {
+            matches: true,
+            media: query,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            dispatchEvent: () => true,
+          } as MediaQueryList;
+        }
+        return originalMatchMedia(query);
+      }) as typeof window.matchMedia;
+    });
+
+    it("does not render the chevron button", () => {
+      renderSidebar();
+      expect(
+        screen.queryByRole("button", { name: /(collapse|expand) sidebar/i }),
+      ).not.toBeInTheDocument();
     });
   });
 });
