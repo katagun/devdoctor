@@ -1,5 +1,6 @@
 import type { DiffReport } from "@/hooks/useDiff";
 import { humanBytes } from "@/lib/format";
+import { ProviderIcon } from "./ProviderIcon";
 
 export function DiffTable({ diff }: { diff: DiffReport }) {
   return (
@@ -18,7 +19,10 @@ export function DiffTable({ diff }: { diff: DiffReport }) {
             key={r.provider}
             className="grid grid-cols-[1.5fr_1fr_1fr_1fr_0.8fr] gap-3 px-3 py-1.5 items-center border-b border-border-subtle"
           >
-            <div className="text-text-accent">{r.provider}</div>
+            <div className="flex items-center gap-1.5 text-text-accent min-w-0">
+              <ProviderIcon slug={r.provider} size={14} className="shrink-0" />
+              <span className="truncate">{r.provider}</span>
+            </div>
             <div className="text-right tabular-nums">{humanBytes(r.before_bytes)}</div>
             <div className="text-right tabular-nums">{humanBytes(r.after_bytes)}</div>
             <div className={`text-right tabular-nums ${color}`}>
