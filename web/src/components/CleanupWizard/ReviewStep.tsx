@@ -1,4 +1,5 @@
 import { RiskBadge } from "@/components/RiskBadge";
+import { ProviderIcon } from "@/components/ProviderIcon";
 import { humanBytes, parseRecipeHint } from "@/lib/format";
 import { useWizardContext } from "./CleanupWizardState";
 
@@ -22,8 +23,11 @@ export function ReviewStep() {
             >
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-text font-medium text-[12px]">
-                    {e.provider} / {e.label}
+                  <div className="text-text font-medium text-[12px] flex items-center gap-1">
+                    <ProviderIcon slug={e.provider} size={12} className="shrink-0" />
+                    <span>
+                      {e.provider} / {e.label}
+                    </span>
                   </div>
                   <div className="text-text-muted mt-0.5">{e.path}</div>
                 </div>
