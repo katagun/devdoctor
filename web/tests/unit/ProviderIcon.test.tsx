@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 import { ProviderIcon } from "@/components/ProviderIcon";
-import { siDocker } from "simple-icons";
+import { siDocker, siFirefox, siPytorch } from "simple-icons";
 
 describe("ProviderIcon", () => {
   it("renders a placeholder rect for an unknown slug", () => {
@@ -62,5 +62,17 @@ describe("ProviderIcon", () => {
     );
     const svg = container.querySelector("svg");
     expect(svg?.className.baseVal).toContain("text-text-dim");
+  });
+
+  it("firefox-cache slug resolves to the firefox icon", () => {
+    const { container } = render(<ProviderIcon slug="firefox-cache" />);
+    const path = container.querySelector("path");
+    expect(path?.getAttribute("d")).toBe(siFirefox.path);
+  });
+
+  it("torch-hub-cache slug resolves to the pytorch icon", () => {
+    const { container } = render(<ProviderIcon slug="torch-hub-cache" />);
+    const path = container.querySelector("path");
+    expect(path?.getAttribute("d")).toBe(siPytorch.path);
   });
 });
