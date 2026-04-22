@@ -224,6 +224,7 @@ export function useCleanupWizard({
       // than refetch: consumers that aren't mounted just get marked stale.
       queryClient.invalidateQueries({ queryKey: ["scan"] });
       queryClient.invalidateQueries({ queryKey: ["history"] });
+      queryClient.invalidateQueries({ queryKey: ["disk-usage"] });
       onSuccessRef.current?.(results);
     });
     es.addEventListener("job_error", (e) => {

@@ -15,6 +15,7 @@ from starlette.types import Scope
 from diskdoctor.ports import Shell
 from diskdoctor.web.middleware import HostHeaderMiddleware
 from diskdoctor.web.routes_clean import router as clean_router
+from diskdoctor.web.routes_disk_usage import router as disk_usage_router
 from diskdoctor.web.routes_history import router as history_router
 from diskdoctor.web.routes_scan import router as scan_router
 from diskdoctor.web.runner_registry import RunnerRegistry
@@ -87,6 +88,7 @@ def build_app(
     app.include_router(scan_router)
     app.include_router(history_router)
     app.include_router(clean_router)
+    app.include_router(disk_usage_router)
 
     # Mount the SPA at /. Placed manually via Mount so we can keep a reference
     # and ensure it stays last in the route table as new routes are added.
