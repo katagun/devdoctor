@@ -31,6 +31,7 @@ export interface Settings {
   cadence: CadenceId;
   density: Density;
   theme: Theme;
+  sidebarCollapsed: boolean;
 }
 
 const DEFAULTS: Settings = {
@@ -38,6 +39,7 @@ const DEFAULTS: Settings = {
   cadence: "live",
   density: "sparse",
   theme: "system",
+  sidebarCollapsed: false,
 };
 
 function read(): Settings {
@@ -58,7 +60,11 @@ function read(): Settings {
       parsed.theme === "light" || parsed.theme === "dark" || parsed.theme === "system"
         ? parsed.theme
         : DEFAULTS.theme;
-    return { minSizeBytes, cadence, density, theme };
+    const sidebarCollapsed: boolean =
+      typeof parsed.sidebarCollapsed === "boolean"
+        ? parsed.sidebarCollapsed
+        : DEFAULTS.sidebarCollapsed;
+    return { minSizeBytes, cadence, density, theme, sidebarCollapsed };
   } catch {
     return DEFAULTS;
   }
