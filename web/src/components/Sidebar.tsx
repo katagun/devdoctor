@@ -5,14 +5,26 @@ const linkBase =
 const linkActive = "bg-bg-elev-2 text-text";
 const linkIdle = "text-text-dim hover:bg-bg-elev-1";
 
-function Item({ to, label, count }: { to: string; label: string; count?: number }) {
+function Item({
+  to,
+  glyph,
+  label,
+  count,
+}: {
+  to: string;
+  glyph: string;
+  label: string;
+  count?: number;
+}) {
   return (
     <NavLink
       to={to}
       end={to === "/"}
       className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkIdle}`}
     >
-      <span>{label}</span>
+      <span>
+        <span aria-hidden="true">{glyph}</span> {label}
+      </span>
       {count !== undefined && <span className="text-text-muted text-[9.5px]">{count}</span>}
     </NavLink>
   );
@@ -32,11 +44,11 @@ export function Sidebar() {
         workspace
       </div>
       <nav className="flex flex-col gap-0.5 mb-4">
-        <Item to="/" label="◆ scan" />
-        <Item to="/snapshots" label="⏱ snapshots" />
-        <Item to="/history" label="≡ history" />
-        <Item to="/providers" label="⚙ providers" />
-        <Item to="/settings" label="⚡ settings" />
+        <Item to="/" glyph="◆" label="scan" />
+        <Item to="/snapshots" glyph="⏱" label="snapshots" />
+        <Item to="/history" glyph="≡" label="history" />
+        <Item to="/providers" glyph="⚙" label="providers" />
+        <Item to="/settings" glyph="⚡" label="settings" />
       </nav>
     </aside>
   );
