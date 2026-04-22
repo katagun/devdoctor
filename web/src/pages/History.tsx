@@ -5,6 +5,7 @@ import {
   type HistoryEvent,
   type SnapshotEvent,
 } from "@/hooks/useHistory";
+import { DiskUsageBar } from "@/components/DiskUsageBar";
 import { formatAbsTime, humanBytes, timeAgo } from "@/lib/format";
 
 type Filter = "all" | "cleanup" | "snapshot";
@@ -47,6 +48,7 @@ export default function History() {
             <b className="text-text-dim">{counts.snapshot}</b> snapshots
           </span>
         </div>
+        <DiskUsageBar />
         <div className="flex gap-2">
           <FilterChip label="all" active={filter === "all"} onClick={() => setFilter("all")} />
           <FilterChip

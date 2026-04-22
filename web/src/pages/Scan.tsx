@@ -76,7 +76,6 @@ export default function Scan() {
       <TopStats
         reclaimable={data?.totalBytes ?? 0}
         cacheCount={allRows.length}
-        diskUsedPct={null}
       />
       <div className="px-4 py-2.5 border-b border-border flex gap-2 items-center flex-wrap">
         {RISK_CHIPS.map((chip) => (

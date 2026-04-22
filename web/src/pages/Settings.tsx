@@ -7,6 +7,7 @@ import {
   type Density,
   type Theme,
 } from "@/hooks/useSettings";
+import { DiskUsageBar } from "@/components/DiskUsageBar";
 import { humanBytes } from "@/lib/format";
 
 const SAVED_MS = 1200;
@@ -64,12 +65,15 @@ export default function Settings() {
             Stored locally in your browser.
           </p>
         </div>
-        <div
-          className={`text-[10.5px] transition-opacity ${
-            savedFlash ? "opacity-100 text-risk-safe" : "opacity-0"
-          }`}
-        >
-          ● saved
+        <div className="flex items-center gap-4">
+          <div
+            className={`text-[10.5px] transition-opacity ${
+              savedFlash ? "opacity-100 text-risk-safe" : "opacity-0"
+            }`}
+          >
+            ● saved
+          </div>
+          <DiskUsageBar />
         </div>
       </header>
 

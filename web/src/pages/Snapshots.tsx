@@ -3,6 +3,7 @@ import { DiffTable } from "@/components/DiffTable";
 import { useCreateSnapshot, useSnapshot, useSnapshots } from "@/hooks/useSnapshots";
 import type { SnapshotMeta } from "@/hooks/useSnapshots";
 import { useDiff } from "@/hooks/useDiff";
+import { DiskUsageBar } from "@/components/DiskUsageBar";
 import { formatAbsTime, humanBytes, timeAgo } from "@/lib/format";
 
 const FLASH_MS = 2000;
@@ -91,6 +92,7 @@ export default function Snapshots() {
           <b className="text-text">{snapshots.length}</b> snapshot
           {snapshots.length === 1 ? "" : "s"}
         </div>
+        <DiskUsageBar />
         <div className="flex items-center gap-2">
           <input
             type="text"

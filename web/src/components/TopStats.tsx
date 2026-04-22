@@ -1,14 +1,13 @@
 import { SparklineBar } from "./SparklineBar";
+import { DiskUsageBar } from "./DiskUsageBar";
 import { humanBytes } from "@/lib/format";
 
 export function TopStats({
   reclaimable,
   cacheCount,
-  diskUsedPct,
 }: {
   reclaimable: number;
   cacheCount: number;
-  diskUsedPct: number | null;
 }) {
   return (
     <div className="px-4 py-3 border-b border-border flex gap-5 items-center text-[10px] text-text-dim font-mono">
@@ -19,11 +18,9 @@ export function TopStats({
       <span>
         <b className="text-text">{cacheCount}</b> caches
       </span>
-      {diskUsedPct !== null && (
-        <span>
-          <b className="text-text">{diskUsedPct}%</b> disk used
-        </span>
-      )}
+      <div className="ml-auto">
+        <DiskUsageBar />
+      </div>
     </div>
   );
 }

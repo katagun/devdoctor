@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useProviders } from "@/hooks/useProviders";
 import { useSelectedProviders } from "@/hooks/useSelectedProviders";
 import { RiskBadge } from "@/components/RiskBadge";
+import { DiskUsageBar } from "@/components/DiskUsageBar";
 
 export default function Providers() {
   const { data, isLoading, error } = useProviders();
@@ -95,6 +96,7 @@ export default function Providers() {
             />
           </button>
         </div>
+        <DiskUsageBar />
       </header>
 
       <div className="px-6 pb-3 text-text-muted text-[10px]">
