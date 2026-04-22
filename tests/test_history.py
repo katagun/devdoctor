@@ -1,3 +1,4 @@
+import contextlib
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -29,6 +30,37 @@ def test_write_snapshot_creates_directory_if_missing(tmp_path: Path):
     ts = datetime(2026, 4, 18, 12, 0, 0, tzinfo=UTC)
     p = write_snapshot(_rep(ts), target)
     assert p.parent == target
+
+
+def test_write_snapshot_is_atomic_no_tmp_left_on_success(tmp_path: Path):
+    ts = datetime(2026, 4, 18, 12, 0, 0, tzinfo=UTC)
+    p = write_snapshot(_rep(ts), tmp_path)
+    # The .tmp sibling must not linger after a successful rename.
+    assert p.is_file()
+    assert not p.with_name(p.name + ".tmp").exists()
+
+
+def test_write_snapshot_cleans_up_tmp_on_serialization_failure(tmp_path: Path, monkeypatch):
+    ts = datetime(2026, 4, 18, 12, 0, 0, tzinfo=UTC)
+
+    def boom(self):
+        raise RuntimeError("boom")
+
+    # Force to_json() to fail mid-write so the finalize step never runs.
+    monkeypatch.setattr("diskdoctor.types.Report.to_json", boom)
+    with contextlib.suppress(RuntimeError):
+        write_snapshot(_rep(ts), tmp_path)
+    # Neither the real file nor the tmp should exist; the target dir is clean.
+    assert list(tmp_path.glob("*.json*")) == []
+
+
+def test_snapshot_includes_schema_version(tmp_path: Path):
+    import json as _json
+
+    ts = datetime(2026, 4, 18, 12, 0, 0, tzinfo=UTC)
+    p = write_snapshot(_rep(ts), tmp_path)
+    payload = _json.loads(p.read_text())
+    assert payload["schema_version"] == 1
 
 
 def test_snapshot_round_trip(tmp_path: Path):

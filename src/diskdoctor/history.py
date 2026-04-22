@@ -1,17 +1,35 @@
 from __future__ import annotations
 
-from os import environ
+import contextlib
+import os
 from pathlib import Path
 
+from diskdoctor._storage import default_data_dir
 from diskdoctor.types import DiffReport, DiffRow, Report
 
 
 def write_snapshot(report: Report, directory: Path) -> Path:
+    """Write a snapshot atomically.
+
+    Writes to ``<name>.json.tmp`` first, then ``os.replace`` to the final
+    name — POSIX guarantees rename is atomic within a single filesystem,
+    so a reader either sees the old file or the fully-written new one,
+    never a torn half. A SIGKILL or power loss during the temp write
+    leaves the tmp behind but never corrupts the real file.
+    """
     directory.mkdir(parents=True, exist_ok=True)
     # Filename-safe ISO timestamp (no ':' which is problematic on some FS).
     stamp = report.scanned_at.strftime("%Y-%m-%dT%H-%M-%S")
     target = directory / f"{stamp}.json"
-    target.write_text(report.to_json())
+    tmp = target.with_name(target.name + ".tmp")
+    try:
+        tmp.write_text(report.to_json())
+        os.replace(tmp, target)
+    except Exception:
+        # Clean up the stray tmp so we don't leave clutter behind.
+        with contextlib.suppress(FileNotFoundError):
+            tmp.unlink()
+        raise
     return target
 
 
@@ -49,5 +67,4 @@ def latest_snapshots(directory: Path, n: int = 2) -> list[Path]:
 
 
 def default_snapshot_dir() -> Path:
-    base = environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    return Path(base) / "diskdoctor" / "snapshots"
+    return default_data_dir() / "snapshots"

@@ -8,6 +8,12 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
+# Schema version written into every snapshot. Bump when a non-additive change
+# to the Report format would confuse old readers (e.g. renaming/removing a
+# field). Purely additive changes don't need a bump — unknown keys are ignored
+# on read.
+SNAPSHOT_SCHEMA_VERSION = 1
+
 
 class Risk(StrEnum):
     SAFE = "safe"
@@ -128,6 +134,7 @@ class Report:
             }
 
         payload = {
+            "schema_version": SNAPSHOT_SCHEMA_VERSION,
             "entries": [serialize_entry(e) for e in self.entries],
             "scanned_at": self.scanned_at.isoformat(),
             "hostname": self.hostname,

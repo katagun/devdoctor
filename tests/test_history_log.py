@@ -52,3 +52,79 @@ def test_append_is_line_atomic(tmp_path: Path):
     assert len(content.splitlines()) == 1
     parsed = json.loads(content.splitlines()[0])
     assert parsed["job_id"] == "x"
+
+
+def test_event_stamps_schema_version(tmp_path: Path):
+    log = tmp_path / "audit.jsonl"
+    append_event({"type": "cleanup", "job_id": "x"}, log)
+    parsed = json.loads(log.read_text().splitlines()[0])
+    assert parsed["schema_version"] == 1
+
+
+def test_append_preserves_caller_schema_version(tmp_path: Path):
+    log = tmp_path / "audit.jsonl"
+    append_event({"type": "cleanup", "schema_version": 99}, log)
+    parsed = json.loads(log.read_text().splitlines()[0])
+    assert parsed["schema_version"] == 99
+
+
+def test_rotates_when_live_file_exceeds_max(tmp_path: Path, monkeypatch):
+    # Shrink the rotation threshold so the test stays fast.
+    monkeypatch.setattr("diskdoctor.history_log.MAX_LOG_BYTES", 200)
+    log = tmp_path / "audit.jsonl"
+    # Three ~120-byte events — the third crosses the 200B threshold, so the
+    # rotation check at the start of append_event moves the existing 2-line
+    # file to audit.1.jsonl and starts a fresh audit.jsonl for the third.
+    for i in range(3):
+        append_event({"type": "cleanup", "job_id": f"job-{i:030d}"}, log)
+    assert log.exists()
+    assert (tmp_path / "audit.1.jsonl").exists()
+    # Live file has only the most recent event after rotation.
+    live = [json.loads(line) for line in log.read_text().splitlines()]
+    rotated = [json.loads(line) for line in (tmp_path / "audit.1.jsonl").read_text().splitlines()]
+    assert [e["job_id"] for e in live] == ["job-" + "2".rjust(30, "0")]
+    assert [e["job_id"] for e in rotated] == [
+        "job-" + "0".rjust(30, "0"),
+        "job-" + "1".rjust(30, "0"),
+    ]
+
+
+def test_read_events_merges_across_rotations(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("diskdoctor.history_log.MAX_LOG_BYTES", 200)
+    log = tmp_path / "audit.jsonl"
+    for i in range(5):
+        append_event({"type": "cleanup", "job_id": f"job-{i:030d}"}, log)
+    events = read_events(log)
+    # Newest-first across live + rotations.
+    assert [e["job_id"] for e in events] == [
+        "job-" + "4".rjust(30, "0"),
+        "job-" + "3".rjust(30, "0"),
+        "job-" + "2".rjust(30, "0"),
+        "job-" + "1".rjust(30, "0"),
+        "job-" + "0".rjust(30, "0"),
+    ]
+
+
+def test_read_events_stops_early_when_limit_satisfied(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("diskdoctor.history_log.MAX_LOG_BYTES", 200)
+    log = tmp_path / "audit.jsonl"
+    for i in range(5):
+        append_event({"type": "cleanup", "job_id": f"job-{i:030d}"}, log)
+    # limit=1 is satisfied by the live file alone.
+    events = read_events(log, limit=1)
+    assert [e["job_id"] for e in events] == ["job-" + "4".rjust(30, "0")]
+
+
+def test_oldest_rotation_is_dropped(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("diskdoctor.history_log.MAX_LOG_BYTES", 120)
+    monkeypatch.setattr("diskdoctor.history_log.KEEP_ROTATIONS", 2)
+    log = tmp_path / "audit.jsonl"
+    # Each line is >120B so every append triggers a rotation. After 4
+    # rotations the first event should have fallen off the end.
+    for i in range(5):
+        append_event({"type": "cleanup", "job_id": f"j{i:100d}"}, log)
+    assert log.exists()
+    assert (tmp_path / "audit.1.jsonl").exists()
+    assert (tmp_path / "audit.2.jsonl").exists()
+    # The 3rd rotation slot must not exist — we only keep KEEP_ROTATIONS=2.
+    assert not (tmp_path / "audit.3.jsonl").exists()
