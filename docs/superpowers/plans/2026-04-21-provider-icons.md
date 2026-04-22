@@ -4,6 +4,8 @@
 
 **Goal:** Render a monochrome `simple-icons` SVG next to every provider slug in the web UI (Scan table, Snapshots diff, Providers config page, Cleanup-wizard review). Unmapped slugs render a neutral placeholder; a phase-D upgrade path is kept documented but not implemented.
 
+**Import pattern note (post-Task-1 amendment):** `simple-icons` v16 deprecated the per-subpath import (`simple-icons/icons/docker`) in favor of the barrel (`import { siDocker } from "simple-icons"`). This plan uses the v16 barrel form throughout; `sideEffects: false` in the package's `package.json` keeps Vite/Rollup tree-shaking. Also post-Task-1: `slack`, `visualstudiocode`, and `playwright` no longer ship in the simple-icons brand set (confirmed against the installed 16.17.0), so those slugs fall through to placeholder in phase C — no rules for them in Task 6.
+
 **Architecture:** One React component (`<ProviderIcon>`) and one resolver module (`providerIcons.ts`). The resolver walks an ordered chain (exact local override → exact simple-icons map → dash-boundary prefix rule → placeholder) and returns a tagged discriminated-union that the component renders as a single `<svg>`. No backend changes.
 
 **Tech Stack:** TypeScript, React 18, Vite, Vitest + @testing-library/react, Tailwind 4, `simple-icons` npm (new dep).
@@ -210,38 +212,17 @@ Expected: PASS — 1 test, 0 failures.
 
 Run:
 ```bash
-cd /Users/shamil/projects/github/katagun/diskdoctor/web
+cd /Users/shamil/projects/github/katagun/diskdoctor/.worktrees/provider-icons/web
 npm run typecheck
 ```
 
-Expected: PASS (no `tsc` output, exit 0).
-
-**If typecheck fails** because later tasks' `simple-icons/icons/<slug>` imports don't have types, create `web/src/types/simple-icons.d.ts`:
-
-```ts
-declare module "simple-icons/icons/*" {
-  interface SimpleIcon {
-    title: string;
-    slug: string;
-    svg: string;
-    path: string;
-    hex: string;
-    source: string;
-  }
-  const icon: SimpleIcon;
-  export default icon;
-}
-```
-
-Then re-run `npm run typecheck`. (If this file isn't needed in Task 2 — because no subpath imports exist yet — it's still harmless and can be created defensively, or deferred to Task 3 where the first import lands.)
+Expected: PASS (no `tsc` output, exit 0). `simple-icons` v16 ships its own types at the package root, so no `.d.ts` shim is needed for the barrel imports used in Task 3+.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/shamil/projects/github/katagun/diskdoctor
+cd /Users/shamil/projects/github/katagun/diskdoctor/.worktrees/provider-icons
 git add web/src/lib/providerIcons.ts web/src/components/ProviderIcon.tsx web/tests/unit/ProviderIcon.test.tsx
-# If the .d.ts shim was created:
-git add web/src/types/simple-icons.d.ts 2>/dev/null || true
 git commit -m "feat(web): scaffold ProviderIcon with placeholder fallback"
 ```
 
@@ -260,7 +241,7 @@ Expected: one commit added.
 Append to the `describe("ProviderIcon", ...)` block in `web/tests/unit/ProviderIcon.test.tsx`:
 
 ```tsx
-import siDocker from "simple-icons/icons/docker";
+import { siDocker } from "simple-icons";
 
 // ... inside describe:
   it("renders the simple-icons docker path for slug 'docker'", () => {
@@ -271,13 +252,13 @@ import siDocker from "simple-icons/icons/docker";
   });
 ```
 
-(Add the `import siDocker from "simple-icons/icons/docker";` line at the top of the file alongside the existing imports.)
+(Add the `import { siDocker } from "simple-icons";` line at the top of the file alongside the existing imports.)
 
 - [ ] **Step 2: Run the test and watch it fail**
 
 Run:
 ```bash
-cd /Users/shamil/projects/github/katagun/diskdoctor/web
+cd /Users/shamil/projects/github/katagun/diskdoctor/.worktrees/provider-icons/web
 npx vitest run tests/unit/ProviderIcon.test.tsx
 ```
 
@@ -288,7 +269,7 @@ Expected: FAIL — the `"docker"` slug still resolves to placeholder, so `path` 
 Edit `web/src/lib/providerIcons.ts`. At the top of the file, add:
 
 ```ts
-import siDocker from "simple-icons/icons/docker";
+import { siDocker } from "simple-icons";
 ```
 
 Replace:
@@ -319,18 +300,17 @@ Expected: PASS — 2 tests, 0 failures.
 
 Run:
 ```bash
-cd /Users/shamil/projects/github/katagun/diskdoctor/web
+cd /Users/shamil/projects/github/katagun/diskdoctor/.worktrees/provider-icons/web
 npm run typecheck
 ```
 
-Expected: PASS. If it fails with a module-resolution error on `simple-icons/icons/docker`, create the `.d.ts` shim from Task 2 Step 5 now.
+Expected: PASS. (simple-icons v16 ships types at the package root; the barrel import resolves types automatically.)
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/shamil/projects/github/katagun/diskdoctor
+cd /Users/shamil/projects/github/katagun/diskdoctor/.worktrees/provider-icons
 git add web/src/lib/providerIcons.ts web/tests/unit/ProviderIcon.test.tsx
-git add web/src/types/simple-icons.d.ts 2>/dev/null || true
 git commit -m "feat(web): wire ProviderIcon to simple-icons for 'docker'"
 ```
 
@@ -483,36 +463,37 @@ git commit -m "test(web): lock ProviderIcon size + className contract"
 **Files:**
 - Modify: `web/src/lib/providerIcons.ts`
 
-Load all 20 prefix rules from the spec. Each import line uses a per-file path so Vite tree-shakes unused icons. If Task 1 Step 2 flagged any slug as `MISS` in the installed simple-icons version, comment that rule out with a note — the affected provider slugs will fall through to placeholder, which is the intended phase-C behavior anyway.
+Load the remaining prefix rules from the spec. A single barrel import keeps only the named icons in the bundle thanks to `simple-icons`'s `sideEffects: false` + ESM exports.
+
+**Three rules dropped from the original spec** after Task 1 confirmed they were removed from simple-icons v16: `slack`, `vscode` (visualstudiocode), `playwright`. Those provider slugs (`slack-service-worker`, `vscode-cache`, `playwright`) will render the placeholder in phase C — exactly the intended fallback. Phase-D can bundle local SVGs later.
 
 - [ ] **Step 1: Replace the imports block**
 
-At the top of `web/src/lib/providerIcons.ts`, replace the current `import siDocker ...` line with the full set:
+At the top of `web/src/lib/providerIcons.ts`, replace the current `import { siDocker } from "simple-icons";` line with the full barrel:
 
 ```ts
-import siDocker from "simple-icons/icons/docker";
-import siHuggingface from "simple-icons/icons/huggingface";
-import siOllama from "simple-icons/icons/ollama";
-import siFirefox from "simple-icons/icons/firefox";
-import siGooglechrome from "simple-icons/icons/googlechrome";
-import siArc from "simple-icons/icons/arc";
-import siSlack from "simple-icons/icons/slack";
-import siVisualstudiocode from "simple-icons/icons/visualstudiocode";
-import siPython from "simple-icons/icons/python";
-import siPypi from "simple-icons/icons/pypi";
-import siPoetry from "simple-icons/icons/poetry";
-import siAstral from "simple-icons/icons/astral";
-import siNpm from "simple-icons/icons/npm";
-import siHomebrew from "simple-icons/icons/homebrew";
-import siGradle from "simple-icons/icons/gradle";
-import siApachemaven from "simple-icons/icons/apachemaven";
-import siPlaywright from "simple-icons/icons/playwright";
-import siPytorch from "simple-icons/icons/pytorch";
-import siWeightsandbiases from "simple-icons/icons/weightsandbiases";
-import siSpacy from "simple-icons/icons/spacy";
+import {
+  siDocker,
+  siHuggingface,
+  siOllama,
+  siFirefox,
+  siGooglechrome,
+  siArc,
+  siPython,
+  siPypi,
+  siPoetry,
+  siAstral,
+  siNpm,
+  siHomebrew,
+  siGradle,
+  siApachemaven,
+  siPytorch,
+  siWeightsandbiases,
+  siSpacy,
+} from "simple-icons";
 ```
 
-If any of these raised `MISS` in Task 1 Step 2, comment out both the import and its corresponding rule below, e.g. `// import siArc from "simple-icons/icons/arc"; // not in installed version; arc-browser-* falls through to placeholder`.
+All 17 of these were verified present in Task 1 against simple-icons 16.17.0. If a future `npm install` bumps simple-icons to a version that drops any of them, `tsc` will surface the missing export at build time — comment the import + its PREFIX_RULES entry out, the affected slug falls to placeholder.
 
 - [ ] **Step 2: Replace `PREFIX_RULES` with the full ordered list**
 
@@ -534,8 +515,6 @@ const PREFIX_RULES: ReadonlyArray<{ prefix: string; icon: ResolvedIcon }> = [
   { prefix: "docker", icon: si(siDocker) },
   { prefix: "huggingface", icon: si(siHuggingface) },
   { prefix: "ollama", icon: si(siOllama) },
-  { prefix: "slack", icon: si(siSlack) },
-  { prefix: "vscode", icon: si(siVisualstudiocode) },
   { prefix: "python-venvs", icon: si(siPython) },
   { prefix: "pip", icon: si(siPypi) },
   { prefix: "poetry", icon: si(siPoetry) },
@@ -544,14 +523,15 @@ const PREFIX_RULES: ReadonlyArray<{ prefix: string; icon: ResolvedIcon }> = [
   { prefix: "homebrew", icon: si(siHomebrew) },
   { prefix: "gradle", icon: si(siGradle) },
   { prefix: "maven", icon: si(siApachemaven) },
-  { prefix: "playwright", icon: si(siPlaywright) },
   { prefix: "torch", icon: si(siPytorch) },
   { prefix: "wandb", icon: si(siWeightsandbiases) },
   { prefix: "spacy", icon: si(siSpacy) },
 ];
 ```
 
-(Note: `arc-browser` precedes `chrome`/`firefox` since it's the more specific prefix among browsers; within the rest, order matters only when one prefix is a prefix of another — which isn't the case here, but the explicit ordering makes future additions safer.)
+Rules for `slack`, `vscode`, `playwright` are intentionally absent — the corresponding slugs (`slack-service-worker`, `vscode-cache`, `playwright`) render the placeholder in phase C. Phase-D can bundle local SVGs.
+
+`arc-browser` precedes `chrome`/`firefox` since it's the more specific prefix among browsers; within the rest, order matters only when one prefix is a prefix of another — which isn't the case here, but the explicit ordering makes future additions safer.
 
 - [ ] **Step 3: Run all tests**
 
@@ -568,8 +548,7 @@ Expected: PASS — 8 tests, 0 failures. None of the earlier behaviours regress.
 Append to the `describe("ProviderIcon", ...)` block:
 
 ```tsx
-import siFirefox from "simple-icons/icons/firefox";
-import siPytorch from "simple-icons/icons/pytorch";
+import { siFirefox, siPytorch } from "simple-icons";
 
   it("firefox-cache slug resolves to the firefox icon", () => {
     const { container } = render(<ProviderIcon slug="firefox-cache" />);
