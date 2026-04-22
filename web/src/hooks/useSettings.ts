@@ -51,7 +51,6 @@ export interface Settings {
   cadence: CadenceId;
   density: Density;
   theme: Theme;
-  sidebarCollapsed: boolean;      // kept for backward compat; removed in Task 6
   sidebarWidth: number;
   sidebarExpandedWidth: number;
 }
@@ -61,7 +60,6 @@ const DEFAULTS: Settings = {
   cadence: "live",
   density: "sparse",
   theme: "system",
-  sidebarCollapsed: false,
   sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
   sidebarExpandedWidth: SIDEBAR_DEFAULT_WIDTH,
 };
@@ -85,11 +83,6 @@ function read(): Settings {
       parsed.theme === "light" || parsed.theme === "dark" || parsed.theme === "system"
         ? parsed.theme
         : DEFAULTS.theme;
-    const sidebarCollapsed: boolean =
-      typeof parsed.sidebarCollapsed === "boolean"
-        ? parsed.sidebarCollapsed
-        : DEFAULTS.sidebarCollapsed;
-
     // Sidebar width migration:
     //   * Prefer new fields when present and sensible.
     //   * Otherwise fall back to the old sidebarCollapsed boolean.
@@ -123,7 +116,6 @@ function read(): Settings {
       cadence,
       density,
       theme,
-      sidebarCollapsed,
       sidebarWidth,
       sidebarExpandedWidth,
     };
