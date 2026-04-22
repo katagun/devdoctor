@@ -3,6 +3,7 @@ import { useProviders } from "@/hooks/useProviders";
 import { useSelectedProviders } from "@/hooks/useSelectedProviders";
 import { RiskBadge } from "@/components/RiskBadge";
 import { DiskUsageBar } from "@/components/DiskUsageBar";
+import { ProviderIcon } from "@/components/ProviderIcon";
 
 export default function Providers() {
   const { data, isLoading, error } = useProviders();
@@ -104,8 +105,9 @@ export default function Providers() {
       </div>
 
       <div className="px-6">
-        <div className="grid grid-cols-[60px_1.3fr_0.8fr_1fr_0.6fr_0.9fr] gap-3 px-3 py-2 text-[9.5px] uppercase tracking-widest text-text-muted border-b border-border">
+        <div className="grid grid-cols-[60px_20px_1.3fr_0.8fr_1fr_0.6fr_0.9fr] gap-3 px-3 py-2 text-[9.5px] uppercase tracking-widest text-text-muted border-b border-border">
           <div>enabled</div>
+          <div aria-hidden="true" />
           <div>name</div>
           <div>risk</div>
           <div>platforms</div>
@@ -128,7 +130,7 @@ export default function Providers() {
             return (
               <div
                 key={p.name}
-                className="grid grid-cols-[60px_1.3fr_0.8fr_1fr_0.6fr_0.9fr] gap-3 px-3 py-2 items-center border-b border-border-subtle hover:bg-bg-elev-1"
+                className="grid grid-cols-[60px_20px_1.3fr_0.8fr_1fr_0.6fr_0.9fr] gap-3 px-3 py-2 items-center border-b border-border-subtle hover:bg-bg-elev-1"
               >
                 <button
                   type="button"
@@ -145,6 +147,13 @@ export default function Providers() {
                     }`}
                   />
                 </button>
+                <div className="flex items-center justify-center text-text-muted">
+                  <ProviderIcon
+                    slug={p.name}
+                    size={16}
+                    className={on ? "text-text" : "text-text-muted"}
+                  />
+                </div>
                 <div>
                   <div className={`font-medium ${on ? "text-text" : "text-text-muted"}`}>
                     <Highlight text={p.name} query={query} />
