@@ -72,13 +72,13 @@ describe("useSidebarWidth", () => {
     expect(stored.sidebarExpandedWidth).toBe(240);
   });
 
-  it("setWidth(50) clamps to 48 and does NOT update sidebarExpandedWidth", async () => {
+  it("setWidth below min clamps to 48 and does NOT update sidebarExpandedWidth", async () => {
     const { useSidebarWidth } = await import("@/hooks/useSidebarWidth");
     const { result } = renderHook(() => useSidebarWidth());
     // First drag to 240 so we have a meaningful "last expanded" to preserve.
     act(() => result.current.setWidth(240));
-    // Now go below minimum.
-    act(() => result.current.setWidth(50));
+    // Now go below minimum (40 < SIDEBAR_MIN_WIDTH=48).
+    act(() => result.current.setWidth(40));
     expect(result.current.width).toBe(48);
     expect(result.current.collapsed).toBe(true);
     const stored = JSON.parse(localStorage.getItem("diskdoctor.settings.v1") ?? "{}");
@@ -125,8 +125,6 @@ describe("useSidebarWidth", () => {
     const { result } = renderHook(() => useSidebarWidth());
     expect(result.current.width).toBe(48);
     expect(result.current.collapsed).toBe(true);
-    const stored = JSON.parse(localStorage.getItem("diskdoctor.settings.v1") ?? "{}");
-    expect(stored.sidebarExpandedWidth).toBe(180);
   });
 
   it("viewport force-collapse: width=48, setWidth/toggle are no-ops", async () => {

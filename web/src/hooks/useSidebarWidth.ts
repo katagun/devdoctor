@@ -35,24 +35,6 @@ export function useSidebarWidth(): UseSidebarWidthResult {
   const [forceCollapsedByViewport, setForced] = useState<boolean>(getInitialMatch);
   const [viewportWidth, setViewportWidth] = useState<number>(currentViewportWidth);
 
-  // Migrate old sidebarCollapsed format on first render
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = localStorage.getItem("diskdoctor.settings.v1");
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      // If old sidebarCollapsed exists but new sidebarWidth doesn't, persist the migration
-      if (typeof parsed.sidebarCollapsed === "boolean" && !("sidebarWidth" in parsed)) {
-        update({
-          sidebarWidth: parsed.sidebarCollapsed ? SIDEBAR_MIN_WIDTH : SIDEBAR_DEFAULT_WIDTH,
-          sidebarExpandedWidth: SIDEBAR_DEFAULT_WIDTH,
-        });
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [update]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -79,13 +61,12 @@ export function useSidebarWidth(): UseSidebarWidthResult {
   const setWidth = useCallback(
     (px: number) => {
       if (forceCollapsedByViewport) return;
-      // Snap to minimum if dragging near collapse threshold
-      const target = px < 80 ? SIDEBAR_MIN_WIDTH : clampSidebarWidth(px, viewportWidth);
+      const clamped = clampSidebarWidth(px, viewportWidth);
       const patch: { sidebarWidth: number; sidebarExpandedWidth?: number } = {
-        sidebarWidth: target,
+        sidebarWidth: clamped,
       };
-      if (target > SIDEBAR_MIN_WIDTH) {
-        patch.sidebarExpandedWidth = target;
+      if (clamped > SIDEBAR_MIN_WIDTH) {
+        patch.sidebarExpandedWidth = clamped;
       }
       update(patch);
     },
