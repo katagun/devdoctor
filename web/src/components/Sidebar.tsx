@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
-import { useSidebarCollapsed } from "@/hooks/useSidebarCollapsed";
+import { SidebarResizeHandle } from "@/components/SidebarResizeHandle";
+import { useSidebarWidth } from "@/hooks/useSidebarWidth";
 
 const linkBase =
   "flex items-center px-3 py-1.5 rounded text-[10.5px] font-mono transition-colors";
@@ -70,9 +71,11 @@ function ChevronToggle({
 }
 
 export function Sidebar() {
-  const { collapsed, toggle, forceCollapsedByViewport } = useSidebarCollapsed();
+  const { width, collapsed, setWidth, toggle, maxWidth, forceCollapsedByViewport } =
+    useSidebarWidth();
+
   return (
-    <aside className="bg-bg-elev-1 border-r border-border p-3 sticky top-0 h-screen">
+    <aside className="bg-bg-elev-1 border-r border-border p-3 sticky top-0 h-screen relative">
       <div
         className={`flex gap-2 items-center pb-3 mb-4 border-b border-border ${
           collapsed ? "flex-col" : ""
@@ -103,6 +106,13 @@ export function Sidebar() {
         <Item to="/providers" glyph="⚙" label="providers" collapsed={collapsed} />
         <Item to="/settings" glyph="⚡" label="settings" collapsed={collapsed} />
       </nav>
+      <SidebarResizeHandle
+        width={width}
+        maxWidth={maxWidth}
+        setWidth={setWidth}
+        finalize={setWidth}
+        hidden={forceCollapsedByViewport}
+      />
     </aside>
   );
 }

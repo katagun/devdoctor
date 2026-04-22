@@ -52,7 +52,7 @@ describe("Sidebar", () => {
       localStorage.clear();
       localStorage.setItem(
         "diskdoctor.settings.v1",
-        JSON.stringify({ sidebarCollapsed: true }),
+        JSON.stringify({ sidebarWidth: 48, sidebarExpandedWidth: 180 }),
       );
       __testReloadSettings();
     });
@@ -100,7 +100,7 @@ describe("Sidebar", () => {
     beforeEach(() => {
       localStorage.clear();
       __testReloadSettings();
-      // Force matchMedia to match so useSidebarCollapsed sees
+      // Force matchMedia to match so useSidebarWidth sees
       // forceCollapsedByViewport=true.
       const originalMatchMedia = window.matchMedia;
       window.matchMedia = ((query: string) => {
