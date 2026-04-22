@@ -15,15 +15,15 @@ export type ResolvedIcon =
 const LOCAL_ICONS: Record<string, ResolvedIcon> = {};
 
 // Exact slug → simple-icons. Populated in Task 6.
-const SIMPLE_ICON_MAP: Record<string, ResolvedIcon> = {
-  docker: { kind: "simple-icon", path: siDocker.path, viewBox: "0 0 24 24" },
-};
+const SIMPLE_ICON_MAP: Record<string, ResolvedIcon> = {};
 
 // Prefix rules, evaluated top-to-bottom. A rule matches when
 //   slug === rule.prefix || slug.startsWith(rule.prefix + "-")
 // The dash boundary prevents "docker" from matching "dockerify-foo".
 // Populated in Task 6.
-const PREFIX_RULES: ReadonlyArray<{ prefix: string; icon: ResolvedIcon }> = [];
+const PREFIX_RULES: ReadonlyArray<{ prefix: string; icon: ResolvedIcon }> = [
+  { prefix: "docker", icon: { kind: "simple-icon", path: siDocker.path, viewBox: "0 0 24 24" } },
+];
 
 export const PLACEHOLDER_ICON: ResolvedIcon = { kind: "placeholder" };
 

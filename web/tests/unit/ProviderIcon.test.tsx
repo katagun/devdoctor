@@ -20,4 +20,16 @@ describe("ProviderIcon", () => {
     expect(path?.getAttribute("d")).toBe(siDocker.path);
     expect(container.querySelector("rect")).toBeNull();
   });
+
+  it("prefix rule matches slug with dash boundary (docker-vm-disk → docker)", () => {
+    const { container } = render(<ProviderIcon slug="docker-vm-disk" />);
+    const path = container.querySelector("path");
+    expect(path?.getAttribute("d")).toBe(siDocker.path);
+  });
+
+  it("prefix rule does NOT match when no dash follows (dockerify-foo → placeholder)", () => {
+    const { container } = render(<ProviderIcon slug="dockerify-foo" />);
+    expect(container.querySelector("rect")).not.toBeNull();
+    expect(container.querySelector("path")).toBeNull();
+  });
 });
