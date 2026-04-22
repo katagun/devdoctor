@@ -32,7 +32,7 @@ export type ResolvedIcon =
 // Phase-D hook — empty in phase C.
 const LOCAL_ICONS: Record<string, ResolvedIcon> = {};
 
-// Exact slug → simple-icons. Populated in Task 6.
+// Reserved for exact-slug overrides when no prefix rule fits; unused in phase C.
 const SIMPLE_ICON_MAP: Record<string, ResolvedIcon> = {};
 
 const si = (icon: { path: string }): ResolvedIcon => ({

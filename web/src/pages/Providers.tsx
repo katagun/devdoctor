@@ -147,7 +147,7 @@ export default function Providers() {
                     }`}
                   />
                 </button>
-                <div className="flex items-center justify-center text-text-muted">
+                <div className="flex items-center justify-center">
                   <ProviderIcon
                     slug={p.name}
                     size={16}
