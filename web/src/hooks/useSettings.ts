@@ -129,3 +129,8 @@ export function useSettings() {
 export function cadenceMs(id: CadenceId): number {
   return CADENCE_PRESETS.find((c) => c.id === id)?.staleMs ?? 0;
 }
+
+// Test helper: reinitialize module state from localStorage
+export function __testReloadSettings(): void {
+  currentSettings = read();
+}
