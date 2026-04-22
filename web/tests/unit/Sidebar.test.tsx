@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Sidebar } from "@/components/Sidebar";
 import { __testReloadSettings } from "@/hooks/useSettings";
 
@@ -97,12 +97,14 @@ describe("Sidebar", () => {
   });
 
   describe("when the viewport forces collapsed", () => {
+    let originalMatchMedia: typeof window.matchMedia;
+
     beforeEach(() => {
       localStorage.clear();
       __testReloadSettings();
       // Force matchMedia to match so useSidebarWidth sees
       // forceCollapsedByViewport=true.
-      const originalMatchMedia = window.matchMedia;
+      originalMatchMedia = window.matchMedia;
       window.matchMedia = ((query: string) => {
         if (query.includes("max-width: 767px")) {
           return {
@@ -115,6 +117,11 @@ describe("Sidebar", () => {
         }
         return originalMatchMedia(query);
       }) as typeof window.matchMedia;
+    });
+
+    afterEach(() => {
+      // Restore so later tests (or reordered tests) don't inherit the mock.
+      window.matchMedia = originalMatchMedia;
     });
 
     it("does not render the chevron button", () => {

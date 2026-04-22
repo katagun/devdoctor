@@ -116,7 +116,7 @@ describe("useSidebarWidth", () => {
     expect(result.current.collapsed).toBe(false);
   });
 
-  it("migrates old sidebarCollapsed=true to width=48", async () => {
+  it("migrates old sidebarCollapsed=true to width=48 and expandedWidth=180", async () => {
     localStorage.setItem(
       "diskdoctor.settings.v1",
       JSON.stringify({ sidebarCollapsed: true }),
@@ -125,6 +125,22 @@ describe("useSidebarWidth", () => {
     const { result } = renderHook(() => useSidebarWidth());
     expect(result.current.width).toBe(48);
     expect(result.current.collapsed).toBe(true);
+    // A subsequent setWidth call flushes the migrated expanded width to storage.
+    act(() => result.current.toggle()); // collapse→expand
+    const stored = JSON.parse(localStorage.getItem("diskdoctor.settings.v1") ?? "{}");
+    expect(stored.sidebarExpandedWidth).toBe(180);
+    expect(stored.sidebarWidth).toBe(180);
+  });
+
+  it("migrates old sidebarCollapsed=false to width=180 and expandedWidth=180", async () => {
+    localStorage.setItem(
+      "diskdoctor.settings.v1",
+      JSON.stringify({ sidebarCollapsed: false }),
+    );
+    const { useSidebarWidth } = await import("@/hooks/useSidebarWidth");
+    const { result } = renderHook(() => useSidebarWidth());
+    expect(result.current.width).toBe(180);
+    expect(result.current.collapsed).toBe(false);
   });
 
   it("viewport force-collapse: width=48, setWidth/toggle are no-ops", async () => {

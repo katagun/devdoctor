@@ -98,4 +98,13 @@ describe("SidebarResizeHandle", () => {
     fireEvent.keyDown(sep, { key: "End" });
     expect(setWidth).toHaveBeenCalledWith(288);
   });
+
+  it("pointercancel drops the drag without snapping (finalize not called)", () => {
+    const { finalize } = renderHandle({ width: 180 });
+    const sep = screen.getByRole("separator");
+    sep.dispatchEvent(createPointerEvent("pointerdown", 200, 1));
+    sep.dispatchEvent(createPointerEvent("pointermove", 60, 1));
+    sep.dispatchEvent(createPointerEvent("pointercancel", 60, 1));
+    expect(finalize).not.toHaveBeenCalled();
+  });
 });
