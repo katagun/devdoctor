@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSettings } from "./useSettings";
 
 const QUERY = "(max-width: 767px)";
+
+function getInitialMatch(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return false;
+  }
+  return window.matchMedia(QUERY).matches;
+}
 
 export interface UseSidebarCollapsedResult {
   collapsed: boolean;
@@ -11,16 +18,16 @@ export interface UseSidebarCollapsedResult {
 
 export function useSidebarCollapsed(): UseSidebarCollapsedResult {
   const { settings, update } = useSettings();
-  const [forceCollapsedByViewport, setForced] = useState<boolean>(false);
-  const mqlRef = useRef<MediaQueryList | null>(null);
+  // Synchronous lazy initialiser avoids a one-frame expanded-sidebar flash on
+  // narrow viewports when the app first mounts below the breakpoint.
+  const [forceCollapsedByViewport, setForced] = useState<boolean>(getInitialMatch);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
       return;
     }
     const mql = window.matchMedia(QUERY);
-    mqlRef.current = mql;
-    // Set initial state from the media query.
+    // Re-read in case the viewport changed between module init and mount.
     setForced(mql.matches);
     const onChange = (e: MediaQueryListEvent | { matches: boolean }) => {
       setForced(e.matches);

@@ -96,10 +96,11 @@ describe("useSidebarCollapsed", () => {
     const { result, rerender } = renderHook(() => useSidebarCollapsed());
     expect(result.current.collapsed).toBe(false);
 
-    // Find the mql the hook subscribed to and dispatch a change.
-    const mql = mqls.find((m) => m.media.includes("max-width: 767px"));
-    expect(mql).toBeDefined();
-    act(() => mql!.dispatchChange(true));
+    // Dispatch to every matching mql — the hook's getInitialMatch creates a
+    // throwaway mql during render, so only the useEffect's mql is subscribed.
+    const matching = mqls.filter((m) => m.media.includes("max-width: 767px"));
+    expect(matching.length).toBeGreaterThan(0);
+    act(() => matching.forEach((m) => m.dispatchChange(true)));
 
     // Trigger a re-render to ensure state updates are reflected
     rerender();
