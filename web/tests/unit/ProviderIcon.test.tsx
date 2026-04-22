@@ -4,13 +4,14 @@ import { ProviderIcon } from "@/components/ProviderIcon";
 import { siDocker, siFirefox, siPytorch } from "simple-icons";
 
 describe("ProviderIcon", () => {
-  it("renders a placeholder rect for an unknown slug", () => {
+  it("renders a subtle placeholder dot for an unknown slug", () => {
     const { container } = render(<ProviderIcon slug="totally-made-up-slug" />);
     const svg = container.querySelector("svg");
     expect(svg).not.toBeNull();
     expect(svg?.getAttribute("aria-hidden")).toBe("true");
     expect(svg?.hasAttribute("role")).toBe(false);
-    expect(container.querySelector("rect")).not.toBeNull();
+    expect(svg?.getAttribute("opacity")).toBe("0.4");
+    expect(container.querySelector("circle")).not.toBeNull();
     expect(container.querySelector("path")).toBeNull();
   });
 
@@ -18,7 +19,7 @@ describe("ProviderIcon", () => {
     const { container } = render(<ProviderIcon slug="docker" />);
     const path = container.querySelector("path");
     expect(path?.getAttribute("d")).toBe(siDocker.path);
-    expect(container.querySelector("rect")).toBeNull();
+    expect(container.querySelector("circle")).toBeNull();
   });
 
   it("prefix rule matches slug with dash boundary (docker-vm-disk → docker)", () => {
@@ -29,7 +30,7 @@ describe("ProviderIcon", () => {
 
   it("prefix rule does NOT match when no dash follows (dockerify-foo → placeholder)", () => {
     const { container } = render(<ProviderIcon slug="dockerify-foo" />);
-    expect(container.querySelector("rect")).not.toBeNull();
+    expect(container.querySelector("circle")).not.toBeNull();
     expect(container.querySelector("path")).toBeNull();
   });
 
