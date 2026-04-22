@@ -76,4 +76,21 @@ describe("ProviderIcon", () => {
     const path = container.querySelector("path");
     expect(path?.getAttribute("d")).toBe(siPytorch.path);
   });
+
+  it("uv-cache slug resolves to the locally-bundled uv mark", () => {
+    const { container } = render(<ProviderIcon slug="uv-cache" />);
+    const path = container.querySelector("path");
+    // Sanity: non-empty path, not the placeholder dot.
+    expect(path).not.toBeNull();
+    expect(path?.getAttribute("d")).toMatch(/^M4 5/);
+    expect(container.querySelector("circle")).toBeNull();
+  });
+
+  it("vscode-cache slug resolves to the locally-bundled vscode mark", () => {
+    const { container } = render(<ProviderIcon slug="vscode-cache" />);
+    const path = container.querySelector("path");
+    expect(path).not.toBeNull();
+    expect(path?.getAttribute("d")).toMatch(/^M15 2/);
+    expect(container.querySelector("circle")).toBeNull();
+  });
 });
