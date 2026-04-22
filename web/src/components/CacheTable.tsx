@@ -191,7 +191,8 @@ function SortHeader({
   onClick: (col: SortKey) => void;
 }) {
   const active = sort.key === col;
-  const caret = active ? (sort.dir === "asc" ? "▲" : "▼") : "";
+  // Small triangles sit on the baseline; full-size ones float above it.
+  const caret = active ? (sort.dir === "asc" ? "▴" : "▾") : "";
   const ariaSort: "ascending" | "descending" | "none" = active
     ? sort.dir === "asc"
       ? "ascending"
