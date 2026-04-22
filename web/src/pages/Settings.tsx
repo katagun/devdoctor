@@ -95,6 +95,26 @@ export default function Settings() {
       </Section>
 
       <Section
+        title="Sidebar"
+        description="Collapse the sidebar to icons only. Narrow viewports (below 768px) always collapse, regardless of this setting."
+      >
+        <div className="flex gap-2">
+          <Chip
+            active={!settings.sidebarCollapsed}
+            onClick={() => applyAndFlash({ sidebarCollapsed: false })}
+          >
+            expanded
+          </Chip>
+          <Chip
+            active={settings.sidebarCollapsed}
+            onClick={() => applyAndFlash({ sidebarCollapsed: true })}
+          >
+            collapsed
+          </Chip>
+        </div>
+      </Section>
+
+      <Section
         title="Minimum size cutoff"
         description="Hide tiny entries from the scan table. Items below the threshold are bucketed into a single 'small items' summary row so you can see the totals without the noise."
       >
