@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { CacheTable } from "@/components/CacheTable";
 import { CleanupWizard } from "@/components/CleanupWizard";
 import { TopStats } from "@/components/TopStats";
@@ -39,6 +40,7 @@ export default function Scan() {
     refetchOnMount: !manualOnly,
   });
 
+  const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [wizardOpen, setWizardOpen] = useState(false);
 
@@ -99,7 +101,7 @@ export default function Scan() {
             </span>
           )}
           <button
-            onClick={() => refetch()}
+            onClick={() => refetch().then(() => queryClient.invalidateQueries({ queryKey: ["disk-usage"] }))}
             disabled={isFetching}
             className={`px-2.5 py-[3px] rounded text-[10px] font-mono border transition-colors ${
               isFetching

@@ -50,6 +50,9 @@ export function useCreateSnapshot() {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["snapshots"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["snapshots"] });
+      qc.invalidateQueries({ queryKey: ["disk-usage"] });
+    },
   });
 }
