@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Checkbox } from "./Checkbox";
 import { RiskBadge } from "./RiskBadge";
 import { humanBytes, staleness, RiskValue } from "@/lib/format";
+import { ProviderIcon } from "./ProviderIcon";
 
 export interface CacheTableRow {
   id: string;
@@ -128,7 +129,12 @@ export function CacheTable({
               label={`select ${r.provider} ${r.label}`}
             />
             {density === "dense" ? (
-              <div className="flex items-baseline gap-2 min-w-0">
+              <div className="flex items-baseline gap-1.5 min-w-0">
+                <ProviderIcon
+                  slug={r.provider}
+                  size={14}
+                  className="shrink-0 self-center text-text-accent"
+                />
                 <span className="text-text-accent font-medium shrink-0">{r.provider}</span>
                 <span
                   className="text-text-muted text-[10px] truncate"
@@ -138,13 +144,20 @@ export function CacheTable({
                 </span>
               </div>
             ) : (
-              <div className="min-w-0">
-                <div className="text-text-accent font-medium truncate">{r.provider}</div>
-                <div
-                  className="text-text-muted text-[9.5px] mt-px truncate"
-                  title={r.path !== "—" ? r.path : r.label}
-                >
-                  {r.label}
+              <div className="min-w-0 flex items-center gap-1.5">
+                <ProviderIcon
+                  slug={r.provider}
+                  size={14}
+                  className="shrink-0 text-text-accent"
+                />
+                <div className="min-w-0">
+                  <div className="text-text-accent font-medium truncate">{r.provider}</div>
+                  <div
+                    className="text-text-muted text-[9.5px] mt-px truncate"
+                    title={r.path !== "—" ? r.path : r.label}
+                  >
+                    {r.label}
+                  </div>
                 </div>
               </div>
             )}

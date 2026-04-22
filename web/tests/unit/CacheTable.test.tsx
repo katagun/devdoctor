@@ -70,4 +70,15 @@ describe("CacheTable", () => {
     expect(providerCells[0].textContent).toBe("docker");
     expect(providerCells[1].textContent).toBe("uv-cache");
   });
+
+  it("renders a decorative icon next to each provider slug", () => {
+    const { container } = render(
+      <CacheTable rows={rows} selected={new Set()} onToggle={() => {}} />,
+    );
+    const icons = container.querySelectorAll('svg[aria-hidden="true"]');
+    // One icon per row (2 rows). The Checkbox doesn't contribute an
+    // aria-hidden svg today, but if that ever changes this assertion
+    // documents the intent clearly.
+    expect(icons.length).toBeGreaterThanOrEqual(rows.length);
+  });
 });
