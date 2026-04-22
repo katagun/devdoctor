@@ -4,6 +4,8 @@
 // register them in LOCAL_ICONS; resolver picks them up before the simple-icons
 // fallback.
 
+import { siDocker } from "simple-icons";
+
 export type ResolvedIcon =
   | { kind: "simple-icon"; path: string; viewBox: "0 0 24 24" }
   | { kind: "local"; path: string; viewBox: string }
@@ -13,7 +15,9 @@ export type ResolvedIcon =
 const LOCAL_ICONS: Record<string, ResolvedIcon> = {};
 
 // Exact slug → simple-icons. Populated in Task 6.
-const SIMPLE_ICON_MAP: Record<string, ResolvedIcon> = {};
+const SIMPLE_ICON_MAP: Record<string, ResolvedIcon> = {
+  docker: { kind: "simple-icon", path: siDocker.path, viewBox: "0 0 24 24" },
+};
 
 // Prefix rules, evaluated top-to-bottom. A rule matches when
 //   slug === rule.prefix || slug.startsWith(rule.prefix + "-")
