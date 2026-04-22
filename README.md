@@ -74,20 +74,29 @@ cd web && npm run dev
 
 Open http://localhost:5173.
 
-For a production-style run, build the SPA first (hatchling force-includes the
+For a production-style run, use the deploy helper (hatchling force-includes the
 built bundle into the package on release):
 
 ```bash
-cd web && npm run build && cd ..
-uv cache clean diskdoctor  # drop any stale wheel built from an older dist/
-uv tool install '.[web]' --force
+./scripts/deploy.sh                       # install web deps + build + reinstall
+./scripts/deploy.sh --skip-npm-install    # skip `npm install` when node_modules is fresh
+./scripts/deploy.sh --help                # show what each step does and why
 diskdoctor serve
 ```
 
+The script runs the three steps you otherwise have to remember in order:
+
+```bash
+cd web && npm run build && cd ..
+uv cache clean diskdoctor  # drop the stale wheel built from an older dist/
+uv tool install '.[web]' --force
+```
+
 > Gotcha: `uv tool install --force` reuses a cached wheel if the source path
-> hasn't changed. Whenever you rebuild the SPA and want `diskdoctor serve` to
-> pick it up, clean the cached wheel first (`uv cache clean diskdoctor`),
-> otherwise you'll keep seeing the "assets are not built yet" placeholder.
+> hasn't changed. If you're running the steps by hand, the `uv cache clean`
+> line is the one that's easy to skip — without it you'll keep seeing the
+> "assets are not built yet" placeholder. `scripts/deploy.sh` handles this
+> for you.
 
 ## Development
 
