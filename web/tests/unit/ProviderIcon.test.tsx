@@ -32,4 +32,35 @@ describe("ProviderIcon", () => {
     expect(container.querySelector("rect")).not.toBeNull();
     expect(container.querySelector("path")).toBeNull();
   });
+
+  it("applies the size prop to width and height", () => {
+    const { container } = render(<ProviderIcon slug="docker" size={20} />);
+    const svg = container.querySelector("svg");
+    expect(svg?.getAttribute("width")).toBe("20");
+    expect(svg?.getAttribute("height")).toBe("20");
+  });
+
+  it("defaults to size=14 when omitted", () => {
+    const { container } = render(<ProviderIcon slug="docker" />);
+    const svg = container.querySelector("svg");
+    expect(svg?.getAttribute("width")).toBe("14");
+    expect(svg?.getAttribute("height")).toBe("14");
+  });
+
+  it("forwards className to the <svg>", () => {
+    const { container } = render(
+      <ProviderIcon slug="docker" className="text-text-muted custom-mark" />,
+    );
+    const svg = container.querySelector("svg");
+    expect(svg?.className.baseVal).toContain("text-text-muted");
+    expect(svg?.className.baseVal).toContain("custom-mark");
+  });
+
+  it("forwards className on the placeholder path too", () => {
+    const { container } = render(
+      <ProviderIcon slug="no-such-slug" className="text-text-dim" />,
+    );
+    const svg = container.querySelector("svg");
+    expect(svg?.className.baseVal).toContain("text-text-dim");
+  });
 });
