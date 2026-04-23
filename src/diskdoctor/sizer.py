@@ -1,7 +1,64 @@
 from __future__ import annotations
 
+import grp
 import os
+import pwd
+import stat as stat_mod
+from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
+
+
+@dataclass(frozen=True)
+class StatFields:
+    """Owner/group/permission metadata for a single filesystem path.
+
+    Names are resolved via pwd/grp with a small LRU cache so a full scan only
+    pays a handful of syscalls even across hundreds of entries. `perms` is the
+    `ls -l`-style string from stat.filemode (includes the file-type char).
+    """
+
+    uid: int
+    gid: int
+    mode: int
+    owner: str
+    group: str
+    perms: str
+
+
+@lru_cache(maxsize=256)
+def _owner_name(uid: int) -> str:
+    try:
+        return pwd.getpwuid(uid).pw_name
+    except KeyError:
+        return str(uid)
+
+
+@lru_cache(maxsize=256)
+def _group_name(gid: int) -> str:
+    try:
+        return grp.getgrgid(gid).gr_name
+    except KeyError:
+        return str(gid)
+
+
+def stat_fields(path: Path) -> StatFields | None:
+    """Return owner/group/perms for `path`, or None on missing / permission
+    errors. Uses lstat so symlinks report their own metadata, not the
+    target's — matches how size_path handles symlinks.
+    """
+    try:
+        st = path.lstat()
+    except (FileNotFoundError, PermissionError, OSError):
+        return None
+    return StatFields(
+        uid=st.st_uid,
+        gid=st.st_gid,
+        mode=st.st_mode,
+        owner=_owner_name(st.st_uid),
+        group=_group_name(st.st_gid),
+        perms=stat_mod.filemode(st.st_mode),
+    )
 
 
 def size_path(root: Path) -> tuple[int, list[Path]]:

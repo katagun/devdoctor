@@ -1,6 +1,9 @@
+import os
+import pwd
+import stat as stat_mod
 from pathlib import Path
 
-from diskdoctor.sizer import size_path
+from diskdoctor.sizer import StatFields, size_path, stat_fields
 
 
 def _write(p: Path, data: bytes) -> None:
@@ -138,3 +141,48 @@ def test_size_path_prunes_subdir_on_lstat_error(tmp_path: Path, monkeypatch):
     # Only top.txt was counted; sub was pruned before descent.
     assert size == 5
     assert any(str(bad) in str(p) for p in skipped)
+
+
+def test_stat_fields_returns_data_for_existing_path(tmp_path: Path) -> None:
+    target = tmp_path / "file.txt"
+    target.write_text("hello")
+    fields = stat_fields(target)
+    assert fields is not None
+    assert isinstance(fields, StatFields)
+    # Values should match the live stat.
+    st = target.lstat()
+    assert fields.uid == st.st_uid
+    assert fields.gid == st.st_gid
+    assert fields.mode == st.st_mode
+    assert fields.owner == pwd.getpwuid(st.st_uid).pw_name
+    assert fields.perms == stat_mod.filemode(st.st_mode)
+
+
+def test_stat_fields_returns_none_for_missing_path(tmp_path: Path) -> None:
+    missing = tmp_path / "does-not-exist"
+    assert stat_fields(missing) is None
+
+
+def test_stat_fields_uses_lstat_not_stat(tmp_path: Path) -> None:
+    # A symlink to a file with different mode must report the symlink's
+    # metadata, not the target's — matches size_path's behavior.
+    target = tmp_path / "target.txt"
+    target.write_text("data")
+    os.chmod(target, 0o600)
+    link = tmp_path / "link"
+    link.symlink_to(target)
+    fields = stat_fields(link)
+    assert fields is not None
+    # Symlink modes on macOS/Linux are typically 0o755 or 0o777, never 0o600.
+    # Asserting strict inequality is fragile, so assert the symlink bit is set.
+    assert stat_mod.S_ISLNK(fields.mode)
+
+
+def test_stat_fields_owner_falls_back_to_numeric_for_unknown_uid(tmp_path: Path) -> None:
+    # Pick a uid extremely unlikely to resolve on the host.
+    from diskdoctor.sizer import _group_name, _owner_name
+
+    _owner_name.cache_clear()
+    _group_name.cache_clear()
+    assert _owner_name(999999999) == "999999999"
+    assert _group_name(999999999) == "999999999"
