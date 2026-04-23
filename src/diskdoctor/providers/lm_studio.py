@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-from diskdoctor.providers.base import Provider
+from diskdoctor.providers.base import Provider, _stat_kwargs
 from diskdoctor.sizer import size_path
 from diskdoctor.types import Entry, Risk
 
@@ -86,6 +86,7 @@ def _scan_legacy(root: Path, provider_name: str, risk: Risk) -> list[Entry]:
                     mtime=mtime,
                     risk=risk,
                     recipe=[f"rm -rf {shlex.quote(str(model_dir))}"],
+                    **_stat_kwargs(model_dir),
                 )
             )
     return entries
@@ -136,6 +137,7 @@ def _scan_hub(root: Path, provider_name: str, risk: Risk) -> list[Entry]:
                     mtime=mtime,
                     risk=risk,
                     recipe=recipe,
+                    **_stat_kwargs(model_dir),
                 )
             )
     return entries

@@ -145,3 +145,37 @@ def test_discover_shell_quotes_paths_with_spaces(tmp_path: Path, monkeypatch):
     [e] = PathProvider.from_yaml(spec, FakeShell()).discover()
     # shlex.quote wraps paths with spaces in single quotes
     assert "'" in e.recipe[0]
+
+
+def test_path_provider_entry_includes_stat_fields(tmp_path):
+    """Discovered entries should carry owner/group/perms populated from the
+    resolved path. Verifies the provider-base helper is wired up correctly."""
+    import pwd
+    import sys
+
+    from diskdoctor.types import Risk
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    (cache_dir / "file.bin").write_bytes(b"payload")
+
+    platform_tag = "darwin" if sys.platform == "darwin" else "linux"
+    provider = PathProvider(
+        shell=FakeShell(),
+        name="test-cache",
+        description="tmp cache",
+        platforms=(platform_tag,),
+        risk=Risk.SAFE,
+        raw_paths=(str(cache_dir),),
+        recipe_template=["rm -rf {path}"],
+    )
+    entries = provider.discover()
+    assert len(entries) == 1
+    e = entries[0]
+    st = cache_dir.lstat()
+    assert e.uid == st.st_uid
+    assert e.gid == st.st_gid
+    assert e.mode == st.st_mode
+    assert e.owner == pwd.getpwuid(st.st_uid).pw_name
+    assert e.perms is not None
+    assert e.perms.startswith("d")  # directory

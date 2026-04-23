@@ -14,7 +14,7 @@ import os
 import shlex
 from pathlib import Path
 
-from diskdoctor.providers.base import Provider
+from diskdoctor.providers.base import Provider, _stat_kwargs
 from diskdoctor.types import Entry, Risk
 
 # Files below this threshold aren't worth surfacing individually. Tuned to
@@ -86,6 +86,7 @@ class LargeFilesProvider(Provider):
                         mtime=mtime,
                         risk=self.risk,
                         recipe=[f"echo '{msg}'"],
+                        **_stat_kwargs(file_path),
                     )
                 )
         return entries

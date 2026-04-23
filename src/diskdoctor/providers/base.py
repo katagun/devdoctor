@@ -10,7 +10,7 @@ from pathlib import Path as _Path
 from typing import Any, ClassVar
 
 from diskdoctor.ports import Shell
-from diskdoctor.sizer import size_path
+from diskdoctor.sizer import size_path, stat_fields
 from diskdoctor.types import Entry, Risk
 
 
@@ -50,6 +50,26 @@ def _normalize_platform(raw: str) -> str:
 
 
 _ALLOWED_PLATFORMS = frozenset({"darwin", "linux"})
+
+
+def _stat_kwargs(path: _Path) -> dict[str, object]:
+    """Return the stat-field kwargs for Entry(...) construction.
+
+    Empty dict when stat fails, so callers can use
+    `Entry(..., **_stat_kwargs(p))` unconditionally and let Entry's
+    defaults (None) fill in for missing / permission-denied paths.
+    """
+    fields = stat_fields(path)
+    if fields is None:
+        return {}
+    return {
+        "uid": fields.uid,
+        "gid": fields.gid,
+        "mode": fields.mode,
+        "owner": fields.owner,
+        "group": fields.group,
+        "perms": fields.perms,
+    }
 
 
 @dataclass
@@ -165,6 +185,7 @@ class PathProvider(Provider):
                         mtime=mtime,
                         risk=self.risk,
                         recipe=recipe,
+                        **_stat_kwargs(p),
                     )
                 )
         return entries

@@ -5,7 +5,7 @@ import re
 import shlex
 from pathlib import Path
 
-from diskdoctor.providers.base import Provider
+from diskdoctor.providers.base import Provider, _stat_kwargs
 from diskdoctor.sizer import size_path
 from diskdoctor.types import Entry, Risk
 
@@ -48,6 +48,7 @@ class HuggingFaceProvider(Provider):
                     mtime=mtime,
                     risk=self.risk,
                     recipe=[f"rm -rf {shlex.quote(str(repo))}"],
+                    **_stat_kwargs(repo),
                 )
             )
         return entries

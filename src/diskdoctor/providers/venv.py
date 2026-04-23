@@ -24,7 +24,7 @@ import os
 import shlex
 from pathlib import Path
 
-from diskdoctor.providers.base import Provider
+from diskdoctor.providers.base import Provider, _stat_kwargs
 from diskdoctor.sizer import size_path
 from diskdoctor.types import Entry, Risk
 
@@ -137,6 +137,7 @@ class VenvProvider(Provider):
                         mtime=mtime,
                         risk=self.risk,
                         recipe=[f"rm -rf {shlex.quote(str(real))}"],
+                        **_stat_kwargs(real),
                     )
                 )
         return entries
