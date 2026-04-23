@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -136,3 +137,104 @@ def test_report_filter_combines_with_and():
     filtered = r.filter(risks={Risk.SAFE}, min_size=150, providers={"b"})
     # Only b/1 is SAFE AND >=150 AND provider=b
     assert [(e.provider, e.id, e.size_bytes) for e in filtered.entries] == [("b", "1", 200)]
+
+
+def _make_entry(**overrides) -> Entry:
+    base = {
+        "provider": "test",
+        "id": "e1",
+        "path": Path("/tmp/foo"),
+        "label": "/tmp/foo",
+        "size_bytes": 100,
+        "mtime": 1700000000.0,
+        "risk": Risk.SAFE,
+        "recipe": ["rm -rf /tmp/foo"],
+    }
+    base.update(overrides)
+    return Entry(**base)
+
+
+def test_entry_new_fields_default_to_none() -> None:
+    e = _make_entry()
+    assert e.uid is None
+    assert e.gid is None
+    assert e.mode is None
+    assert e.owner is None
+    assert e.group is None
+    assert e.perms is None
+
+
+def test_entry_new_fields_accept_values() -> None:
+    e = _make_entry(uid=501, gid=20, mode=16877, owner="shamil", group="staff", perms="drwxr-xr-x")
+    assert e.uid == 501
+    assert e.gid == 20
+    assert e.mode == 16877
+    assert e.owner == "shamil"
+    assert e.group == "staff"
+    assert e.perms == "drwxr-xr-x"
+
+
+def _make_report(entries: list[Entry]) -> Report:
+    return Report(
+        entries=entries,
+        scanned_at=datetime(2026, 4, 23, 12, 0, 0, tzinfo=UTC),
+        hostname="test-host",
+        platform="darwin",
+    )
+
+
+def test_report_round_trip_preserves_new_fields() -> None:
+    e = _make_entry(uid=501, gid=20, mode=16877, owner="shamil", group="staff", perms="drwxr-xr-x")
+    raw = _make_report([e]).to_json()
+    restored = Report.from_json(raw)
+    assert len(restored.entries) == 1
+    r = restored.entries[0]
+    assert r.uid == 501
+    assert r.gid == 20
+    assert r.mode == 16877
+    assert r.owner == "shamil"
+    assert r.group == "staff"
+    assert r.perms == "drwxr-xr-x"
+
+
+def test_report_round_trip_entry_without_stat_fields() -> None:
+    e = _make_entry(path=None)  # class-based provider entry (e.g. ollama model)
+    raw = _make_report([e]).to_json()
+    restored = Report.from_json(raw)
+    r = restored.entries[0]
+    assert r.uid is None
+    assert r.owner is None
+    assert r.perms is None
+
+
+def test_old_snapshot_without_new_fields_deserializes_with_none() -> None:
+    # Simulate a snapshot from a pre-feature version: no uid/gid/mode/owner/group/perms keys.
+    payload = {
+        "schema_version": 1,
+        "entries": [
+            {
+                "provider": "test",
+                "id": "e1",
+                "path": "/tmp/foo",
+                "label": "/tmp/foo",
+                "size_bytes": 100,
+                "mtime": 1700000000.0,
+                "risk": "safe",
+                "recipe": ["rm -rf /tmp/foo"],
+            }
+        ],
+        "scanned_at": "2026-04-23T12:00:00+00:00",
+        "hostname": "test-host",
+        "platform": "darwin",
+        "note": None,
+        "skipped_paths": [],
+    }
+    restored = Report.from_json(json.dumps(payload))
+    assert len(restored.entries) == 1
+    r = restored.entries[0]
+    assert r.uid is None
+    assert r.gid is None
+    assert r.mode is None
+    assert r.owner is None
+    assert r.group is None
+    assert r.perms is None

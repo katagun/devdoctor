@@ -31,6 +31,15 @@ class Entry:
     mtime: float | None
     risk: Risk
     recipe: list[str]
+    # Stat-derived fields. Populated when the entry is backed by a real
+    # filesystem path; None for class-based providers whose entries are
+    # logical identifiers (ollama models, docker images).
+    uid: int | None = None
+    gid: int | None = None
+    mode: int | None = None
+    owner: str | None = None  # login name, resolved via pwd.getpwuid
+    group: str | None = None  # group name, resolved via grp.getgrgid
+    perms: str | None = None  # stat.filemode string, e.g. "drwxr-xr-x"
 
 
 @dataclass(frozen=True)
@@ -131,6 +140,12 @@ class Report:
                 "mtime": e.mtime,
                 "risk": e.risk.value,
                 "recipe": list(e.recipe),
+                "uid": e.uid,
+                "gid": e.gid,
+                "mode": e.mode,
+                "owner": e.owner,
+                "group": e.group,
+                "perms": e.perms,
             }
 
         payload = {
@@ -157,6 +172,12 @@ class Report:
                 mtime=e["mtime"],
                 risk=Risk(e["risk"]),
                 recipe=list(e["recipe"]),
+                uid=e.get("uid"),
+                gid=e.get("gid"),
+                mode=e.get("mode"),
+                owner=e.get("owner"),
+                group=e.get("group"),
+                perms=e.get("perms"),
             )
             for e in payload["entries"]
         ]
