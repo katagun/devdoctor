@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
+import type { ColumnId } from "@/components/CacheTable/columns";
+import { COLUMNS } from "@/components/CacheTable/columns";
 
 const KEY = "diskdoctor.settings.v1";
 
@@ -53,6 +55,7 @@ export interface Settings {
   theme: Theme;
   sidebarWidth: number;
   sidebarExpandedWidth: number;
+  scanTableHiddenColumns: ColumnId[];
 }
 
 const DEFAULTS: Settings = {
@@ -62,6 +65,7 @@ const DEFAULTS: Settings = {
   theme: "system",
   sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
   sidebarExpandedWidth: SIDEBAR_DEFAULT_WIDTH,
+  scanTableHiddenColumns: [],
 };
 
 function read(): Settings {
@@ -111,6 +115,15 @@ function read(): Settings {
       sidebarExpandedWidth = SIDEBAR_DEFAULT_WIDTH;
     }
 
+    const knownColumnIds = new Set<string>(COLUMNS.map((c) => c.id));
+    const scanTableHiddenColumns: ColumnId[] =
+      Array.isArray(parsed.scanTableHiddenColumns)
+        ? parsed.scanTableHiddenColumns.filter(
+            (v: unknown): v is ColumnId =>
+              typeof v === "string" && knownColumnIds.has(v),
+          )
+        : DEFAULTS.scanTableHiddenColumns;
+
     return {
       minSizeBytes,
       cadence,
@@ -118,6 +131,7 @@ function read(): Settings {
       theme,
       sidebarWidth,
       sidebarExpandedWidth,
+      scanTableHiddenColumns,
     };
   } catch {
     return DEFAULTS;

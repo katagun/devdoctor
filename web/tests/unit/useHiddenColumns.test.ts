@@ -1,0 +1,66 @@
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+beforeEach(() => {
+  localStorage.clear();
+  vi.resetModules();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("useHiddenColumns", () => {
+  it("defaults to every column visible", async () => {
+    const { useHiddenColumns } = await import("@/hooks/useHiddenColumns");
+    const { result } = renderHook(() => useHiddenColumns());
+    expect(result.current.hiddenColumns.size).toBe(0);
+    expect(result.current.isVisible("stale")).toBe(true);
+    expect(result.current.isVisible("owner")).toBe(true);
+  });
+
+  it("setHidden('stale', true) persists to localStorage and hides the column", async () => {
+    const { useHiddenColumns } = await import("@/hooks/useHiddenColumns");
+    const { result } = renderHook(() => useHiddenColumns());
+    act(() => result.current.setHidden("stale", true));
+    expect(result.current.isVisible("stale")).toBe(false);
+    const stored = JSON.parse(localStorage.getItem("diskdoctor.settings.v1") ?? "{}");
+    expect(stored.scanTableHiddenColumns).toContain("stale");
+  });
+
+  it("setHidden('stale', false) un-hides and removes from storage", async () => {
+    localStorage.setItem(
+      "diskdoctor.settings.v1",
+      JSON.stringify({ scanTableHiddenColumns: ["stale"] }),
+    );
+    const { useHiddenColumns } = await import("@/hooks/useHiddenColumns");
+    const { result } = renderHook(() => useHiddenColumns());
+    expect(result.current.isVisible("stale")).toBe(false);
+    act(() => result.current.setHidden("stale", false));
+    expect(result.current.isVisible("stale")).toBe(true);
+    const stored = JSON.parse(localStorage.getItem("diskdoctor.settings.v1") ?? "{}");
+    expect(stored.scanTableHiddenColumns).not.toContain("stale");
+  });
+
+  it("isVisible('provider') is always true even if someone hand-edits it into the hidden set", async () => {
+    localStorage.setItem(
+      "diskdoctor.settings.v1",
+      JSON.stringify({ scanTableHiddenColumns: ["provider"] }),
+    );
+    const { useHiddenColumns } = await import("@/hooks/useHiddenColumns");
+    const { result } = renderHook(() => useHiddenColumns());
+    expect(result.current.isVisible("provider")).toBe(true);
+  });
+
+  it("unknown column ids in stored settings are dropped on read", async () => {
+    localStorage.setItem(
+      "diskdoctor.settings.v1",
+      JSON.stringify({ scanTableHiddenColumns: ["stale", "unknown_column", "owner"] }),
+    );
+    const { useHiddenColumns } = await import("@/hooks/useHiddenColumns");
+    const { result } = renderHook(() => useHiddenColumns());
+    expect(result.current.isVisible("stale")).toBe(false);
+    expect(result.current.isVisible("owner")).toBe(false);
+    expect(result.current.isVisible("size")).toBe(true);
+  });
+});
