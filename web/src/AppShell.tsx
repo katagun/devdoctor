@@ -1,7 +1,9 @@
 import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./components/Sidebar";
+import { UnsupportedDevice } from "./components/UnsupportedDevice";
 import { useApplyTheme } from "./hooks/useApplyTheme";
+import { useDeviceSupport } from "./lib/deviceSupport";
 import { useSidebarWidth } from "./hooks/useSidebarWidth";
 
 const MAC_LIKE = /^Mac/.test(
@@ -17,6 +19,15 @@ function isEditableTarget(target: EventTarget | null): boolean {
 
 export default function AppShell() {
   useApplyTheme();
+  const support = useDeviceSupport();
+
+  // Early return gate. A given browser session is either always blocked or
+  // always supported — navigator.userAgent doesn't change within a mount —
+  // so this never violates rules-of-hooks about consistent hook call order.
+  if (support.kind === "blocked") {
+    return <UnsupportedDevice detected={support.detected} />;
+  }
+
   const { width, toggle, forceCollapsedByViewport } = useSidebarWidth();
 
   useEffect(() => {
