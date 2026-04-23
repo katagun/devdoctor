@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { CacheTable } from "@/components/CacheTable";
 import { CleanupWizard } from "@/components/CleanupWizard";
+import { ColumnsPicker } from "@/components/ColumnsPicker";
 import { TopStats } from "@/components/TopStats";
 import { useScan } from "@/hooks/useScan";
 import { useProviders } from "@/hooks/useProviders";
@@ -95,6 +96,7 @@ export default function Scan() {
         ))}
 
         <div className="ml-auto flex items-center gap-3 font-mono text-[10px] text-text-dim">
+          <ColumnsPicker />
           {data?.scannedAt && (
             <span title={data.scannedAt}>
               scanned {timeAgo(data.scannedAt)}

@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { Checkbox } from "./Checkbox";
 import { RiskBadge } from "./RiskBadge";
-import { humanBytes, staleness, RiskValue } from "@/lib/format";
 import { ProviderIcon } from "./ProviderIcon";
+import { humanBytes, staleness, RiskValue } from "@/lib/format";
+import { COLUMNS, type ColumnDef, type SortKey } from "./CacheTable/columns";
+import { useHiddenColumns } from "@/hooks/useHiddenColumns";
 
 export interface CacheTableRow {
   id: string;
@@ -13,19 +15,19 @@ export interface CacheTableRow {
   risk: RiskValue;
   mtime: number | null;
   recipeHint: string;
+  owner: string | null;
+  group: string | null;
+  perms: string | null;
 }
 
-type SortKey = "provider" | "size" | "risk" | "stale";
 type SortDir = "asc" | "desc";
 
-// Rank risk so "desc" shows DANGER at top.
 const RISK_RANK: Record<RiskValue, number> = {
   safe: 0,
   reclaimable: 1,
   dangerous: 2,
 };
 
-// Click a fresh column → jump to the "interesting" end.
 const DEFAULT_DIR: Record<SortKey, SortDir> = {
   provider: "asc",
   size: "desc",
@@ -66,9 +68,6 @@ function makeComparator(
 
 export type CacheTableDensity = "sparse" | "dense";
 
-// Column layout — provider+detail flexes, the rest are fixed so sizes align.
-const COLS = "grid-cols-[28px_1fr_90px_96px_64px]";
-
 export function CacheTable({
   rows,
   selected,
@@ -80,10 +79,21 @@ export function CacheTable({
   onToggle: (id: string, next: boolean) => void;
   density?: CacheTableDensity;
 }) {
+  const { isVisible } = useHiddenColumns();
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({
     key: "size",
     dir: "desc",
   });
+
+  const visibleColumns: ColumnDef[] = useMemo(
+    () => COLUMNS.filter((c) => isVisible(c.id)),
+    [isVisible],
+  );
+
+  const gridTemplate = useMemo(
+    () => `28px ${visibleColumns.map((c) => c.width).join(" ")}`,
+    [visibleColumns],
+  );
 
   const sortedRows = useMemo(() => {
     const nowSecs = Date.now() / 1000;
@@ -108,12 +118,32 @@ export function CacheTable({
 
   return (
     <div className="font-mono text-[11px]">
-      <div className={`grid ${COLS} gap-3 px-4 py-2 border-b border-border`}>
+      <div
+        className="grid gap-3 px-4 py-2 border-b border-border"
+        style={{ gridTemplateColumns: gridTemplate }}
+      >
         <div />
-        <SortHeader label="provider" col="provider" sort={sort} onClick={headerClick} />
-        <SortHeader label="size" col="size" align="right" sort={sort} onClick={headerClick} />
-        <SortHeader label="risk" col="risk" sort={sort} onClick={headerClick} />
-        <SortHeader label="stale" col="stale" align="right" sort={sort} onClick={headerClick} />
+        {visibleColumns.map((col) =>
+          col.sortable ? (
+            <SortHeader
+              key={col.id}
+              label={col.label}
+              col={col.id as SortKey}
+              align={col.align}
+              sort={sort}
+              onClick={headerClick}
+            />
+          ) : (
+            <div
+              key={col.id}
+              className={`uppercase tracking-widest text-[9.5px] text-text-muted ${
+                col.align === "right" ? "flex justify-end" : ""
+              }`}
+            >
+              {col.label}
+            </div>
+          ),
+        )}
       </div>
       {sortedRows.map((r) => {
         const isSelected = selected.has(r.id);
@@ -121,60 +151,99 @@ export function CacheTable({
         return (
           <div
             key={r.id}
-            className={`grid ${COLS} gap-3 px-4 ${rowPad} items-center border-b border-border-subtle hover:bg-bg-elev-1`}
+            className={`grid gap-3 px-4 ${rowPad} items-center border-b border-border-subtle hover:bg-bg-elev-1`}
+            style={{ gridTemplateColumns: gridTemplate }}
           >
             <Checkbox
               checked={isSelected}
               onChange={(next) => onToggle(r.id, next)}
               label={`select ${r.provider} ${r.label}`}
             />
-            {density === "dense" ? (
-              <div className="flex items-baseline gap-1.5 min-w-0">
-                <ProviderIcon
-                  slug={r.provider}
-                  size={14}
-                  className="shrink-0 self-center text-text-accent"
-                />
-                <span className="text-text-accent font-medium shrink-0">{r.provider}</span>
-                <span
-                  className="text-text-muted text-[10px] truncate"
-                  title={r.path !== "—" ? r.path : r.label}
-                >
-                  {r.label}
-                </span>
-              </div>
-            ) : (
-              <div className="min-w-0 flex items-center gap-1.5">
-                <ProviderIcon
-                  slug={r.provider}
-                  size={14}
-                  className="shrink-0 text-text-accent"
-                />
-                <div className="min-w-0">
-                  <div className="text-text-accent font-medium truncate">{r.provider}</div>
-                  <div
-                    className="text-text-muted text-[9.5px] mt-px truncate"
-                    title={r.path !== "—" ? r.path : r.label}
-                  >
-                    {r.label}
-                  </div>
-                </div>
-              </div>
-            )}
-            <div className="text-right tabular-nums font-medium">
-              {humanBytes(r.size_bytes)}
-            </div>
-            <div>
-              <RiskBadge risk={r.risk} />
-            </div>
-            <div className="text-right text-text-muted text-[10px] tabular-nums">
-              {r.mtime === null ? "" : staleness(r.mtime)}
-            </div>
+            {visibleColumns.map((col) => (
+              <Cell key={col.id} col={col} row={r} density={density} />
+            ))}
           </div>
         );
       })}
     </div>
   );
+}
+
+function Cell({
+  col,
+  row,
+  density,
+}: {
+  col: ColumnDef;
+  row: CacheTableRow;
+  density: CacheTableDensity;
+}) {
+  switch (col.id) {
+    case "provider":
+      return density === "dense" ? (
+        <div className="flex items-baseline gap-1.5 min-w-0">
+          <ProviderIcon
+            slug={row.provider}
+            size={14}
+            className="shrink-0 self-center text-text-accent"
+          />
+          <span className="text-text-accent font-medium shrink-0">{row.provider}</span>
+          <span
+            className="text-text-muted text-[10px] truncate"
+            title={row.path !== "—" ? row.path : row.label}
+          >
+            {row.label}
+          </span>
+        </div>
+      ) : (
+        <div className="min-w-0 flex items-center gap-1.5">
+          <ProviderIcon
+            slug={row.provider}
+            size={14}
+            className="shrink-0 text-text-accent"
+          />
+          <div className="min-w-0">
+            <div className="text-text-accent font-medium truncate">{row.provider}</div>
+            <div
+              className="text-text-muted text-[9.5px] mt-px truncate"
+              title={row.path !== "—" ? row.path : row.label}
+            >
+              {row.label}
+            </div>
+          </div>
+        </div>
+      );
+    case "size":
+      return (
+        <div className="text-right tabular-nums font-medium">
+          {humanBytes(row.size_bytes)}
+        </div>
+      );
+    case "risk":
+      return (
+        <div>
+          <RiskBadge risk={row.risk} />
+        </div>
+      );
+    case "stale":
+      return (
+        <div className="text-right text-text-muted text-[10px] tabular-nums">
+          {row.mtime === null ? "" : staleness(row.mtime)}
+        </div>
+      );
+    case "owner":
+      return (
+        <div className="text-text-dim text-[10.5px] truncate">
+          {row.owner ?? "—"}
+        </div>
+      );
+    case "perms":
+      return (
+        <div className="text-text-dim text-[10px] font-mono tabular-nums">
+          {row.perms ?? "—"}
+        </div>
+      );
+  }
 }
 
 function SortHeader({
@@ -191,7 +260,6 @@ function SortHeader({
   onClick: (col: SortKey) => void;
 }) {
   const active = sort.key === col;
-  // Small triangles sit on the baseline; full-size ones float above it.
   const caret = active ? (sort.dir === "asc" ? "▴" : "▾") : "";
   const ariaSort: "ascending" | "descending" | "none" = active
     ? sort.dir === "asc"

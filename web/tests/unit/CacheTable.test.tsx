@@ -1,6 +1,7 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { CacheTable, CacheTableRow } from "@/components/CacheTable";
+import { __testReloadSettings } from "@/hooks/useSettings";
 
 const rows: CacheTableRow[] = [
   {
@@ -12,6 +13,9 @@ const rows: CacheTableRow[] = [
     risk: "reclaimable",
     mtime: null,
     recipeHint: "echo 'use docker desktop'",
+    owner: "shamil",
+    group: "staff",
+    perms: "drwxr-xr-x",
   },
   {
     id: "2",
@@ -22,10 +26,18 @@ const rows: CacheTableRow[] = [
     risk: "safe",
     mtime: null,
     recipeHint: "uv cache clean",
+    owner: null,
+    group: null,
+    perms: null,
   },
 ];
 
 describe("CacheTable", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    __testReloadSettings();
+  });
+
   it("renders rows and totals", () => {
     render(<CacheTable rows={rows} selected={new Set()} onToggle={() => {}} />);
     expect(screen.getByText(/^docker$/)).toBeInTheDocument();
@@ -80,5 +92,41 @@ describe("CacheTable", () => {
     // aria-hidden svg today, but if that ever changes this assertion
     // documents the intent clearly.
     expect(icons.length).toBeGreaterThanOrEqual(rows.length);
+  });
+
+  it("hides the stale column when it's in hiddenColumns", () => {
+    localStorage.setItem(
+      "diskdoctor.settings.v1",
+      JSON.stringify({ scanTableHiddenColumns: ["stale"] }),
+    );
+    __testReloadSettings();
+    const { container } = render(
+      <CacheTable rows={rows} selected={new Set()} onToggle={() => {}} />,
+    );
+    // The stale column header has uppercase text "STALE" or "stale"; check
+    // that the word "stale" (case-insensitive, word-bounded) isn't present
+    // in the rendered table.
+    const headers = container.querySelectorAll("button[aria-sort]");
+    const headerLabels = Array.from(headers).map((h) => h.textContent?.toLowerCase() ?? "");
+    expect(headerLabels.some((l) => /stale/.test(l))).toBe(false);
+  });
+
+  it("renders owner and perms cells when fields are populated", () => {
+    render(<CacheTable rows={rows} selected={new Set()} onToggle={() => {}} />);
+    expect(screen.getByText("shamil")).toBeInTheDocument();
+    expect(screen.getByText("drwxr-xr-x")).toBeInTheDocument();
+  });
+
+  it("renders — for owner/perms when those fields are null", () => {
+    // Build a row whose owner/perms/group are null.
+    const nullRow = { ...rows[1], id: "null-row", owner: null, group: null, perms: null };
+    const { container } = render(
+      <CacheTable rows={[nullRow]} selected={new Set()} onToggle={() => {}} />,
+    );
+    const dashCount = Array.from(container.querySelectorAll("*")).filter(
+      (el) => el.textContent === "—",
+    ).length;
+    // Owner cell and perms cell both render —.
+    expect(dashCount).toBeGreaterThanOrEqual(2);
   });
 });

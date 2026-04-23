@@ -11,6 +11,9 @@ interface ScanResponseEntry {
   mtime: number | null;
   risk: "safe" | "reclaimable" | "dangerous";
   recipe: string[];
+  owner?: string | null;
+  group?: string | null;
+  perms?: string | null;
 }
 
 interface ScanResponse {
@@ -52,6 +55,9 @@ export function useScan(params: UseScanOptions = {}) {
         risk: e.risk,
         mtime: e.mtime,
         recipeHint: e.recipe[0] ?? "",
+        owner: e.owner ?? null,
+        group: e.group ?? null,
+        perms: e.perms ?? null,
       }));
       return {
         rows,
