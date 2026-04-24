@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from starlette.responses import JSONResponse
 
 from diskdoctor import discovery, history, history_log, registry
@@ -14,13 +15,22 @@ router = APIRouter(prefix="/api")
 
 
 @router.get("/snapshots")
-def list_snapshots() -> list[SnapshotMeta]:
+def list_snapshots(
+    limit: int | None = Query(default=None, ge=1),
+    kind: Literal["auto", "manual", "all"] = Query(default="all"),
+) -> list[SnapshotMeta]:
     out: list[SnapshotMeta] = []
     directory = history.default_snapshot_dir()
     if not directory.exists():
         return out
     for path in sorted(directory.glob("*.json"), reverse=True):
-        report = Report.from_json(path.read_text())
+        try:
+            report = Report.from_json(path.read_text())
+        except Exception:
+            # Malformed file — skip, don't fail the whole listing.
+            continue
+        if kind not in ("all", report.kind.value):
+            continue
         out.append(
             SnapshotMeta(
                 name=path.name,
@@ -30,8 +40,24 @@ def list_snapshots() -> list[SnapshotMeta]:
                 platform=report.platform,
                 note=report.note,
                 total_bytes=report.total_bytes(),
+                kind=report.kind.value,
+                duration_ms=report.duration_ms,
+                entry_count=len(report.entries) if report.kind.value == "manual" else None,
+                per_provider=[
+                    {
+                        "name": pt.name,
+                        "bytes": pt.bytes,
+                        "entries": pt.entries,
+                        "duration_ms": pt.duration_ms,
+                    }
+                    for pt in report.per_provider
+                ]
+                if report.per_provider
+                else None,
             )
         )
+        if limit is not None and len(out) >= limit:
+            break
     return out
 
 

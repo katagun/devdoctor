@@ -57,6 +57,12 @@ class SnapshotMeta(BaseModel):
     platform: str
     note: str | None
     total_bytes: int
+    # Telemetry fields. Optional so v1 snapshot files (no kind/timing data)
+    # serve as manual with duration_ms=None and empty per_provider.
+    kind: Literal["auto", "manual"] = "manual"
+    duration_ms: int | None = None
+    entry_count: int | None = None
+    per_provider: list[dict] | None = None
 
 
 _RISK_VALUES: set[str] = {r.value for r in Risk}
