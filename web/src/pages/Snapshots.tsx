@@ -4,7 +4,7 @@ import { useCreateSnapshot, useSnapshot, useSnapshots } from "@/hooks/useSnapsho
 import type { SnapshotMeta } from "@/hooks/useSnapshots";
 import { useDiff } from "@/hooks/useDiff";
 import { DiskUsageBar } from "@/components/DiskUsageBar";
-import { formatAbsTime, humanBytes, timeAgo } from "@/lib/format";
+import { formatAbsTime, formatMs, humanBytes, timeAgo } from "@/lib/format";
 
 const FLASH_MS = 2000;
 
@@ -147,6 +147,7 @@ export default function Snapshots() {
               const delta = prev ? s.total_bytes - prev.total_bytes : null;
               const slot = slotOf(s.name);
               const flashing = flashName === s.name;
+              const isAuto = s.kind === "auto";
               return (
                 <button
                   key={s.name}
@@ -156,7 +157,9 @@ export default function Snapshots() {
                       ? "bg-bg-safe-tint text-risk-safe"
                       : slot
                         ? "bg-bg-elev-2 text-text"
-                        : "text-text-dim hover:bg-bg-elev-1"
+                        : isAuto
+                          ? "text-text-muted hover:bg-bg-elev-1"
+                          : "text-text-dim hover:bg-bg-elev-1"
                   }`}
                   title={s.scanned_at}
                 >
@@ -165,13 +168,26 @@ export default function Snapshots() {
                       <SlotBadge slot={slot} />
                       <span className="font-medium truncate">{timeAgo(s.scanned_at)}</span>
                     </div>
-                    <span className="tabular-nums text-text font-medium shrink-0">
-                      {humanBytes(s.total_bytes)}
-                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {typeof s.duration_ms === "number" && (
+                        <span className="text-text-muted text-[10px] tabular-nums">
+                          ⏱ <span>{formatMs(s.duration_ms)}</span>
+                        </span>
+                      )}
+                      <span className="tabular-nums text-text font-medium">
+                        {humanBytes(s.total_bytes)}
+                      </span>
+                    </div>
                   </div>
                   <div className="flex items-center justify-between gap-2 mt-1">
                     <div className="text-text-muted text-[10px] truncate">
                       {formatAbsTime(s.scanned_at)}
+                      {s.kind && (
+                        <>
+                          {" · "}
+                          <span className="text-text-muted">{s.kind}</span>
+                        </>
+                      )}
                       {s.note ? (
                         <>
                           {" · "}

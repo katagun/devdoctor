@@ -8,7 +8,8 @@ import { useScan } from "@/hooks/useScan";
 import { useProviders } from "@/hooks/useProviders";
 import { useSelectedProviders } from "@/hooks/useSelectedProviders";
 import { cadenceMs, useSettings } from "@/hooks/useSettings";
-import { humanBytes, RiskValue, timeAgo } from "@/lib/format";
+import { useScanETA } from "@/hooks/useScanETA";
+import { formatMs, humanBytes, RiskValue, timeAgo } from "@/lib/format";
 
 const RISK_CHIPS: Array<{ key: string; label: string; risks: RiskValue[] }> = [
   { key: "all", label: "all", risks: [] },
@@ -41,6 +42,8 @@ export default function Scan() {
     refetchOnMount: !manualOnly,
     explicit: true,
   });
+
+  const eta = useScanETA();
 
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -116,6 +119,7 @@ export default function Scan() {
               <span className="flex items-center gap-1.5">
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-risk-reclaim animate-pulse" />
                 rescanning…
+                {eta && eta.etaMs !== null && <> · ~{formatMs(eta.etaMs)}</>}
               </span>
             ) : (
               "↻ rescan now"
@@ -127,7 +131,10 @@ export default function Scan() {
       <div className="flex-1 overflow-auto">
         {error && <div className="p-8 text-risk-danger font-mono text-sm">Error loading scan: {String(error)}</div>}
         {isLoading && (
-          <div className="p-8 text-text-muted font-mono text-sm animate-pulse">scanning…</div>
+          <div className="p-8 text-text-muted font-mono text-sm animate-pulse">
+            scanning…
+            {eta && eta.etaMs !== null && <> · ~{formatMs(eta.etaMs)}</>}
+          </div>
         )}
         {!isLoading && !error && (
           <CacheTable
