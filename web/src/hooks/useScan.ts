@@ -31,12 +31,16 @@ export interface UseScanOptions {
   // Cadence control — maps to React Query's staleTime. `Infinity` + refetchOnMount=false == manual only.
   staleTime?: number;
   refetchOnMount?: boolean;
+  /** When true, this scan writes an auto-snapshot. Set for the cold page
+   * load and explicit "Rescan now"; leave false/undefined for the pending
+   * re-fetches TanStack Query performs on its own. */
+  explicit?: boolean;
 }
 
 export function useScan(params: UseScanOptions = {}) {
-  const { staleTime, refetchOnMount, ...filters } = params;
+  const { staleTime, refetchOnMount, explicit, ...filters } = params;
   return useQuery({
-    queryKey: ["scan", filters],
+    queryKey: ["scan", filters, explicit ? "explicit" : "implicit"],
     staleTime,
     refetchOnMount,
     queryFn: async () => {
@@ -44,6 +48,7 @@ export function useScan(params: UseScanOptions = {}) {
       if (filters.risk) qs.set("risk", filters.risk);
       if (filters.minSize) qs.set("min_size", filters.minSize);
       if (filters.provider) qs.set("provider", filters.provider);
+      if (explicit) qs.set("snapshot", "true");
       const query = qs.toString() ? `?${qs}` : "";
       const raw = await apiFetch<ScanResponse>(`/scan${query}`);
       const rows: CacheTableRow[] = raw.entries.map((e) => ({

@@ -39,6 +39,7 @@ export default function Scan() {
     provider: providerParam,
     staleTime,
     refetchOnMount: !manualOnly,
+    explicit: true,
   });
 
   const queryClient = useQueryClient();
