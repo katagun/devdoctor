@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 from datetime import UTC, datetime
@@ -9,9 +10,9 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from starlette.responses import JSONResponse
 
 from diskdoctor import cleanup as cleanup_mod
-from diskdoctor import discovery, registry
+from diskdoctor import discovery, history, registry
 from diskdoctor.providers.base import PathProvider
-from diskdoctor.types import Report, Risk, ScanFilters
+from diskdoctor.types import Report, Risk, ScanFilters, SnapshotKind
 from diskdoctor.web.models import ProviderInfo, RecipeRequest, RecipeResponse
 
 router = APIRouter(prefix="/api")
@@ -43,6 +44,7 @@ def scan(
     min_size: str | None = Query(default=None),
     risk: str | None = Query(default=None),
     provider: str | None = Query(default=None),
+    snapshot: bool = Query(default=False),
 ) -> JSONResponse:
     filters = ScanFilters(
         min_size_bytes=_parse_size(min_size) if min_size else 0,
@@ -51,6 +53,19 @@ def scan(
     )
     providers_list = registry.load_providers(request.app.state.shell)
     report = discovery.scan(providers_list, filters, datetime.now(UTC))
+    if snapshot:
+        auto_report = dataclasses.replace(report, kind=SnapshotKind.AUTO)
+        try:
+            history.write_snapshot(auto_report, history.default_snapshot_dir())
+            history.prune_auto_snapshots(
+                history.default_snapshot_dir(),
+                keep=history.AUTO_SNAPSHOT_RETENTION,
+            )
+        except OSError:
+            # Disk full / permission denied / whatever — don't fail the
+            # scan response because the auto-snapshot write choked. Client
+            # still gets the scan; next scan will try again.
+            pass
     return JSONResponse(content=_report_to_dict(report))
 
 

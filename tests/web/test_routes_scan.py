@@ -68,3 +68,59 @@ def test_recipe_respects_provider_filter(tmp_path, monkeypatch):
         headers={"Host": "testserver"},
     )
     assert r.status_code == 200
+
+
+def test_scan_without_snapshot_flag_writes_nothing(tmp_path, monkeypatch) -> None:
+    from diskdoctor import history
+
+    monkeypatch.setattr(history, "default_snapshot_dir", lambda: tmp_path)
+
+    client = _client(tmp_path, monkeypatch)
+    resp = client.get("/api/scan", headers={"Host": "testserver"})
+    assert resp.status_code == 200
+    assert list(tmp_path.glob("*.json")) == []
+
+
+def test_scan_with_snapshot_flag_writes_auto(tmp_path, monkeypatch) -> None:
+    from diskdoctor import history
+
+    monkeypatch.setattr(history, "default_snapshot_dir", lambda: tmp_path)
+
+    client = _client(tmp_path, monkeypatch)
+    resp = client.get("/api/scan?snapshot=true", headers={"Host": "testserver"})
+    assert resp.status_code == 200
+    files = list(tmp_path.glob("*.json"))
+    assert len(files) == 1
+    assert files[0].name.endswith("--auto.json")
+
+
+def test_scan_with_snapshot_flag_prunes_to_retention(tmp_path, monkeypatch) -> None:
+    from datetime import UTC, datetime
+
+    from diskdoctor import history
+    from diskdoctor.types import ProviderTiming, Report, SnapshotKind
+
+    monkeypatch.setattr(history, "default_snapshot_dir", lambda: tmp_path)
+    monkeypatch.setattr(history, "AUTO_SNAPSHOT_RETENTION", 3)
+
+    # Seed 5 existing auto-snapshots.
+    for i in range(5):
+        ts = datetime(2026, 4, 24, 10, 0, i, tzinfo=UTC)
+        r = Report(
+            entries=[],
+            scanned_at=ts,
+            hostname="h",
+            platform="darwin",
+            kind=SnapshotKind.AUTO,
+            started_at=ts,
+            duration_ms=10,
+            per_provider=[ProviderTiming("p", 0, 0, 10)],
+        )
+        history.write_snapshot(r, tmp_path)
+
+    client = _client(tmp_path, monkeypatch)
+    resp = client.get("/api/scan?snapshot=true", headers={"Host": "testserver"})
+    assert resp.status_code == 200
+    remaining = sorted(p.name for p in tmp_path.glob("*--auto.json"))
+    # 5 seeded + 1 new = 6; prune(keep=3) leaves 3.
+    assert len(remaining) == 3
