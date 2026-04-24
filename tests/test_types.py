@@ -3,15 +3,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from diskdoctor.types import (
+    SNAPSHOT_SCHEMA_VERSION,
     CleanResult,
     CleanupOpts,
     DiffReport,
     DiffRow,
     Entry,
+    ProviderTiming,
     Report,
     Risk,
     ScanFilters,
     ShellResult,
+    SnapshotKind,
 )
 
 
@@ -238,3 +241,127 @@ def test_old_snapshot_without_new_fields_deserializes_with_none() -> None:
     assert r.owner is None
     assert r.group is None
     assert r.perms is None
+
+
+def _entry(provider: str = "p", size: int = 100) -> Entry:
+    return Entry(
+        provider=provider,
+        id=f"{provider}-1",
+        path=Path("/tmp/x"),
+        label=str(Path("/tmp/x")),
+        size_bytes=size,
+        mtime=1700000000.0,
+        risk=Risk.SAFE,
+        recipe=["rm -rf /tmp/x"],
+    )
+
+
+def _report(**overrides) -> Report:
+    base = {
+        "entries": [_entry()],
+        "scanned_at": datetime(2026, 4, 24, 12, 0, tzinfo=UTC),
+        "hostname": "h",
+        "platform": "darwin",
+    }
+    base.update(overrides)
+    return Report(**base)
+
+
+def test_schema_version_is_2() -> None:
+    assert SNAPSHOT_SCHEMA_VERSION == 2
+
+
+def test_report_defaults_preserve_manual_kind() -> None:
+    r = _report()
+    assert r.kind == SnapshotKind.MANUAL
+    assert r.started_at is None
+    assert r.duration_ms is None
+    assert r.per_provider == []
+
+
+def test_manual_round_trip_emits_full_entries() -> None:
+    started = datetime(2026, 4, 24, 11, 59, 58, tzinfo=UTC)
+    r = _report(
+        started_at=started,
+        duration_ms=1234,
+        per_provider=[ProviderTiming(name="p", bytes=100, entries=1, duration_ms=1234)],
+    )
+    raw = r.to_json()
+    import json
+
+    payload = json.loads(raw)
+    assert payload["schema_version"] == 2
+    assert payload["kind"] == "manual"
+    assert payload["started_at"] == started.isoformat()
+    assert payload["duration_ms"] == 1234
+    assert payload["total_bytes"] == 100
+    assert payload["entry_count"] == 1
+    assert payload["per_provider"] == [
+        {"name": "p", "bytes": 100, "entries": 1, "duration_ms": 1234}
+    ]
+    assert isinstance(payload["entries"], list) and len(payload["entries"]) == 1
+
+    restored = Report.from_json(raw)
+    assert restored.kind == SnapshotKind.MANUAL
+    assert restored.started_at == started
+    assert restored.duration_ms == 1234
+    assert restored.per_provider == r.per_provider
+    assert restored.entries == r.entries
+
+
+def test_auto_round_trip_omits_entries() -> None:
+    r = _report(
+        kind=SnapshotKind.AUTO,
+        started_at=datetime(2026, 4, 24, 11, 59, 58, tzinfo=UTC),
+        duration_ms=500,
+        per_provider=[ProviderTiming(name="p", bytes=100, entries=1, duration_ms=500)],
+    )
+    raw = r.to_json()
+    import json
+
+    payload = json.loads(raw)
+    assert payload["kind"] == "auto"
+    assert payload["entries"] is None
+    # total_bytes and entry_count are still emitted.
+    assert payload["total_bytes"] == 100
+    assert payload["entry_count"] == 1
+
+    restored = Report.from_json(raw)
+    assert restored.kind == SnapshotKind.AUTO
+    # from_json normalizes `entries: null` into an empty list so callers that
+    # iterate `entries` still work.
+    assert restored.entries == []
+
+
+def test_v1_snapshot_deserializes_as_manual_without_timings() -> None:
+    import json
+
+    payload = {
+        "schema_version": 1,
+        "entries": [],
+        "scanned_at": "2026-04-24T12:00:00+00:00",
+        "hostname": "h",
+        "platform": "darwin",
+        "note": None,
+        "skipped_paths": [],
+    }
+    restored = Report.from_json(json.dumps(payload))
+    assert restored.kind == SnapshotKind.MANUAL
+    assert restored.started_at is None
+    assert restored.duration_ms is None
+    assert restored.per_provider == []
+
+
+def test_filter_preserves_kind_and_timings() -> None:
+    started = datetime(2026, 4, 24, 11, 59, 58, tzinfo=UTC)
+    r = _report(
+        kind=SnapshotKind.AUTO,
+        started_at=started,
+        duration_ms=777,
+        per_provider=[ProviderTiming(name="p", bytes=100, entries=1, duration_ms=777)],
+    )
+    filtered = r.filter(min_size=50)
+    assert filtered.kind == SnapshotKind.AUTO
+    assert filtered.started_at == started
+    assert filtered.duration_ms == 777
+    assert filtered.per_provider == r.per_provider

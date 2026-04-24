@@ -60,7 +60,7 @@ def test_snapshot_includes_schema_version(tmp_path: Path):
     ts = datetime(2026, 4, 18, 12, 0, 0, tzinfo=UTC)
     p = write_snapshot(_rep(ts), tmp_path)
     payload = _json.loads(p.read_text())
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
 
 
 def test_snapshot_round_trip(tmp_path: Path):

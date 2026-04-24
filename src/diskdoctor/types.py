@@ -12,13 +12,26 @@ from typing import Literal
 # to the Report format would confuse old readers (e.g. renaming/removing a
 # field). Purely additive changes don't need a bump — unknown keys are ignored
 # on read.
-SNAPSHOT_SCHEMA_VERSION = 1
+SNAPSHOT_SCHEMA_VERSION = 2
 
 
 class Risk(StrEnum):
     SAFE = "safe"
     RECLAIMABLE = "reclaimable"
     DANGEROUS = "dangerous"
+
+
+class SnapshotKind(StrEnum):
+    AUTO = "auto"
+    MANUAL = "manual"
+
+
+@dataclass(frozen=True)
+class ProviderTiming:
+    name: str
+    bytes: int
+    entries: int
+    duration_ms: int
 
 
 @dataclass(frozen=True)
@@ -96,6 +109,12 @@ class Report:
     platform: str
     note: str | None = None
     skipped_paths: list[str] = field(default_factory=list)
+    # Telemetry — defaults preserve the pre-v2 semantics so ad-hoc callers
+    # (tests, CLI) that construct Report by hand keep working unchanged.
+    kind: SnapshotKind = SnapshotKind.MANUAL
+    started_at: datetime | None = None
+    duration_ms: int | None = None
+    per_provider: list[ProviderTiming] = field(default_factory=list)
 
     def total_bytes(self) -> int:
         return sum(e.size_bytes for e in self.entries)
@@ -127,6 +146,10 @@ class Report:
             platform=self.platform,
             note=self.note,
             skipped_paths=list(self.skipped_paths),
+            kind=self.kind,
+            started_at=self.started_at,
+            duration_ms=self.duration_ms,
+            per_provider=list(self.per_provider),
         )
 
     def to_json(self) -> str:
@@ -148,13 +171,35 @@ class Report:
                 "perms": e.perms,
             }
 
+        entries_payload: list[dict[str, object]] | None
+        if self.kind == SnapshotKind.AUTO:
+            entries_payload = None
+        else:
+            entries_payload = [serialize_entry(e) for e in self.entries]
+
+        per_provider_payload = [
+            {
+                "name": pt.name,
+                "bytes": pt.bytes,
+                "entries": pt.entries,
+                "duration_ms": pt.duration_ms,
+            }
+            for pt in self.per_provider
+        ]
+
         payload = {
             "schema_version": SNAPSHOT_SCHEMA_VERSION,
-            "entries": [serialize_entry(e) for e in self.entries],
+            "kind": self.kind.value,
             "scanned_at": self.scanned_at.isoformat(),
+            "started_at": self.started_at.isoformat() if self.started_at is not None else None,
+            "duration_ms": self.duration_ms,
             "hostname": self.hostname,
             "platform": self.platform,
             "note": self.note,
+            "total_bytes": self.total_bytes(),
+            "entry_count": len(self.entries),
+            "per_provider": per_provider_payload,
+            "entries": entries_payload,
             "skipped_paths": list(self.skipped_paths),
         }
         return json.dumps(payload, indent=2, sort_keys=True)
@@ -162,6 +207,10 @@ class Report:
     @classmethod
     def from_json(cls, data: str) -> Report:
         payload = json.loads(data)
+        # `entries` may be `null` for auto-snapshots. Callers expecting a list
+        # get an empty list — iterating an auto-snapshot's entries is legal
+        # but yields nothing.
+        raw_entries = payload.get("entries") or []
         entries = [
             Entry(
                 provider=e["provider"],
@@ -179,8 +228,25 @@ class Report:
                 group=e.get("group"),
                 perms=e.get("perms"),
             )
-            for e in payload["entries"]
+            for e in raw_entries
         ]
+        kind_raw = payload.get("kind", "manual")
+        kind = SnapshotKind(kind_raw) if kind_raw in {"auto", "manual"} else SnapshotKind.MANUAL
+
+        started_raw = payload.get("started_at")
+        started_at = datetime.fromisoformat(started_raw) if started_raw else None
+
+        per_provider_raw = payload.get("per_provider") or []
+        per_provider = [
+            ProviderTiming(
+                name=pt["name"],
+                bytes=pt["bytes"],
+                entries=pt["entries"],
+                duration_ms=pt["duration_ms"],
+            )
+            for pt in per_provider_raw
+        ]
+
         return cls(
             entries=entries,
             scanned_at=datetime.fromisoformat(payload["scanned_at"]),
@@ -188,6 +254,10 @@ class Report:
             platform=payload["platform"],
             note=payload.get("note"),
             skipped_paths=list(payload.get("skipped_paths", [])),
+            kind=kind,
+            started_at=started_at,
+            duration_ms=payload.get("duration_ms"),
+            per_provider=per_provider,
         )
 
 
