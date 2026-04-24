@@ -11,35 +11,64 @@ from diskdoctor.types import DiffReport, DiffRow, Report
 def write_snapshot(report: Report, directory: Path) -> Path:
     """Write a snapshot atomically.
 
-    Writes to ``<name>.json.tmp`` first, then ``os.replace`` to the final
-    name — POSIX guarantees rename is atomic within a single filesystem,
-    so a reader either sees the old file or the fully-written new one,
-    never a torn half. A SIGKILL or power loss during the temp write
-    leaves the tmp behind but never corrupts the real file.
+    Filename includes a --<kind>.json suffix so retention (and Snapshot-page
+    filtering) can glob without reading contents.
     """
     directory.mkdir(parents=True, exist_ok=True)
-    # Filename-safe ISO timestamp (no ':' which is problematic on some FS).
     stamp = report.scanned_at.strftime("%Y-%m-%dT%H-%M-%S")
-    target = directory / f"{stamp}.json"
+    target = directory / f"{stamp}--{report.kind.value}.json"
     tmp = target.with_name(target.name + ".tmp")
     try:
         tmp.write_text(report.to_json())
         os.replace(tmp, target)
     except Exception:
-        # Clean up the stray tmp so we don't leave clutter behind.
         with contextlib.suppress(FileNotFoundError):
             tmp.unlink()
         raise
     return target
 
 
+AUTO_SNAPSHOT_RETENTION = 50
+
+
+def prune_auto_snapshots(directory: Path, keep: int = AUTO_SNAPSHOT_RETENTION) -> list[Path]:
+    """Delete oldest auto-snapshots beyond ``keep``. Manual snapshots are
+    never touched; pre-feature (v1) snapshots without a kind suffix aren't
+    matched by the ``*--auto.json`` glob and so are also safe.
+
+    Returns the list of deleted paths (for logging / tests).
+    """
+    if not directory.exists():
+        return []
+    autos = sorted(directory.glob("*--auto.json"), reverse=True)  # newest first
+    victims = autos[keep:]
+    deleted: list[Path] = []
+    for p in victims:
+        try:
+            p.unlink()
+            deleted.append(p)
+        except (FileNotFoundError, PermissionError):
+            pass
+    return deleted
+
+
 def load_snapshot(path: Path) -> Report:
     return Report.from_json(path.read_text())
 
 
+def _totals_by_provider(report: Report) -> dict[str, int]:
+    """Prefer per_provider totals (v2) when present; fall back to summing
+    entries (v1 files, or any Report built without timings). Returns a
+    provider-name → bytes dict covering every provider seen in the report.
+    """
+    if report.per_provider:
+        return {pt.name: pt.bytes for pt in report.per_provider}
+    return {p: sum(e.size_bytes for e in es) for p, es in report.by_provider().items()}
+
+
 def diff(before: Report, after: Report) -> DiffReport:
-    before_by = {p: sum(e.size_bytes for e in es) for p, es in before.by_provider().items()}
-    after_by = {p: sum(e.size_bytes for e in es) for p, es in after.by_provider().items()}
+    before_by = _totals_by_provider(before)
+    after_by = _totals_by_provider(after)
     providers = sorted(set(before_by) | set(after_by))
     rows: list[DiffRow] = []
     for name in providers:
