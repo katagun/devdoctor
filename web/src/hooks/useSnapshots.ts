@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/api";
 
+export interface ProviderTimingMeta {
+  name: string;
+  bytes: number;
+  entries: number;
+  duration_ms: number;
+}
+
 export interface SnapshotMeta {
   name: string;
   path: string;
@@ -9,6 +16,11 @@ export interface SnapshotMeta {
   platform: string;
   note: string | null;
   total_bytes: number;
+  // Telemetry — optional / nullable for v1 files.
+  kind?: "auto" | "manual";
+  duration_ms?: number | null;
+  entry_count?: number | null;
+  per_provider?: ProviderTimingMeta[] | null;
 }
 
 export function useSnapshots() {

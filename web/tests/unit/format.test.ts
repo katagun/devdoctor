@@ -6,6 +6,7 @@ import {
   parseRecipeHint,
   timeAgo,
   formatAbsTime,
+  formatMs,
 } from "@/lib/format";
 
 describe("humanBytes", () => {
@@ -93,5 +94,31 @@ describe("parseRecipeHint", () => {
   it("does not split on abbreviations like 'e.g.'", () => {
     const h = parseRecipeHint("echo 'Use e.g. docker prune to clean. Then retry.'");
     expect(h.sentences).toEqual(["Use e.g. docker prune to clean.", "Then retry."]);
+  });
+});
+
+describe("formatMs", () => {
+  it("sub-second values", () => {
+    expect(formatMs(0)).toBe("0ms");
+    expect(formatMs(45)).toBe("45ms");
+    expect(formatMs(999)).toBe("999ms");
+  });
+
+  it("seconds", () => {
+    expect(formatMs(1000)).toBe("1.0s");
+    expect(formatMs(4821)).toBe("4.8s");
+    expect(formatMs(59999)).toBe("60.0s");
+  });
+
+  it("minutes plus seconds", () => {
+    expect(formatMs(60000)).toBe("1m 0s");
+    expect(formatMs(75500)).toBe("1m 15s");
+    expect(formatMs(3 * 60 * 1000)).toBe("3m 0s");
+  });
+
+  it("null / negative / NaN return a dash", () => {
+    expect(formatMs(null)).toBe("—");
+    expect(formatMs(-5)).toBe("—");
+    expect(formatMs(Number.NaN)).toBe("—");
   });
 });

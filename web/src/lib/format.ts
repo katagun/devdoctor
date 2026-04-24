@@ -12,6 +12,16 @@ export function humanBytes(n: number): string {
   return `${sign}${v.toFixed(1)}P`;
 }
 
+export function formatMs(ms: number | null): string {
+  if (ms === null || !Number.isFinite(ms) || ms < 0) return "—";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const totalSecs = Math.floor(ms / 1000);
+  const m = Math.floor(totalSecs / 60);
+  const s = totalSecs % 60;
+  return `${m}m ${s}s`;
+}
+
 export function staleness(mtime: number | null): string {
   if (mtime === null) return "—";
   const ageDays = (Date.now() / 1000 - mtime) / 86400;
