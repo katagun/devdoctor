@@ -1,3 +1,18 @@
+/** Magnitude tier for a byte count, used to dim/de-emphasize trivial deltas
+ * in the snapshots list so a 14 KB churn doesn't read as visually equal to a
+ * 700 MB cleanup. Thresholds match the units in `humanBytes` (1024-based). */
+export type ByteMagnitude = "trivial" | "notable" | "significant";
+
+const ONE_MIB = 1024 * 1024;
+const ONE_GIB = 1024 * 1024 * 1024;
+
+export function byteMagnitudeTier(bytes: number): ByteMagnitude {
+  const abs = Math.abs(bytes);
+  if (abs < ONE_MIB) return "trivial";
+  if (abs < ONE_GIB) return "notable";
+  return "significant";
+}
+
 export function humanBytes(n: number): string {
   const sign = n < 0 ? "-" : "";
   let v = Math.abs(n);

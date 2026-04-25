@@ -115,8 +115,15 @@ class Report:
     started_at: datetime | None = None
     duration_ms: int | None = None
     per_provider: list[ProviderTiming] = field(default_factory=list)
+    # Override for total_bytes(). Populated by from_json() so auto snapshots —
+    # whose entries list is intentionally dropped on disk — still report the
+    # correct total. Leave None for in-memory Reports; total_bytes() falls back
+    # to summing entries.
+    _total_bytes_override: int | None = None
 
     def total_bytes(self) -> int:
+        if self._total_bytes_override is not None:
+            return self._total_bytes_override
         return sum(e.size_bytes for e in self.entries)
 
     def by_provider(self) -> dict[str, list[Entry]]:
@@ -247,6 +254,12 @@ class Report:
             for pt in per_provider_raw
         ]
 
+        # Trust the persisted total_bytes (auto snapshots persist entries=null
+        # but always emit a correct total_bytes). v1 files that predate the
+        # field fall back to summing the persisted entries.
+        total_bytes_raw = payload.get("total_bytes")
+        total_bytes_override = int(total_bytes_raw) if isinstance(total_bytes_raw, int) else None
+
         return cls(
             entries=entries,
             scanned_at=datetime.fromisoformat(payload["scanned_at"]),
@@ -258,6 +271,7 @@ class Report:
             started_at=started_at,
             duration_ms=payload.get("duration_ms"),
             per_provider=per_provider,
+            _total_bytes_override=total_bytes_override,
         )
 
 

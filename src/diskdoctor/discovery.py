@@ -28,7 +28,12 @@ def scan(
         if not p.available():
             continue
         t0 = time.monotonic()
-        provider_entries = p.discover()
+        # Drop zero-byte entries before they reach the table. They represent
+        # "nothing to reclaim" — most commonly cloud-hosted ollama models
+        # (`ollama list` reports `-` for size, which parses to 0), but also
+        # empty cache directories. Surfacing them is noise that the user
+        # can't act on.
+        provider_entries = [e for e in p.discover() if e.size_bytes > 0]
         dt_ms = int((time.monotonic() - t0) * 1000)
         entries.extend(provider_entries)
         per_provider.append(

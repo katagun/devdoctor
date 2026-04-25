@@ -234,16 +234,26 @@ function Cell({
     case "owner":
       return (
         <div className="text-text-dim text-[10.5px] truncate">
-          {row.owner ?? "—"}
+          {ownerPermsCell(row.owner, row.path)}
         </div>
       );
     case "perms":
       return (
         <div className="text-text-dim text-[10px] font-mono tabular-nums">
-          {row.perms ?? "—"}
+          {ownerPermsCell(row.perms, row.path)}
         </div>
       );
   }
+}
+
+// Logical entries (ollama models, docker images) report path=null which
+// surfaces here as "—". Those rows have no owner/perms either; rendering
+// "—" in three columns at once made them look broken. Treat null-on-a-pathless-row
+// as deliberately blank; reserve "—" for path-backed rows where stat failed.
+function ownerPermsCell(value: string | null, path: string): string {
+  if (value !== null) return value;
+  if (path === "—") return "";
+  return "—";
 }
 
 function SortHeader({

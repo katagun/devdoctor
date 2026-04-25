@@ -97,7 +97,10 @@ describe("CacheTable", () => {
   it("hides the stale column when it's in hiddenColumns", () => {
     localStorage.setItem(
       "diskdoctor.settings.v1",
-      JSON.stringify({ scanTableHiddenColumns: ["stale"] }),
+      JSON.stringify({
+        scanTableHiddenColumns: ["stale"],
+        scanTableColumnsCustomized: true,
+      }),
     );
     __testReloadSettings();
     const { container } = render(
@@ -111,14 +114,30 @@ describe("CacheTable", () => {
     expect(headerLabels.some((l) => /stale/.test(l))).toBe(false);
   });
 
-  it("renders owner and perms cells when fields are populated", () => {
+  it("renders owner and perms cells when fields are populated and those columns are enabled", () => {
+    // Owner and perms are hidden by default — opt them back in for this test.
+    localStorage.setItem(
+      "diskdoctor.settings.v1",
+      JSON.stringify({
+        scanTableHiddenColumns: [],
+        scanTableColumnsCustomized: true,
+      }),
+    );
+    __testReloadSettings();
     render(<CacheTable rows={rows} selected={new Set()} onToggle={() => {}} />);
     expect(screen.getByText("shamil")).toBeInTheDocument();
     expect(screen.getByText("drwxr-xr-x")).toBeInTheDocument();
   });
 
-  it("renders — for owner/perms when those fields are null", () => {
-    // Build a row whose owner/perms/group are null.
+  it("renders — for owner/perms when those fields are null and the columns are enabled", () => {
+    localStorage.setItem(
+      "diskdoctor.settings.v1",
+      JSON.stringify({
+        scanTableHiddenColumns: [],
+        scanTableColumnsCustomized: true,
+      }),
+    );
+    __testReloadSettings();
     const nullRow = { ...rows[1], id: "null-row", owner: null, group: null, perms: null };
     const { container } = render(
       <CacheTable rows={[nullRow]} selected={new Set()} onToggle={() => {}} />,
@@ -126,7 +145,46 @@ describe("CacheTable", () => {
     const dashCount = Array.from(container.querySelectorAll("*")).filter(
       (el) => el.textContent === "—",
     ).length;
-    // Owner cell and perms cell both render —.
     expect(dashCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("hides owner and perms columns by default", () => {
+    render(<CacheTable rows={rows} selected={new Set()} onToggle={() => {}} />);
+    expect(screen.queryByText("shamil")).not.toBeInTheDocument();
+    expect(screen.queryByText("drwxr-xr-x")).not.toBeInTheDocument();
+  });
+
+  it("renders blank (not —) for owner/perms on logical entries with no path (ollama-style)", () => {
+    localStorage.setItem(
+      "diskdoctor.settings.v1",
+      JSON.stringify({
+        scanTableHiddenColumns: [],
+        scanTableColumnsCustomized: true,
+      }),
+    );
+    __testReloadSettings();
+    const ollamaRow: CacheTableRow = {
+      id: "ollama-granite",
+      provider: "ollama",
+      label: "granite3.1-moe:1b",
+      path: "—", // useScan replaces null with "—" for logical entries.
+      size_bytes: 1_400_000_000,
+      risk: "reclaimable",
+      mtime: null,
+      recipeHint: "ollama rm granite3.1-moe:1b",
+      owner: null,
+      group: null,
+      perms: null,
+    };
+    const { container } = render(
+      <CacheTable rows={[ollamaRow]} selected={new Set()} onToggle={() => {}} />,
+    );
+    // No "—" placeholders should appear on a logical row — they made these
+    // rows look like broken stat-failed rows. Stale already renders empty
+    // when mtime is null.
+    const dashCount = Array.from(container.querySelectorAll("*")).filter(
+      (el) => el.textContent === "—",
+    ).length;
+    expect(dashCount).toBe(0);
   });
 });

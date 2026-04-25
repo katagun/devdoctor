@@ -62,7 +62,7 @@ export default function Providers() {
 
   return (
     <div className="font-mono text-[11px]">
-      <header className="px-6 pt-6 pb-3 flex items-center justify-between gap-4 flex-wrap">
+      <header className="px-6 pt-6 pb-3 flex items-center gap-4 flex-wrap">
         <label className="relative block w-full max-w-[360px] flex-1 min-w-[260px]">
           <input
             type="search"
@@ -85,7 +85,7 @@ export default function Providers() {
           )}
         </label>
 
-        <div className="text-text-dim text-[11px] tabular-nums">
+        <div className="ml-auto text-text-dim text-[11px] tabular-nums">
           <b className="text-text">{enabledCount}</b> of{" "}
           <b className="text-text">{providers.length}</b> enabled
           {query && (
@@ -107,7 +107,7 @@ export default function Providers() {
             aria-label={allOff ? "Enable all providers" : "Disable all providers"}
             disabled={providers.length === 0}
             className={`w-[36px] h-[18px] rounded-full relative transition-colors ${
-              allOn ? "bg-[#2a7f55]" : mixed ? "bg-[#2a7f55]/50" : "bg-bg-control-off"
+              allOn ? "bg-btn-primary-to" : mixed ? "bg-btn-primary-to/50" : "bg-bg-control-off"
             }`}
           >
             <span
@@ -215,7 +215,7 @@ function ProviderRowView({
           aria-pressed={isOn}
           aria-label={`Toggle ${p.name}`}
           className={`w-[30px] h-[16px] rounded-full relative transition-colors ${
-            isOn ? "bg-[#2a7f55]" : "bg-bg-control-off"
+            isOn ? "bg-btn-primary-to" : "bg-bg-control-off"
           }`}
         >
           <span

@@ -45,6 +45,7 @@ def scan(
     risk: str | None = Query(default=None),
     provider: str | None = Query(default=None),
     snapshot: bool = Query(default=False),
+    snapshot_min_interval_ms: int | None = Query(default=None, ge=0),
 ) -> JSONResponse:
     filters = ScanFilters(
         min_size_bytes=_parse_size(min_size) if min_size else 0,
@@ -53,7 +54,7 @@ def scan(
     )
     providers_list = registry.load_providers(request.app.state.shell)
     report = discovery.scan(providers_list, filters, datetime.now(UTC))
-    if snapshot:
+    if snapshot and _should_write_auto_snapshot(snapshot_min_interval_ms):
         auto_report = dataclasses.replace(report, kind=SnapshotKind.AUTO)
         try:
             history.write_snapshot(auto_report, history.default_snapshot_dir())
@@ -67,6 +68,32 @@ def scan(
             # still gets the scan; next scan will try again.
             pass
     return JSONResponse(content=_report_to_dict(report))
+
+
+def _should_write_auto_snapshot(min_interval_ms: int | None) -> bool:
+    """Honour the client's cadence by skipping auto-snapshot writes that
+    fall inside `min_interval_ms` of the most recent auto-snapshot.
+
+    Without this, every filter-chip change on the Scan page writes a fresh
+    auto-snapshot — the cadence's TanStack staleTime only blocks time-based
+    refetches, not new query keys. Returns True when the directory has no
+    prior auto-snapshot, when no rate-limit was requested (None or 0), or
+    when the most recent auto-snapshot is older than the requested window.
+    """
+    if min_interval_ms is None or min_interval_ms <= 0:
+        return True
+    directory = history.default_snapshot_dir()
+    if not directory.exists():
+        return True
+    autos = sorted(directory.glob("*--auto.json"), reverse=True)  # newest first
+    if not autos:
+        return True
+    try:
+        last_mtime = autos[0].stat().st_mtime
+    except OSError:
+        return True
+    age_ms = (datetime.now(UTC).timestamp() - last_mtime) * 1000
+    return age_ms >= min_interval_ms
 
 
 @router.get("/providers")

@@ -63,6 +63,63 @@ def test_available_false_when_binary_missing(monkeypatch):
     assert OllamaProvider(sh).available() is False
 
 
+def test_discover_enriches_entries_with_manifest_stat(tmp_path, monkeypatch):
+    """Each `ollama list` row should pick up real mtime/owner/perms from the
+    on-disk manifest file. Without this enrichment the scan table shows blank
+    age/ownership/permissions for every model — `ollama list` doesn't surface
+    those fields itself.
+    """
+    home = tmp_path / "h"
+    manifest = (
+        home
+        / ".ollama"
+        / "models"
+        / "manifests"
+        / "registry.ollama.ai"
+        / "library"
+        / "llama3"
+        / "8b"
+    )
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text('{"schemaVersion": 2}')
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr("sys.platform", "darwin")
+
+    list_out = (
+        "NAME                    ID              SIZE      MODIFIED\n"
+        "llama3:8b               365c0bd3c000    4.7 GB    2 weeks ago\n"
+    )
+    sh = FakeShell(
+        which_table={"ollama": "/x"},
+        responses={("ollama", "list"): ShellResult(0, list_out, "")},
+    )
+    [e] = OllamaProvider(sh).discover()
+    assert e.path == manifest
+    assert e.mtime is not None
+    # Stat fields populated from the manifest file:
+    assert e.owner is not None
+    assert e.perms is not None and e.perms.startswith("-")  # regular file
+
+
+def test_discover_leaves_path_none_when_manifest_missing(tmp_path, monkeypatch):
+    """Cloud-only or custom-registry models may not have a local manifest;
+    enrichment must fail silently and still produce a usable Entry."""
+    monkeypatch.setenv("HOME", str(tmp_path / "no-such-home"))
+    monkeypatch.setattr("sys.platform", "darwin")
+    list_out = (
+        "NAME                ID              SIZE      MODIFIED\n"
+        "phantom:latest      000             1.0 GB    just now\n"
+    )
+    sh = FakeShell(
+        which_table={"ollama": "/x"},
+        responses={("ollama", "list"): ShellResult(0, list_out, "")},
+    )
+    [e] = OllamaProvider(sh).discover()
+    assert e.path is None
+    assert e.mtime is None
+    assert e.owner is None
+
+
 def test_discover_shell_quotes_suspicious_model_names(monkeypatch):
     """Guard against command injection via a malicious model tag."""
     monkeypatch.setattr("sys.platform", "darwin")

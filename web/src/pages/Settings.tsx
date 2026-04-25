@@ -57,27 +57,24 @@ export default function Settings() {
   }
 
   return (
-    <div className="p-8 max-w-2xl font-mono">
-      <header className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-text text-[18px] font-medium">Settings</h1>
-          <p className="text-text-dim text-[11px] mt-1">
-            Stored locally in your browser.
-          </p>
+    <div className="font-mono">
+      <header className="px-4 py-3 border-b border-border flex items-center gap-4">
+        <h1 className="text-text text-[14px] font-medium">Settings</h1>
+        <span className="text-text-dim text-[11px]">
+          Stored locally in your browser.
+        </span>
+        <div
+          className={`ml-auto text-[10.5px] transition-opacity ${
+            savedFlash ? "opacity-100 text-risk-safe" : "opacity-0"
+          }`}
+        >
+          ● saved
         </div>
-        <div className="flex items-center gap-4">
-          <div
-            className={`text-[10.5px] transition-opacity ${
-              savedFlash ? "opacity-100 text-risk-safe" : "opacity-0"
-            }`}
-          >
-            ● saved
-          </div>
-          <DiskUsageBar />
-        </div>
+        <DiskUsageBar />
       </header>
 
-      <Section
+      <div className="p-8 max-w-2xl">
+        <Section
         title="Appearance"
         description="Light follows the Terminal Refined palette on a warm off-white background; dark is the default neon-on-black. System tracks your OS preference and flips live when you toggle macOS appearance."
       >
@@ -159,18 +156,19 @@ export default function Settings() {
         </div>
       </Section>
 
-      <div className="mt-8 pt-4 border-t border-border flex justify-between items-center">
-        <button
-          onClick={() => {
-            reset();
-            setCustomMb("");
-            setSavedFlash(true);
-          }}
-          className="text-[11px] text-text-dim hover:text-text"
-        >
-          ↺ reset to defaults
-        </button>
-        <span className="text-text-muted text-[10px]">stored in localStorage</span>
+        <div className="mt-8 pt-4 border-t border-border flex justify-between items-center">
+          <button
+            onClick={() => {
+              reset();
+              setCustomMb("");
+              setSavedFlash(true);
+            }}
+            className="text-[11px] text-text-dim hover:text-text"
+          >
+            ↺ reset to defaults
+          </button>
+          <span className="text-text-muted text-[10px]">stored in localStorage</span>
+        </div>
       </div>
     </div>
   );

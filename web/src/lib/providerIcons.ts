@@ -11,6 +11,7 @@ import {
   siFirefox,
   siGooglechrome,
   siArc,
+  siCursor,
   siPython,
   siPypi,
   siPoetry,
@@ -35,6 +36,15 @@ export type ResolvedIcon =
 const UV_PATH =
   "M4 5v8a4 4 0 0 1 8 0V5h-1.5v8a2.5 2.5 0 0 0-5 0V5zM13.5 5h1.5l3 13h-1.5zM19 5h1.5l-3 13H16z";
 const VSCODE_PATH = "M15 2 L5 12 L15 22 L18 22 L8 12 L18 2 Z";
+// Generic monochrome stand-ins for brands not in simple-icons. Designed to
+// be visually distinct from each other (and from the placeholder dot).
+const SLACK_PATH =
+  "M9 3h2v4H9zM13 3h2v4h-2zM9 17h2v4H9zM13 17h2v4h-2zM3 9h4v2H3zM17 9h4v2h-4zM3 13h4v2H3zM17 13h4v2h-4zM9 9h6v6H9z";
+const PLAYWRIGHT_PATH =
+  "M3 4h8v16H3zM13 4h8v16h-8zM5 6v12l5-3V9zM15 6v12l5-3V9z";
+const LM_STUDIO_PATH =
+  "M3 4h2v14h6v2H3zM13 4h2l3 8 3-8h2v16h-2V9l-3 8-3-8v11h-2z";
+const DOWNLOADS_PATH = "M11 3h2v9h4l-5 6-5-6h4zM4 20h16v2H4z";
 
 const localIcon = (path: string): ResolvedIcon => ({
   kind: "local",
@@ -60,9 +70,14 @@ const PREFIX_RULES: ReadonlyArray<{ prefix: string; icon: ResolvedIcon }> = [
   // Local-bundled (phase D).
   { prefix: "uv", icon: localIcon(UV_PATH) },
   { prefix: "vscode", icon: localIcon(VSCODE_PATH) },
+  { prefix: "slack", icon: localIcon(SLACK_PATH) },
+  { prefix: "playwright", icon: localIcon(PLAYWRIGHT_PATH) },
+  { prefix: "lm-studio", icon: localIcon(LM_STUDIO_PATH) },
+  { prefix: "downloads", icon: localIcon(DOWNLOADS_PATH) },
   // simple-icons brand marks.
   { prefix: "arc-browser", icon: si(siArc) },
   { prefix: "chrome", icon: si(siGooglechrome) },
+  { prefix: "cursor", icon: si(siCursor) },
   { prefix: "firefox", icon: si(siFirefox) },
   { prefix: "docker", icon: si(siDocker) },
   { prefix: "huggingface", icon: si(siHuggingface) },

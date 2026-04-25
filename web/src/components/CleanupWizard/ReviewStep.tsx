@@ -37,7 +37,7 @@ export function ReviewStep() {
                   <button
                     onClick={() => toggleEnabled(e.id, !on)}
                     className={`w-[30px] h-[16px] rounded-full relative ${
-                      on ? "bg-[#2a7f55]" : "bg-bg-control-off"
+                      on ? "bg-btn-primary-to" : "bg-bg-control-off"
                     }`}
                   >
                     <span
@@ -92,7 +92,7 @@ export function ReviewStep() {
         <button
           onClick={startJob}
           disabled={state.enabled.size === 0}
-          className="bg-gradient-to-b from-[#3aa670] to-[#2a7f55] text-[#e8fff3] px-4 py-1.5 rounded border border-[#3aa670] font-medium text-[11px] disabled:opacity-50"
+          className="bg-gradient-to-b from-btn-primary-from to-btn-primary-to text-btn-primary-fg px-4 py-1.5 rounded border border-btn-primary-bd font-medium text-[11px] disabled:opacity-50"
         >
           ▸ execute
         </button>

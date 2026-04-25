@@ -5,6 +5,7 @@
   --bg-code:       #060a0f;
   --bg-control-off:#1e2630;
   --bg-safe-tint:  #13241a;
+  --bg-progress:   #1a2128;
   --border:        #1a2128;
   --border-subtle: #10151b;
   --border-strong: #2a3441;
@@ -14,34 +15,76 @@
   --text-muted:    #566876;
   --text-accent:   #9fb5c5;
   --text-path:     #7a8b99;
+  --text-on-accent:#0b0e13;
   --risk-safe:     #7fe4b1;
   --risk-reclaim:  #c4a5ff;
   --risk-danger:   #ff8897;
   --accent:        #7fe4b1;
+  /* Risk badges. Backgrounds use a top→bottom gradient so the chip reads as
+   * a tinted pill on either theme. Foreground stays the corresponding risk
+   * color; border is a mid-tone of the same hue. */
+  --badge-safe-from:    #163a28;
+  --badge-safe-to:      #0f2a1d;
+  --badge-safe-bd:      #2a7f55;
+  --badge-reclaim-from: #2a1f4a;
+  --badge-reclaim-to:   #1f1838;
+  --badge-reclaim-bd:   #5a3fa0;
+  --badge-danger-from:  #3a1520;
+  --badge-danger-to:    #2a0f17;
+  --badge-danger-bd:    #8a2a3a;
+  /* Primary action button (e.g., "clean up"). */
+  --btn-primary-from:   #3aa670;
+  --btn-primary-to:     #2a7f55;
+  --btn-primary-fg:     #e8fff3;
+  --btn-primary-bd:     #3aa670;
+  /* Cleanup wizard header band. */
+  --bg-header-from:     #131827;
+  --bg-header-to:       #0f1219;
   --font-mono:     "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
   --font-ui:       "Inter", system-ui, -apple-system, sans-serif;
 }
 
 :root[data-theme="terminal-refined-light"] {
-  --bg:            #fafaf8;
-  --bg-elev-1:     #f2f2ef;
-  --bg-elev-2:     #e7e7e3;
-  --bg-code:       #f0eeea;
-  --bg-control-off:#dddddb;
-  --bg-safe-tint:  #e3f3ea;
-  --border:        #d8d8d4;
-  --border-subtle: #ededeb;
-  --border-strong: #b5b5b0;
-  --border-danger: #e0a0aa;
-  --text:          #1a1a17;
-  --text-dim:      #555552;
-  --text-muted:    #8a8a87;
-  --text-accent:   #2563a8;
-  --text-path:     #666666;
-  --risk-safe:     #1a7a4a;
-  --risk-reclaim:  #6a45b0;
-  --risk-danger:   #c72e4a;
-  --accent:        #1a7a4a;
+  --bg:            #ffffff;
+  --bg-elev-1:     #f6f7f9;
+  --bg-elev-2:     #eceef2;
+  --bg-code:       #f3f4f6;
+  --bg-control-off:#d8dce2;
+  --bg-safe-tint:  #ecf6f0;
+  --bg-progress:   #e6e8ec;
+  --border:        #e1e4e9;
+  --border-subtle: #eef0f3;
+  --border-strong: #c2c7cf;
+  --border-danger: #d76176;
+  --text:          #181c24;
+  --text-dim:      #4a5260;
+  --text-muted:    #7a8290;
+  --text-accent:   #1f5fa8;
+  --text-path:     #5c6470;
+  --text-on-accent:#ffffff;
+  --risk-safe:     #167d4f;
+  --risk-reclaim:  #6841b8;
+  --risk-danger:   #c52d44;
+  --accent:        #167d4f;
+  /* Risk badges — light pastels tinted with the matching hue, paired with a
+   * darker text color so the contrast is high without screaming. */
+  --badge-safe-from:    #d9eee2;
+  --badge-safe-to:      #c4e3d0;
+  --badge-safe-bd:      #4a9c6e;
+  --badge-reclaim-from: #ede4f6;
+  --badge-reclaim-to:   #ddd0ed;
+  --badge-reclaim-bd:   #8e6abc;
+  --badge-danger-from:  #fbdde2;
+  --badge-danger-to:    #f4c8d0;
+  --badge-danger-bd:    #d76176;
+  /* Primary action button — mid-green works on both themes. */
+  --btn-primary-from:   #2fa066;
+  --btn-primary-to:     #1f7a48;
+  --btn-primary-fg:     #ffffff;
+  --btn-primary-bd:     #1f7a48;
+  /* Cleanup wizard header — soft tint instead of dark navy. */
+  --bg-header-from:     #f0f3f8;
+  --bg-header-to:       #e6eaf1;
   --font-mono:     "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
   --font-ui:       "Inter", system-ui, -apple-system, sans-serif;
 }

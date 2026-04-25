@@ -23,9 +23,9 @@ export function ExecuteStep() {
             {humanBytes(approvedTotal)}
           </b>
         </div>
-        <div className="h-1.5 bg-[#1a2128] rounded mt-2 overflow-hidden">
+        <div className="h-1.5 bg-bg-progress rounded mt-2 overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-risk-safe to-[#2a7f55] rounded transition-all"
+            className="h-full bg-gradient-to-r from-risk-safe to-btn-primary-to rounded transition-all"
             style={{ width: `${pct}%`, boxShadow: "0 0 8px rgba(127,228,177,0.4)" }}
           />
         </div>
@@ -58,7 +58,7 @@ export function ExecuteStep() {
           <div className="mt-3 flex gap-2">
             <button
               onClick={confirm}
-              className="bg-gradient-to-b from-[#3aa670] to-[#2a7f55] text-[#e8fff3] px-4 py-1 rounded border border-[#3aa670]"
+              className="bg-gradient-to-b from-btn-primary-from to-btn-primary-to text-btn-primary-fg px-4 py-1 rounded border border-btn-primary-bd"
             >
               yes, execute
             </button>

@@ -145,6 +145,24 @@ def test_scan_per_provider_row_per_available_provider() -> None:
     assert timings["b"].entries == 1
 
 
+def test_scan_drops_zero_byte_entries() -> None:
+    """0B entries — most commonly cloud-hosted ollama models that show up in
+    `ollama list` with size `-` — represent nothing reclaimable. They must
+    not appear in the scan results or skew per-provider counts."""
+    p = _FakeProvider(
+        name="ollama",
+        entries=[
+            _fe(provider="ollama", size=1_400_000_000),  # local model
+            _fe(provider="ollama", size=0),  # cloud model
+        ],
+    )
+    report = discovery.scan([p], ScanFilters(), datetime.now(UTC))
+    assert [e.size_bytes for e in report.entries] == [1_400_000_000]
+    [timing] = [pt for pt in report.per_provider if pt.name == "ollama"]
+    assert timing.entries == 1
+    assert timing.bytes == 1_400_000_000
+
+
 def test_scan_skips_unavailable_providers_in_timings() -> None:
     class _Unavailable(_FakeProvider):
         def available(self) -> bool:

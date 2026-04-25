@@ -41,6 +41,11 @@ export default function Scan() {
     staleTime,
     refetchOnMount: !manualOnly,
     explicit: true,
+    // Cadence as the auto-snapshot rate limit. Without this, every filter
+    // chip change writes a new auto-snapshot because the queryKey changes
+    // (staleTime can't suppress fetches against a fresh key). The server
+    // honours the interval and quietly skips writes that fall inside it.
+    snapshotMinIntervalMs: staleTime,
   });
 
   const eta = useScanETA();
@@ -48,6 +53,7 @@ export default function Scan() {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [showHiddenRows, setShowHiddenRows] = useState(false);
 
   const allRows = data?.rows ?? [];
   const { visibleRows, hiddenRows, hiddenBytes, visibleBytes } = useMemo(() => {
@@ -91,7 +97,7 @@ export default function Scan() {
             onClick={() => setActiveChip(chip.key)}
             className={`px-2.5 py-[3px] rounded text-[10px] font-mono border ${
               activeChip === chip.key
-                ? "border-[#2a7f55] bg-bg-safe-tint text-risk-safe"
+                ? "border-btn-primary-bd bg-bg-safe-tint text-risk-safe"
                 : "border-border bg-bg-elev-1 text-text-dim hover:text-text"
             }`}
           >
@@ -138,7 +144,7 @@ export default function Scan() {
         )}
         {!isLoading && !error && (
           <CacheTable
-            rows={visibleRows}
+            rows={showHiddenRows ? allRows : visibleRows}
             selected={selected}
             onToggle={toggle}
             density={settings.density}
@@ -149,16 +155,26 @@ export default function Scan() {
       {/* Pinned totals row — always visible above the action bar, independent of scroll. */}
       <div className="px-4 py-2 border-t border-border bg-bg-elev-1 font-mono text-[11px] flex items-center justify-between gap-4 shrink-0">
         <span className="text-text-dim">
-          <b className="text-text">{visibleRows.length}</b> shown ·{" "}
-          <b className="text-text tabular-nums">{humanBytes(visibleBytes)}</b>
+          <b className="text-text">
+            {showHiddenRows ? allRows.length : visibleRows.length}
+          </b>{" "}
+          shown ·{" "}
+          <b className="text-text tabular-nums">
+            {humanBytes(showHiddenRows ? visibleBytes + hiddenBytes : visibleBytes)}
+          </b>
           {hiddenRows.length > 0 && (
             <>
               <span className="text-text-muted"> · </span>
-              <span className="text-text-muted">
-                +{hiddenRows.length} under {humanBytes(settings.minSizeBytes)}
-                {" "}totalling{" "}
+              <button
+                type="button"
+                onClick={() => setShowHiddenRows((s) => !s)}
+                aria-expanded={showHiddenRows}
+                className="text-text-muted hover:text-text underline-offset-2 hover:underline"
+              >
+                {showHiddenRows ? "▾" : "▸"} +{hiddenRows.length} under{" "}
+                {humanBytes(settings.minSizeBytes)} totalling{" "}
                 <span className="tabular-nums">{humanBytes(hiddenBytes)}</span>
-              </span>
+              </button>
             </>
           )}
         </span>
@@ -172,7 +188,11 @@ export default function Scan() {
         <button
           disabled={selectedRows.length === 0}
           onClick={() => setWizardOpen(true)}
-          className="bg-gradient-to-b from-[#3aa670] to-[#2a7f55] text-[#e8fff3] px-4 py-1.5 rounded border border-[#3aa670] font-medium text-[11px] disabled:opacity-50 disabled:cursor-not-allowed"
+          className={
+            selectedRows.length === 0
+              ? "bg-bg-elev-2 text-text-muted px-4 py-1.5 rounded border border-border font-medium text-[11px] cursor-not-allowed"
+              : "bg-gradient-to-b from-btn-primary-from to-btn-primary-to text-btn-primary-fg px-4 py-1.5 rounded border border-btn-primary-bd font-medium text-[11px]"
+          }
         >
           ▸ clean up {selectedRows.length > 0 ? `${selectedRows.length} items` : ""}
         </button>

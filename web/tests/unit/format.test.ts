@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  byteMagnitudeTier,
   humanBytes,
   staleness,
   riskLabel,
@@ -14,6 +15,27 @@ describe("humanBytes", () => {
   it("formats kilobytes", () => expect(humanBytes(1024)).toBe("1.0K"));
   it("formats gigabytes", () => expect(humanBytes(1_500_000_000)).toBe("1.4G"));
   it("formats negative", () => expect(humanBytes(-1024)).toBe("-1.0K"));
+});
+
+describe("byteMagnitudeTier", () => {
+  it("classifies sub-MiB churn as trivial", () => {
+    expect(byteMagnitudeTier(0)).toBe("trivial");
+    expect(byteMagnitudeTier(14_700)).toBe("trivial");
+    expect(byteMagnitudeTier(900_000)).toBe("trivial");
+  });
+  it("classifies 1 MiB through < 1 GiB as notable", () => {
+    expect(byteMagnitudeTier(1024 * 1024)).toBe("notable");
+    expect(byteMagnitudeTier(165_000_000)).toBe("notable");
+    expect(byteMagnitudeTier(1024 * 1024 * 1024 - 1)).toBe("notable");
+  });
+  it("classifies ≥ 1 GiB as significant", () => {
+    expect(byteMagnitudeTier(1024 * 1024 * 1024)).toBe("significant");
+    expect(byteMagnitudeTier(17_600_000_000)).toBe("significant");
+  });
+  it("treats negative deltas by magnitude", () => {
+    expect(byteMagnitudeTier(-14_700)).toBe("trivial");
+    expect(byteMagnitudeTier(-2_000_000_000)).toBe("significant");
+  });
 });
 
 describe("staleness", () => {

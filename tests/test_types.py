@@ -331,6 +331,11 @@ def test_auto_round_trip_omits_entries() -> None:
     # from_json normalizes `entries: null` into an empty list so callers that
     # iterate `entries` still work.
     assert restored.entries == []
+    # Regression: Snapshots page used to show 0B for every auto snapshot, with
+    # ±total swings between adjacent auto/manual rows, because total_bytes()
+    # recomputed from the empty entries list. from_json must trust the on-disk
+    # total_bytes for auto snapshots.
+    assert restored.total_bytes() == 100
 
 
 def test_v1_snapshot_deserializes_as_manual_without_timings() -> None:

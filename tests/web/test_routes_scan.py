@@ -94,6 +94,48 @@ def test_scan_with_snapshot_flag_writes_auto(tmp_path, monkeypatch) -> None:
     assert files[0].name.endswith("--auto.json")
 
 
+def test_scan_skips_auto_snapshot_inside_min_interval(tmp_path, monkeypatch) -> None:
+    """Filter-chip changes on the Scan page send `snapshot=true` on every fetch.
+    Without server-side rate limiting, a daily-cadence user would still see
+    one auto-snapshot per click. The min-interval param is the cadence."""
+    from diskdoctor import history
+
+    monkeypatch.setattr(history, "default_snapshot_dir", lambda: tmp_path)
+
+    client = _client(tmp_path, monkeypatch)
+    # First call: writes (no prior auto-snapshot exists).
+    r1 = client.get(
+        "/api/scan?snapshot=true&snapshot_min_interval_ms=86400000",
+        headers={"Host": "testserver"},
+    )
+    assert r1.status_code == 200
+    assert len(list(tmp_path.glob("*--auto.json"))) == 1
+
+    # Second call moments later with daily interval (86,400,000 ms): skipped.
+    r2 = client.get(
+        "/api/scan?snapshot=true&snapshot_min_interval_ms=86400000",
+        headers={"Host": "testserver"},
+    )
+    assert r2.status_code == 200
+    assert len(list(tmp_path.glob("*--auto.json"))) == 1
+
+
+def test_scan_writes_auto_snapshot_when_min_interval_zero(tmp_path, monkeypatch) -> None:
+    """Live cadence (staleTime=0) opts out of rate-limiting — every scan should
+    still record. Backward-compat with the no-param case."""
+    from diskdoctor import history
+
+    monkeypatch.setattr(history, "default_snapshot_dir", lambda: tmp_path)
+
+    client = _client(tmp_path, monkeypatch)
+    for _ in range(3):
+        client.get(
+            "/api/scan?snapshot=true&snapshot_min_interval_ms=0",
+            headers={"Host": "testserver"},
+        )
+    assert len(list(tmp_path.glob("*--auto.json"))) == 3
+
+
 def test_scan_with_snapshot_flag_prunes_to_retention(tmp_path, monkeypatch) -> None:
     from datetime import UTC, datetime
 

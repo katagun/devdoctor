@@ -35,10 +35,22 @@ export interface UseScanOptions {
    * load and explicit "Rescan now"; leave false/undefined for the pending
    * re-fetches TanStack Query performs on its own. */
   explicit?: boolean;
+  /** Minimum interval (ms) between auto-snapshot writes on the server.
+   * Filter-chip changes create new query keys and trigger fresh fetches —
+   * without this, every chip click would write another auto-snapshot
+   * regardless of the user's cadence preference. The server checks the
+   * most recent auto-snapshot's mtime and skips writes inside this window. */
+  snapshotMinIntervalMs?: number;
 }
 
 export function useScan(params: UseScanOptions = {}) {
-  const { staleTime, refetchOnMount, explicit, ...filters } = params;
+  const {
+    staleTime,
+    refetchOnMount,
+    explicit,
+    snapshotMinIntervalMs,
+    ...filters
+  } = params;
   return useQuery({
     queryKey: ["scan", filters, explicit ? "explicit" : "implicit"],
     staleTime,
@@ -48,7 +60,19 @@ export function useScan(params: UseScanOptions = {}) {
       if (filters.risk) qs.set("risk", filters.risk);
       if (filters.minSize) qs.set("min_size", filters.minSize);
       if (filters.provider) qs.set("provider", filters.provider);
-      if (explicit) qs.set("snapshot", "true");
+      if (explicit) {
+        qs.set("snapshot", "true");
+        if (
+          snapshotMinIntervalMs !== undefined &&
+          Number.isFinite(snapshotMinIntervalMs) &&
+          snapshotMinIntervalMs > 0
+        ) {
+          qs.set("snapshot_min_interval_ms", String(Math.floor(snapshotMinIntervalMs)));
+        } else if (snapshotMinIntervalMs === Number.POSITIVE_INFINITY) {
+          // Manual cadence: signal "never auto-snapshot again if any exist".
+          qs.set("snapshot_min_interval_ms", String(Number.MAX_SAFE_INTEGER));
+        }
+      }
       const query = qs.toString() ? `?${qs}` : "";
       const raw = await apiFetch<ScanResponse>(`/scan${query}`);
       const rows: CacheTableRow[] = raw.entries.map((e) => ({
@@ -66,7 +90,9 @@ export function useScan(params: UseScanOptions = {}) {
       }));
       return {
         rows,
-        totalBytes: raw.entries.reduce((a, b) => a + b.size_bytes, 0),
+        totalBytes: raw.entries
+          .filter((e) => e.risk !== "dangerous")
+          .reduce((a, b) => a + b.size_bytes, 0),
         scannedAt: raw.scanned_at,
       };
     },

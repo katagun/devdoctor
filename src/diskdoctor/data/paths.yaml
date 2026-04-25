@@ -124,12 +124,19 @@
   recipe: "rm -rf {path}"
 
 - name: vscode-cache
-  description: VS Code / Cursor cache directories
+  description: VS Code cache directories
   risk: safe
   platforms: [darwin]
   paths:
     - ~/Library/Application Support/Code/Cache
     - ~/Library/Application Support/Code/CachedData
+  recipe: "rm -rf {path}"
+
+- name: cursor-cache
+  description: Cursor editor cache directories
+  risk: safe
+  platforms: [darwin]
+  paths:
     - ~/Library/Application Support/Cursor/Cache
     - ~/Library/Application Support/Cursor/CachedData
   recipe: "rm -rf {path}"

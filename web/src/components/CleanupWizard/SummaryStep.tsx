@@ -40,7 +40,7 @@ export function SummaryStep() {
         ))}
       </div>
       <div className="flex gap-2 justify-end">
-        <button onClick={close} className="bg-gradient-to-b from-[#3aa670] to-[#2a7f55] text-[#e8fff3] px-4 py-1.5 rounded border border-[#3aa670]">
+        <button onClick={close} className="bg-gradient-to-b from-btn-primary-from to-btn-primary-to text-btn-primary-fg px-4 py-1.5 rounded border border-btn-primary-bd">
           done
         </button>
       </div>

@@ -2,11 +2,11 @@ import { RiskValue, riskLabel } from "@/lib/format";
 
 const variants: Record<RiskValue, string> = {
   safe:
-    "bg-gradient-to-b from-[#163a28] to-[#0f2a1d] text-risk-safe border-[#2a7f55]",
+    "bg-gradient-to-b from-badge-safe-from to-badge-safe-to text-risk-safe border-badge-safe-bd",
   reclaimable:
-    "bg-gradient-to-b from-[#2a1f4a] to-[#1f1838] text-risk-reclaim border-[#5a3fa0]",
+    "bg-gradient-to-b from-badge-reclaim-from to-badge-reclaim-to text-risk-reclaim border-badge-reclaim-bd",
   dangerous:
-    "bg-gradient-to-b from-[#3a1520] to-[#2a0f17] text-risk-danger border-border-danger",
+    "bg-gradient-to-b from-badge-danger-from to-badge-danger-to text-risk-danger border-badge-danger-bd",
 };
 
 export function RiskBadge({ risk }: { risk: RiskValue }) {

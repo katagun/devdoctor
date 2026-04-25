@@ -8,6 +8,9 @@
   --color-bg-code: var(--bg-code);
   --color-bg-control-off: var(--bg-control-off);
   --color-bg-safe-tint: var(--bg-safe-tint);
+  --color-bg-progress: var(--bg-progress);
+  --color-bg-header-from: var(--bg-header-from);
+  --color-bg-header-to: var(--bg-header-to);
   --color-border: var(--border);
   --color-border-subtle: var(--border-subtle);
   --color-border-strong: var(--border-strong);
@@ -17,10 +20,24 @@
   --color-text-muted: var(--text-muted);
   --color-text-accent: var(--text-accent);
   --color-text-path: var(--text-path);
+  --color-text-on-accent: var(--text-on-accent);
   --color-risk-safe: var(--risk-safe);
   --color-risk-reclaim: var(--risk-reclaim);
   --color-risk-danger: var(--risk-danger);
   --color-accent: var(--accent);
+  --color-badge-safe-from: var(--badge-safe-from);
+  --color-badge-safe-to: var(--badge-safe-to);
+  --color-badge-safe-bd: var(--badge-safe-bd);
+  --color-badge-reclaim-from: var(--badge-reclaim-from);
+  --color-badge-reclaim-to: var(--badge-reclaim-to);
+  --color-badge-reclaim-bd: var(--badge-reclaim-bd);
+  --color-badge-danger-from: var(--badge-danger-from);
+  --color-badge-danger-to: var(--badge-danger-to);
+  --color-badge-danger-bd: var(--badge-danger-bd);
+  --color-btn-primary-from: var(--btn-primary-from);
+  --color-btn-primary-to: var(--btn-primary-to);
+  --color-btn-primary-fg: var(--btn-primary-fg);
+  --color-btn-primary-bd: var(--btn-primary-bd);
   --font-mono: var(--font-mono);
   --font-sans: var(--font-ui);
 }

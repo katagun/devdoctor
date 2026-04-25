@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import type { ColumnId } from "@/components/CacheTable/columns";
-import { COLUMNS } from "@/components/CacheTable/columns";
+import { COLUMNS, DEFAULT_HIDDEN_COLUMNS } from "@/components/CacheTable/columns";
 
 const KEY = "diskdoctor.settings.v1";
 
@@ -56,6 +56,20 @@ export interface Settings {
   sidebarWidth: number;
   sidebarExpandedWidth: number;
   scanTableHiddenColumns: ColumnId[];
+  /** True once the user has manually toggled a column via ColumnsPicker. While
+   * false, the visible-column set is derived from viewport width so wide
+   * displays auto-show OWNER/PERMS instead of leaking that width as empty
+   * space inside the provider column. */
+  scanTableColumnsCustomized: boolean;
+}
+
+/** Width threshold below which OWNER/PERMS auto-hide. ~1280px = MacBook 13"
+ * + the typical workspace sidebar. Above this, the table has room for the
+ * forensic columns; below, they'd push the provider path off-screen. */
+export const COLUMN_AUTOSHOW_VIEWPORT = 1280;
+
+export function defaultHiddenColumnsForViewport(width: number): ColumnId[] {
+  return width < COLUMN_AUTOSHOW_VIEWPORT ? [...DEFAULT_HIDDEN_COLUMNS] : [];
 }
 
 const DEFAULTS: Settings = {
@@ -65,7 +79,8 @@ const DEFAULTS: Settings = {
   theme: "system",
   sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
   sidebarExpandedWidth: SIDEBAR_DEFAULT_WIDTH,
-  scanTableHiddenColumns: [],
+  scanTableHiddenColumns: [...DEFAULT_HIDDEN_COLUMNS],
+  scanTableColumnsCustomized: false,
 };
 
 function read(): Settings {
@@ -123,6 +138,10 @@ function read(): Settings {
               typeof v === "string" && knownColumnIds.has(v),
           )
         : DEFAULTS.scanTableHiddenColumns;
+    const scanTableColumnsCustomized: boolean =
+      typeof parsed.scanTableColumnsCustomized === "boolean"
+        ? parsed.scanTableColumnsCustomized
+        : DEFAULTS.scanTableColumnsCustomized;
 
     return {
       minSizeBytes,
@@ -132,6 +151,7 @@ function read(): Settings {
       sidebarWidth,
       sidebarExpandedWidth,
       scanTableHiddenColumns,
+      scanTableColumnsCustomized,
     };
   } catch {
     return DEFAULTS;

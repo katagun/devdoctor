@@ -37,7 +37,7 @@ export default function History() {
 
   return (
     <div className="flex flex-col h-screen font-mono text-[11px]">
-      <header className="px-4 py-3 border-b border-border flex items-center justify-between gap-4">
+      <header className="px-4 py-3 border-b border-border flex items-center gap-4">
         <div className="text-text-dim flex items-center gap-5">
           <span>
             <b className="text-text">{events.length}</b> events
@@ -48,8 +48,7 @@ export default function History() {
             <b className="text-text-dim">{counts.snapshot}</b> snapshots
           </span>
         </div>
-        <DiskUsageBar />
-        <div className="flex gap-2">
+        <div className="ml-auto flex gap-2">
           <FilterChip label="all" active={filter === "all"} onClick={() => setFilter("all")} />
           <FilterChip
             label="cleanups"
@@ -62,6 +61,7 @@ export default function History() {
             onClick={() => setFilter("snapshot")}
           />
         </div>
+        <DiskUsageBar />
       </header>
 
       <div className="flex-1 overflow-auto">

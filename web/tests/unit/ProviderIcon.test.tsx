@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 import { ProviderIcon } from "@/components/ProviderIcon";
-import { siDocker, siFirefox, siPytorch } from "simple-icons";
+import { siDocker, siFirefox, siPytorch, siCursor } from "simple-icons";
 
 describe("ProviderIcon", () => {
   it("renders a subtle placeholder dot for an unknown slug", () => {
@@ -91,6 +91,23 @@ describe("ProviderIcon", () => {
     const path = container.querySelector("path");
     expect(path).not.toBeNull();
     expect(path?.getAttribute("d")).toMatch(/^M15 2/);
+    expect(container.querySelector("circle")).toBeNull();
+  });
+
+  it("cursor-cache slug resolves to the simple-icons cursor mark, not vscode", () => {
+    const { container } = render(<ProviderIcon slug="cursor-cache" />);
+    const path = container.querySelector("path");
+    expect(path?.getAttribute("d")).toBe(siCursor.path);
+  });
+
+  it.each([
+    ["slack-service-worker"],
+    ["playwright"],
+    ["lm-studio-extensions"],
+    ["downloads"],
+  ])("%s slug resolves to a real path glyph, not the placeholder dot", (slug) => {
+    const { container } = render(<ProviderIcon slug={slug} />);
+    expect(container.querySelector("path")).not.toBeNull();
     expect(container.querySelector("circle")).toBeNull();
   });
 });

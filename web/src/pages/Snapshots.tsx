@@ -4,11 +4,28 @@ import { useCreateSnapshot, useSnapshot, useSnapshots } from "@/hooks/useSnapsho
 import type { SnapshotMeta } from "@/hooks/useSnapshots";
 import { useDiff } from "@/hooks/useDiff";
 import { DiskUsageBar } from "@/components/DiskUsageBar";
-import { formatAbsTime, formatMs, humanBytes, timeAgo } from "@/lib/format";
+import {
+  byteMagnitudeTier,
+  formatAbsTime,
+  formatMs,
+  humanBytes,
+  timeAgo,
+  type ByteMagnitude,
+} from "@/lib/format";
 
 const FLASH_MS = 2000;
 
 type SlotLabel = "A" | "B";
+
+// Visual hierarchy for snapshot deltas: a 14 KB churn shouldn't read as
+// equal to a 700 MB cleanup. Trivial deltas dim and shrink toward
+// invisibility; significant deltas (≥ 1 GiB) bold up. Direction colour
+// (red/green) is applied separately so it stays consistent across tiers.
+const MAGNITUDE_CLASS: Record<ByteMagnitude, string> = {
+  trivial: "opacity-40 text-[9px] font-normal",
+  notable: "opacity-90 text-[10px]",
+  significant: "opacity-100 text-[11px] font-semibold",
+};
 
 export default function Snapshots() {
   const { data } = useSnapshots();
@@ -87,13 +104,12 @@ export default function Snapshots() {
 
   return (
     <div className="flex flex-col h-screen font-mono text-[11px]">
-      <header className="px-4 py-3 border-b border-border flex items-center justify-between gap-4">
+      <header className="px-4 py-3 border-b border-border flex items-center gap-4">
         <div className="text-text-dim">
           <b className="text-text">{snapshots.length}</b> snapshot
           {snapshots.length === 1 ? "" : "s"}
         </div>
-        <DiskUsageBar />
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2">
           <input
             type="text"
             value={note}
@@ -124,6 +140,7 @@ export default function Snapshots() {
             )}
           </button>
         </div>
+        <DiskUsageBar />
       </header>
 
       {create.isError && (
@@ -197,9 +214,11 @@ export default function Snapshots() {
                     </div>
                     {delta !== null && delta !== 0 ? (
                       <span
-                        className={`text-[10px] tabular-nums shrink-0 ${
+                        data-magnitude={byteMagnitudeTier(delta)}
+                        className={`tabular-nums shrink-0 ${
                           delta > 0 ? "text-risk-danger" : "text-risk-safe"
-                        }`}
+                        } ${MAGNITUDE_CLASS[byteMagnitudeTier(delta)]}`}
+                        title={`${delta > 0 ? "+" : "−"}${humanBytes(Math.abs(delta))} vs previous snapshot`}
                       >
                         {delta > 0 ? "↑" : "↓"} {humanBytes(Math.abs(delta))}
                       </span>
