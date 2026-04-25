@@ -54,6 +54,12 @@ class LargeFilesProvider(Provider):
     platforms = ("darwin", "linux")
     risk = Risk.DANGEROUS  # user data; never auto-delete
     required_binary = None
+    details = (
+        "Walks ~/Desktop, ~/Documents, ~/Movies, and ~/Pictures looking for "
+        "individual files >= 500 MB — typically forgotten ISOs, VM images, "
+        "video exports, or backup archives. Each match is advice-only; the recipe "
+        "echoes a review prompt rather than running rm."
+    )
 
     def discover(self) -> list[Entry]:
         entries: list[Entry] = []

@@ -18,6 +18,11 @@ class HuggingFaceProvider(Provider):
     platforms = ("darwin", "linux")
     risk = Risk.RECLAIMABLE
     required_binary = None
+    details = (
+        "Scans ~/.cache/huggingface/hub for `models--<user>--<repo>` and "
+        "`datasets--<user>--<repo>` directories. Each repo becomes one entry; "
+        "cleanup `rm -rf`s the whole repo cache."
+    )
 
     def discover(self) -> list[Entry]:
         hub = Path(os.path.expanduser("~/.cache/huggingface/hub"))

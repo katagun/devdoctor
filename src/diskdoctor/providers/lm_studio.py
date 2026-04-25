@@ -35,6 +35,11 @@ class LMStudioProvider(Provider):
     platforms = ("darwin", "linux")
     risk = Risk.RECLAIMABLE
     required_binary = None
+    details = (
+        "Handles LM Studio's two on-disk layouts: legacy `<home>/models/<pub>/<model>/` "
+        "and v0.3+ hub manifests under `<home>/hub/models/`. For hub entries, the size "
+        "sums the linked HuggingFace cache so the user sees true disk cost."
+    )
 
     def discover(self) -> list[Entry]:
         home = _resolve_home()

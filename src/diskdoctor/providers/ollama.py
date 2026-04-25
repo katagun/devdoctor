@@ -20,6 +20,12 @@ class OllamaProvider(Provider):
     platforms = ("darwin", "linux")
     risk = Risk.RECLAIMABLE
     required_binary = "ollama"
+    details = (
+        "Models pulled with `ollama pull` live under ~/.ollama/models. "
+        "Each model is a few GB; multi-billion-parameter models can exceed 30 GB. "
+        "Cleanup uses `ollama rm <name>` per model when the daemon is reachable, "
+        "otherwise falls back to deleting the models directory wholesale."
+    )
 
     def discover(self) -> list[Entry]:
         result = self._shell.run(["ollama", "list"], check=False)

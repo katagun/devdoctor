@@ -24,6 +24,11 @@ class DockerProvider(Provider):
     platforms = ("darwin", "linux")
     risk = Risk.RECLAIMABLE
     required_binary = "docker"
+    details = (
+        "Reads `docker system df --format json` and surfaces reclaimable bytes "
+        "from images, stopped containers, dangling volumes, and the build cache. "
+        "Each category becomes its own entry with the corresponding `docker ... prune` recipe."
+    )
 
     def discover(self) -> list[Entry]:
         result = self._shell.run(["docker", "system", "df", "--format", "json"], check=False)

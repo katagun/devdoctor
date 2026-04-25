@@ -89,6 +89,11 @@ class VenvProvider(Provider):
     platforms = ("darwin", "linux")
     risk = Risk.RECLAIMABLE  # rebuildable with `uv sync` / `pip install -r`
     required_binary = None
+    details = (
+        "Walks common project roots (~/projects, ~/code, ~/src, etc., up to 6 levels deep) "
+        "for directories named .venv / venv / env that contain a pyvenv.cfg marker. "
+        "Each venv is one entry; cleanup `rm -rf`s the resolved path."
+    )
 
     def discover(self) -> list[Entry]:
         entries: list[Entry] = []
