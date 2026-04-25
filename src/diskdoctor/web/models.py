@@ -24,6 +24,12 @@ class ProviderInfo(BaseModel):
     required_binary: str | None
     kind: Literal["class", "yaml"]
     reason_if_unavailable: str | None = None
+    # Provider details — populated per kind. Class providers set `details`;
+    # YAML (PathProvider) sets the three path/recipe fields.
+    details: str | None = None
+    raw_paths: list[str] | None = None
+    resolved_paths: list[str] | None = None
+    recipe_template: list[str] | None = None
 
 
 class CleanJobCreate(BaseModel):

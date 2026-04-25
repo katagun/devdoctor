@@ -74,18 +74,22 @@ def providers(request: Request) -> list[ProviderInfo]:
     providers_list = registry.load_providers(request.app.state.shell)
     out: list[ProviderInfo] = []
     for p in providers_list:
-        kind: Literal["class", "yaml"] = "yaml" if isinstance(p, PathProvider) else "class"
-        out.append(
-            ProviderInfo(
-                name=p.name,
-                description=p.description,
-                risk=p.risk.value,
-                platforms=list(p.platforms),
-                available=p.available(),
-                required_binary=p.required_binary,
-                kind=kind,
-            )
+        is_yaml = isinstance(p, PathProvider)
+        kind: Literal["class", "yaml"] = "yaml" if is_yaml else "class"
+        info = ProviderInfo(
+            name=p.name,
+            description=p.description,
+            risk=p.risk.value,
+            platforms=list(p.platforms),
+            available=p.available(),
+            required_binary=p.required_binary,
+            kind=kind,
+            details=None if is_yaml else p.details,
+            raw_paths=list(p.raw_paths) if is_yaml else None,
+            resolved_paths=[str(rp) for rp in p.resolve_paths()] if is_yaml else None,
+            recipe_template=list(p.recipe_template) if is_yaml else None,
         )
+        out.append(info)
     return out
 
 
