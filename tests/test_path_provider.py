@@ -25,8 +25,8 @@ def test_from_yaml_builds_with_expected_attrs():
     assert p.name == "uv-cache"
     assert p.risk == Risk.SAFE
     assert p.platforms == ("darwin", "linux")
-    assert p._raw_paths == ("~/.cache/uv",)
-    assert p._recipe_template == ["uv cache clean"]
+    assert p.raw_paths == ("~/.cache/uv",)
+    assert p.recipe_template == ["uv cache clean"]
 
 
 def test_from_yaml_accepts_recipe_list():
@@ -39,7 +39,7 @@ def test_from_yaml_accepts_recipe_list():
         "recipe": ["echo 'cleaning {path}'", "rm -rf {path}"],
     }
     p = PathProvider.from_yaml(spec, FakeShell())
-    assert p._recipe_template == ["echo 'cleaning {path}'", "rm -rf {path}"]
+    assert p.recipe_template == ["echo 'cleaning {path}'", "rm -rf {path}"]
 
 
 def test_from_yaml_rejects_unknown_risk():

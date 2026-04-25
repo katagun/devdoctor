@@ -26,8 +26,8 @@ def test_downloads_provider_is_dangerous_and_advice_only():
     downloads = next((p for p in providers if p.name == "downloads"), None)
     assert downloads is not None, "downloads provider missing from paths.yaml"
     assert downloads.risk.value == "dangerous"
-    # PathProvider keeps the raw recipe template as _recipe_template.
-    tmpl = downloads._recipe_template  # type: ignore[attr-defined]
+    # PathProvider keeps the raw recipe template as recipe_template.
+    tmpl = downloads.recipe_template
     assert len(tmpl) == 1
     assert tmpl[0].startswith("echo '")
     assert "rm -rf {path}" not in tmpl[0]

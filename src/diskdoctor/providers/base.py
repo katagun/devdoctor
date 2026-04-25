@@ -89,8 +89,8 @@ class PathProvider(Provider):
     risk: Risk = Risk.SAFE  # type: ignore[misc]
     required_binary: str | None = None  # type: ignore[misc]
 
-    _raw_paths: tuple[str, ...] = field(default_factory=tuple)
-    _recipe_template: list[str] = field(default_factory=list)
+    raw_paths: tuple[str, ...] = field(default_factory=tuple)
+    recipe_template: list[str] = field(default_factory=list)
 
     def __init__(
         self,
@@ -109,8 +109,8 @@ class PathProvider(Provider):
         self.platforms = platforms
         self.risk = risk
         self.required_binary = None
-        self._raw_paths = raw_paths
-        self._recipe_template = recipe_template
+        self.raw_paths = raw_paths
+        self.recipe_template = recipe_template
 
     @classmethod
     def from_yaml(cls, spec: dict[str, Any], shell: Shell) -> PathProvider:
@@ -161,7 +161,7 @@ class PathProvider(Provider):
 
     def discover(self) -> list[Entry]:
         entries: list[Entry] = []
-        for raw in self._raw_paths:
+        for raw in self.raw_paths:
             expanded = os.path.expanduser(os.path.expandvars(raw))
             matches = glob.glob(expanded) if any(c in expanded for c in "*?[") else [expanded]
             for m in matches:
@@ -170,7 +170,7 @@ class PathProvider(Provider):
                     continue
                 size, _skipped = size_path(p)
                 quoted = shlex.quote(str(p))
-                recipe = [line.format(path=quoted) for line in self._recipe_template]
+                recipe = [line.format(path=quoted) for line in self.recipe_template]
                 try:
                     mtime: float | None = p.lstat().st_mtime
                 except OSError:
