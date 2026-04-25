@@ -6,7 +6,7 @@ import shlex
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from pathlib import Path as _Path
+from pathlib import Path
 from typing import Any, ClassVar
 
 from diskdoctor.ports import Shell
@@ -53,7 +53,7 @@ def _normalize_platform(raw: str) -> str:
 _ALLOWED_PLATFORMS = frozenset({"darwin", "linux"})
 
 
-def _stat_kwargs(path: _Path) -> dict[str, object]:
+def _stat_kwargs(path: Path) -> dict[str, object]:
     """Return the stat-field kwargs for Entry(...) construction.
 
     Empty dict when stat fails, so callers can use
@@ -160,33 +160,39 @@ class PathProvider(Provider):
         # Platform only; PathProviders never declare required binaries.
         return _normalize_platform(sys.platform) in self.platforms
 
-    def discover(self) -> list[Entry]:
-        entries: list[Entry] = []
+    def resolve_paths(self) -> list[Path]:
+        """Expand ~, $VARS, and globs in raw_paths; return paths that exist."""
+        out: list[Path] = []
         for raw in self.raw_paths:
             expanded = os.path.expanduser(os.path.expandvars(raw))
             matches = glob.glob(expanded) if any(c in expanded for c in "*?[") else [expanded]
             for m in matches:
-                p = _Path(m)
-                if not p.exists():
-                    continue
-                size, _skipped = size_path(p)
-                quoted = shlex.quote(str(p))
-                recipe = [line.format(path=quoted) for line in self.recipe_template]
-                try:
-                    mtime: float | None = p.lstat().st_mtime
-                except OSError:
-                    mtime = None
-                entries.append(
-                    Entry(
-                        provider=self.name,
-                        id=str(p),
-                        path=p,
-                        label=str(p),
-                        size_bytes=size,
-                        mtime=mtime,
-                        risk=self.risk,
-                        recipe=recipe,
-                        **_stat_kwargs(p),
-                    )
+                p = Path(m)
+                if p.exists():
+                    out.append(p)
+        return out
+
+    def discover(self) -> list[Entry]:
+        entries: list[Entry] = []
+        for p in self.resolve_paths():
+            size, _skipped = size_path(p)
+            quoted = shlex.quote(str(p))
+            recipe = [line.format(path=quoted) for line in self.recipe_template]
+            try:
+                mtime: float | None = p.lstat().st_mtime
+            except OSError:
+                mtime = None
+            entries.append(
+                Entry(
+                    provider=self.name,
+                    id=str(p),
+                    path=p,
+                    label=str(p),
+                    size_bytes=size,
+                    mtime=mtime,
+                    risk=self.risk,
+                    recipe=recipe,
+                    **_stat_kwargs(p),
                 )
+            )
         return entries

@@ -179,3 +179,52 @@ def test_path_provider_entry_includes_stat_fields(tmp_path):
     assert e.owner == pwd.getpwuid(st.st_uid).pw_name
     assert e.perms is not None
     assert e.perms.startswith("d")  # directory
+
+
+def _make_resolve_provider(raw_paths: tuple[str, ...]) -> PathProvider:
+    return PathProvider(
+        shell=FakeShell(),
+        name="rt",
+        description="t",
+        platforms=("darwin", "linux"),
+        risk=Risk.SAFE,
+        raw_paths=raw_paths,
+        recipe_template=["rm -rf {path}"],
+    )
+
+
+def test_resolve_paths_expands_tilde(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "thing"
+    target.mkdir()
+
+    p = _make_resolve_provider(("~/thing",))
+    assert p.resolve_paths() == [target]
+
+
+def test_resolve_paths_expands_env_vars(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MY_CACHE", str(tmp_path))
+    target = tmp_path / "x"
+    target.mkdir()
+
+    p = _make_resolve_provider(("$MY_CACHE/x",))
+    assert p.resolve_paths() == [target]
+
+
+def test_resolve_paths_expands_globs(tmp_path: Path) -> None:
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    (tmp_path / "c.txt").touch()
+
+    p = _make_resolve_provider((f"{tmp_path}/*",))
+    resolved = sorted(p.resolve_paths())
+
+    assert resolved == sorted([tmp_path / "a", tmp_path / "b", tmp_path / "c.txt"])
+
+
+def test_resolve_paths_filters_nonexistent(tmp_path: Path) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+
+    p = _make_resolve_provider((str(real), str(tmp_path / "missing")))
+    assert p.resolve_paths() == [real]
