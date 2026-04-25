@@ -25,6 +25,7 @@ class Provider(ABC):
     platforms: ClassVar[tuple[str, ...]]
     risk: ClassVar[Risk]
     required_binary: ClassVar[str | None] = None
+    details: ClassVar[str | None] = None
 
     def __init__(self, shell: Shell) -> None:
         self._shell = shell
