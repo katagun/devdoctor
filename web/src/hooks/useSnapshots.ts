@@ -68,3 +68,14 @@ export function useCreateSnapshot() {
     },
   });
 }
+
+export function useLatestAutoSnapshot() {
+  return useQuery({
+    queryKey: ["snapshots", "latest-auto"],
+    queryFn: async () => {
+      const list = await apiFetch<SnapshotMeta[]>("/snapshots?kind=auto&limit=1");
+      return list[0] ?? null;
+    },
+    staleTime: 30_000,
+  });
+}

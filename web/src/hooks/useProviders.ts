@@ -9,6 +9,11 @@ export interface ProviderRow {
   available: boolean;
   required_binary: string | null;
   kind: "class" | "yaml";
+  // New: details panel data. All optional — populated based on `kind`.
+  details: string | null;
+  raw_paths: string[] | null;
+  resolved_paths: string[] | null;
+  recipe_template: string[] | null;
 }
 
 export function useProviders() {
