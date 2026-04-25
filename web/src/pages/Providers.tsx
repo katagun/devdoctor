@@ -1,16 +1,30 @@
 import { useMemo, useState } from "react";
-import { useProviders } from "@/hooks/useProviders";
+import { useProviders, type ProviderRow } from "@/hooks/useProviders";
 import { useSelectedProviders } from "@/hooks/useSelectedProviders";
+import { useLatestAutoSnapshot, type ProviderTimingMeta } from "@/hooks/useSnapshots";
 import { RiskBadge } from "@/components/RiskBadge";
 import { DiskUsageBar } from "@/components/DiskUsageBar";
 import { ProviderIcon } from "@/components/ProviderIcon";
+import { ProviderDetailsPanel } from "@/components/ProviderDetailsPanel";
+
+const GRID_COLS = "24px 60px 20px 1.3fr 0.8fr 1fr 0.6fr 0.9fr";
 
 export default function Providers() {
   const { data, isLoading, error } = useProviders();
   const { isEnabled, setEnabled, setMany } = useSelectedProviders();
+  const { data: lastAutoSnapshot } = useLatestAutoSnapshot();
   const [query, setQuery] = useState("");
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   const providers = useMemo(() => data ?? [], [data]);
+
+  const lastByProvider = useMemo<Map<string, ProviderTimingMeta>>(() => {
+    const m = new Map<string, ProviderTimingMeta>();
+    for (const t of lastAutoSnapshot?.per_provider ?? []) {
+      m.set(t.name, t);
+    }
+    return m;
+  }, [lastAutoSnapshot]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -28,11 +42,17 @@ export default function Providers() {
   const mixed = !allOn && !allOff;
 
   function flipMaster() {
-    // Binary: anything enabled → disable all; none enabled → enable all.
-    // Mixed collapses to "disable all" on click, matching the user's
-    // "slider to unselect all" intent.
     const names = providers.map((p) => p.name);
     setMany(names, allOff);
+  }
+
+  function toggleExpanded(name: string) {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
   }
 
   if (isLoading)
@@ -105,7 +125,11 @@ export default function Providers() {
       </div>
 
       <div className="px-6">
-        <div className="grid grid-cols-[60px_20px_1.3fr_0.8fr_1fr_0.6fr_0.9fr] gap-3 px-3 py-2 text-[9.5px] uppercase tracking-widest text-text-muted border-b border-border">
+        <div
+          className="grid gap-3 px-3 py-2 text-[9.5px] uppercase tracking-widest text-text-muted border-b border-border"
+          style={{ gridTemplateColumns: GRID_COLS }}
+        >
+          <div aria-hidden="true" />
           <div>enabled</div>
           <div aria-hidden="true" />
           <div>name</div>
@@ -125,66 +149,122 @@ export default function Providers() {
             )}
           </div>
         ) : (
-          filtered.map((p) => {
-            const on = isEnabled(p.name);
-            return (
-              <div
-                key={p.name}
-                className="grid grid-cols-[60px_20px_1.3fr_0.8fr_1fr_0.6fr_0.9fr] gap-3 px-3 py-2 items-center border-b border-border-subtle hover:bg-bg-elev-1"
-              >
-                <button
-                  type="button"
-                  onClick={() => setEnabled(p.name, !on)}
-                  aria-pressed={on}
-                  aria-label={`Toggle ${p.name}`}
-                  className={`w-[30px] h-[16px] rounded-full relative transition-colors ${
-                    on ? "bg-[#2a7f55]" : "bg-bg-control-off"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-[2px] w-[12px] h-[12px] rounded-full bg-white transition-all ${
-                      on ? "right-[2px]" : "left-[2px] bg-text-muted"
-                    }`}
-                  />
-                </button>
-                <div className="flex items-center justify-center">
-                  <ProviderIcon
-                    slug={p.name}
-                    size={16}
-                    className={on ? "text-text" : "text-text-muted"}
-                  />
-                </div>
-                <div>
-                  <div className={`font-medium ${on ? "text-text" : "text-text-muted"}`}>
-                    <Highlight text={p.name} query={query} />
-                  </div>
-                  <div className="text-text-muted text-[10px] mt-px">
-                    <Highlight text={p.description} query={query} />
-                  </div>
-                </div>
-                <div>
-                  <RiskBadge risk={p.risk} />
-                </div>
-                <div className="text-text-dim">{p.platforms.join(", ")}</div>
-                <div>
-                  <span
-                    className={`inline-block w-2 h-2 rounded-full ${
-                      p.available ? "bg-risk-safe shadow-[0_0_6px_var(--risk-safe)]" : "bg-text-muted"
-                    }`}
-                  />
-                  <span className="ml-2 text-text-dim">{p.available ? "yes" : "no"}</span>
-                </div>
-                <div className="text-text-muted">{p.required_binary ?? "—"}</div>
-              </div>
-            );
-          })
+          filtered.map((p) => (
+            <ProviderRowView
+              key={p.name}
+              provider={p}
+              query={query}
+              isOn={isEnabled(p.name)}
+              isExpanded={expandedRows.has(p.name)}
+              lastAuto={lastByProvider.get(p.name) ?? null}
+              onToggleEnabled={() => setEnabled(p.name, !isEnabled(p.name))}
+              onToggleExpanded={() => toggleExpanded(p.name)}
+            />
+          ))
         )}
       </div>
     </div>
   );
 }
 
-// Highlights the first case-insensitive match of `query` in `text`.
+interface RowProps {
+  provider: ProviderRow;
+  query: string;
+  isOn: boolean;
+  isExpanded: boolean;
+  lastAuto: ProviderTimingMeta | null;
+  onToggleEnabled: () => void;
+  onToggleExpanded: () => void;
+}
+
+function ProviderRowView({
+  provider: p,
+  query,
+  isOn,
+  isExpanded,
+  lastAuto,
+  onToggleEnabled,
+  onToggleExpanded,
+}: RowProps) {
+  return (
+    <>
+      <div
+        className="grid gap-3 px-3 py-2 items-center border-b border-border-subtle hover:bg-bg-elev-1"
+        style={{ gridTemplateColumns: GRID_COLS }}
+      >
+        <button
+          type="button"
+          onClick={onToggleExpanded}
+          aria-expanded={isExpanded}
+          aria-label={`${isExpanded ? "Hide" : "Show"} details for ${p.name}`}
+          className="text-text-muted hover:text-text w-[20px] h-[20px] flex items-center justify-center"
+        >
+          <svg
+            aria-hidden="true"
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}
+          >
+            <path d="M3 1 L7 5 L3 9" stroke="currentColor" strokeWidth="1.5" fill="none" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={onToggleEnabled}
+          aria-pressed={isOn}
+          aria-label={`Toggle ${p.name}`}
+          className={`w-[30px] h-[16px] rounded-full relative transition-colors ${
+            isOn ? "bg-[#2a7f55]" : "bg-bg-control-off"
+          }`}
+        >
+          <span
+            className={`absolute top-[2px] w-[12px] h-[12px] rounded-full bg-white transition-all ${
+              isOn ? "right-[2px]" : "left-[2px] bg-text-muted"
+            }`}
+          />
+        </button>
+        <div className="flex items-center justify-center">
+          <ProviderIcon
+            slug={p.name}
+            size={16}
+            className={isOn ? "text-text" : "text-text-muted"}
+          />
+        </div>
+        <div>
+          <div className={`font-medium ${isOn ? "text-text" : "text-text-muted"}`}>
+            <Highlight text={p.name} query={query} />
+          </div>
+          <div className="text-text-muted text-[10px] mt-px">
+            <Highlight text={p.description} query={query} />
+          </div>
+        </div>
+        <div>
+          <RiskBadge risk={p.risk} />
+        </div>
+        <div className="text-text-dim">{p.platforms.join(", ")}</div>
+        <div>
+          <span
+            className={`inline-block w-2 h-2 rounded-full ${
+              p.available ? "bg-risk-safe shadow-[0_0_6px_var(--risk-safe)]" : "bg-text-muted"
+            }`}
+          />
+          <span className="ml-2 text-text-dim">{p.available ? "yes" : "no"}</span>
+        </div>
+        <div className="text-text-muted">{p.required_binary ?? "—"}</div>
+      </div>
+      {isExpanded && (
+        <div
+          className="border-b border-border-subtle"
+          style={{ gridColumn: "1 / -1" }}
+        >
+          <ProviderDetailsPanel provider={p} lastAuto={lastAuto} />
+        </div>
+      )}
+    </>
+  );
+}
+
 function Highlight({ text, query }: { text: string; query: string }) {
   const q = query.trim();
   if (!q) return <>{text}</>;
