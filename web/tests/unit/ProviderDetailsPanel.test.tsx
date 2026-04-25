@@ -73,4 +73,25 @@ describe("ProviderDetailsPanel", () => {
     expect(screen.getByText(/entries:\s*3/i)).toBeInTheDocument();
     expect(screen.getByText(/1\.2s|1200/)).toBeInTheDocument();
   });
+
+  it("shows globbed resolved paths under the matching raw glob row", () => {
+    const provider: ProviderRow = {
+      name: "venv",
+      description: "venvs",
+      risk: "reclaimable",
+      platforms: ["darwin"],
+      available: true,
+      required_binary: null,
+      kind: "yaml",
+      details: null,
+      raw_paths: ["~/projects/*/.venv"],
+      resolved_paths: ["/Users/me/proj-a/.venv", "/Users/me/proj-b/.venv"],
+      recipe_template: ["rm -rf {path}"],
+    };
+    render(<ProviderDetailsPanel provider={provider} lastAuto={null} />);
+
+    expect(screen.queryByText(/no match/i)).not.toBeInTheDocument();
+    expect(screen.getByText("/Users/me/proj-a/.venv")).toBeInTheDocument();
+    expect(screen.getByText("/Users/me/proj-b/.venv")).toBeInTheDocument();
+  });
 });

@@ -12,7 +12,7 @@ export function ProviderDetailsPanel({ provider, lastAuto }: Props) {
     <div
       role="region"
       aria-label={`${provider.name} details`}
-      className="bg-surface-muted px-4 py-3 space-y-3"
+      className="bg-bg-elev-2 px-4 py-3 space-y-3"
     >
       <PathsSection provider={provider} />
       {provider.recipe_template && <RecipeSection lines={provider.recipe_template} />}
@@ -89,9 +89,11 @@ function RowPair({ raw, resolved }: { raw: string; resolved: string[] | null }) 
 }
 
 function matchesRaw(raw: string, resolved: string): boolean {
-  // Cheap heuristic: strip leading "~" or "$VAR" segment from raw, then
-  // see if the resolved path ends with the remaining tail. Good enough for
-  // display; the backend has the exact mapping.
+  // Glob patterns can expand to many concrete paths that don't share a
+  // common suffix (e.g., ~/projects/*/.venv → /Users/me/proj-a/.venv,
+  // /Users/me/proj-b/.venv). The frontend lacks the precise raw→resolved
+  // mapping the backend has, so for globs we accept any resolved path.
+  if (/[*?[]/.test(raw)) return true;
   const tail = raw.replace(/^[~$][^/]*\/?/, "");
   return resolved.endsWith(tail) || resolved === raw;
 }
@@ -105,7 +107,7 @@ function RecipeSection({ lines }: { lines: string[] }) {
       </p>
       <pre
         data-testid="recipe-block"
-        className="bg-surface-sunken font-mono text-[11px] p-2 rounded overflow-x-auto"
+        className="bg-bg-code font-mono text-[11px] p-2 rounded overflow-x-auto"
       >
         <code>{lines.join("\n")}</code>
       </pre>
