@@ -27,7 +27,20 @@ export interface SnapshotEvent {
   note: string | null;
 }
 
-export type HistoryEvent = CleanupEvent | SnapshotEvent;
+export interface MemoryActionEvent {
+  type: "memory_action";
+  at: string;
+  action_id: string;
+  action_kind: string;
+  target_id: string;
+  label: string;
+  estimated_bytes: number | null;
+  risk: "safe" | "reclaimable" | "dangerous" | string | null;
+  status: "ok" | "error" | "unsupported" | string;
+  message: string;
+}
+
+export type HistoryEvent = CleanupEvent | SnapshotEvent | MemoryActionEvent;
 
 export function useHistory() {
   return useQuery({

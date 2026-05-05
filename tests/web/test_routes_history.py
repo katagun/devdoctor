@@ -134,7 +134,8 @@ def test_snapshots_listing_includes_kind_and_duration(tmp_path, monkeypatch) -> 
     from diskdoctor import history
     from diskdoctor.types import ProviderTiming, Report, SnapshotKind
 
-    monkeypatch.setattr(history, "default_snapshot_dir", lambda: tmp_path)
+    client = _client(tmp_path, monkeypatch)
+    snapshot_dir = history.default_snapshot_dir()
 
     ts = datetime(2026, 4, 24, 12, 0, tzinfo=UTC)
     auto = Report(
@@ -147,9 +148,8 @@ def test_snapshots_listing_includes_kind_and_duration(tmp_path, monkeypatch) -> 
         duration_ms=4821,
         per_provider=[ProviderTiming("p", 100, 1, 4821)],
     )
-    history.write_snapshot(auto, tmp_path)
+    history.write_snapshot(auto, snapshot_dir)
 
-    client = _client(tmp_path, monkeypatch)
     resp = client.get("/api/snapshots", headers={"Host": "testserver"})
     assert resp.status_code == 200
     body = resp.json()
@@ -168,7 +168,8 @@ def test_snapshots_listing_filters_by_kind(tmp_path, monkeypatch) -> None:
     from diskdoctor import history
     from diskdoctor.types import Entry, ProviderTiming, Report, Risk, SnapshotKind
 
-    monkeypatch.setattr(history, "default_snapshot_dir", lambda: tmp_path)
+    client = _client(tmp_path, monkeypatch)
+    snapshot_dir = history.default_snapshot_dir()
 
     def _r(kind: SnapshotKind, second: int) -> Report:
         ts = datetime(2026, 4, 24, 12, 0, second, tzinfo=UTC)
@@ -188,10 +189,8 @@ def test_snapshots_listing_filters_by_kind(tmp_path, monkeypatch) -> None:
             per_provider=[ProviderTiming("p", 0, 0, 10)],
         )
 
-    history.write_snapshot(_r(SnapshotKind.AUTO, 0), tmp_path)
-    history.write_snapshot(_r(SnapshotKind.MANUAL, 1), tmp_path)
-
-    client = _client(tmp_path, monkeypatch)
+    history.write_snapshot(_r(SnapshotKind.AUTO, 0), snapshot_dir)
+    history.write_snapshot(_r(SnapshotKind.MANUAL, 1), snapshot_dir)
 
     resp = client.get("/api/snapshots?kind=auto", headers={"Host": "testserver"})
     assert resp.status_code == 200
@@ -212,7 +211,8 @@ def test_snapshots_listing_respects_limit(tmp_path, monkeypatch) -> None:
     from diskdoctor import history
     from diskdoctor.types import Report, SnapshotKind
 
-    monkeypatch.setattr(history, "default_snapshot_dir", lambda: tmp_path)
+    client = _client(tmp_path, monkeypatch)
+    snapshot_dir = history.default_snapshot_dir()
 
     for i in range(5):
         ts = datetime(2026, 4, 24, 12, 0, i, tzinfo=UTC)
@@ -226,9 +226,8 @@ def test_snapshots_listing_respects_limit(tmp_path, monkeypatch) -> None:
             duration_ms=10,
             per_provider=[],
         )
-        history.write_snapshot(r, tmp_path)
+        history.write_snapshot(r, snapshot_dir)
 
-    client = _client(tmp_path, monkeypatch)
     resp = client.get("/api/snapshots?limit=2", headers={"Host": "testserver"})
     assert resp.status_code == 200
     assert len(resp.json()) == 2

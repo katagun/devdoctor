@@ -1,6 +1,10 @@
-# diskdoctor
+# DevDoctor
 
-Repeatable disk-cache analyzer and interactive cleanup for macOS and Linux.
+DevDoctor is a local developer workstation resource manager.
+
+Today it includes the original diskdoctor workflow: repeatable disk-cache
+analysis and interactive cleanup for macOS and Linux. The current installable
+Python package and CLI remain named `diskdoctor` during the transition.
 
 ## Install
 

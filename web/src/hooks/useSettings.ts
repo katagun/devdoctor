@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import type { ColumnId } from "@/components/CacheTable/columns";
 import { COLUMNS, DEFAULT_HIDDEN_COLUMNS } from "@/components/CacheTable/columns";
+import type { ResourceDomain, ToolNavigation } from "@/lib/navigation";
 
 const KEY = "diskdoctor.settings.v1";
 
@@ -27,7 +28,7 @@ export function clampSidebarWidth(px: number, viewportWidth: number): number {
 // Cadence in milliseconds for TanStack Query's staleTime. `Infinity` disables
 // automatic refetching — only manual "Rescan now" forces a refetch.
 export const CADENCE_PRESETS = [
-  { id: "live", label: "Live", staleMs: 0, caption: "Rescan every time you open the Scan page" },
+  { id: "live", label: "Live", staleMs: 0, caption: "Rescan every time you open the Disk page" },
   { id: "hourly", label: "Hourly", staleMs: 60 * 60 * 1000, caption: "Reuse last scan for up to 1 hour" },
   { id: "six_hours", label: "Every 6 hours", staleMs: 6 * 60 * 60 * 1000, caption: "Reuse last scan for up to 6 hours" },
   { id: "daily", label: "Daily", staleMs: 24 * 60 * 60 * 1000, caption: "Reuse last scan for up to 24 hours" },
@@ -47,12 +48,15 @@ export const SIZE_PRESETS = [
 
 export type Density = "sparse" | "dense";
 export type Theme = "light" | "dark" | "system";
+export type { ResourceDomain, ToolNavigation };
 
 export interface Settings {
   minSizeBytes: number;
   cadence: CadenceId;
   density: Density;
   theme: Theme;
+  toolNavigation: ToolNavigation;
+  landingPage: ResourceDomain;
   sidebarWidth: number;
   sidebarExpandedWidth: number;
   scanTableHiddenColumns: ColumnId[];
@@ -77,6 +81,8 @@ const DEFAULTS: Settings = {
   cadence: "live",
   density: "sparse",
   theme: "system",
+  toolNavigation: "sidebar",
+  landingPage: "disk",
   sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
   sidebarExpandedWidth: SIDEBAR_DEFAULT_WIDTH,
   scanTableHiddenColumns: [...DEFAULT_HIDDEN_COLUMNS],
@@ -102,6 +108,14 @@ function read(): Settings {
       parsed.theme === "light" || parsed.theme === "dark" || parsed.theme === "system"
         ? parsed.theme
         : DEFAULTS.theme;
+    const toolNavigation: ToolNavigation =
+      parsed.toolNavigation === "tabs" || parsed.toolNavigation === "sidebar"
+        ? parsed.toolNavigation
+        : DEFAULTS.toolNavigation;
+    const landingPage: ResourceDomain =
+      parsed.landingPage === "memory" || parsed.landingPage === "disk"
+        ? parsed.landingPage
+        : DEFAULTS.landingPage;
     // Sidebar width migration:
     //   * Prefer new fields when present and sensible.
     //   * Otherwise fall back to the old sidebarCollapsed boolean.
@@ -148,6 +162,8 @@ function read(): Settings {
       cadence,
       density,
       theme,
+      toolNavigation,
+      landingPage,
       sidebarWidth,
       sidebarExpandedWidth,
       scanTableHiddenColumns,

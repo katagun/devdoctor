@@ -5,8 +5,15 @@ import {
   useSettings,
   type CadenceId,
   type Density,
+  type ResourceDomain,
   type Theme,
+  type ToolNavigation,
 } from "@/hooks/useSettings";
+import {
+  useAppSettings,
+  useUpdateAppSettings,
+  type StorageBackend,
+} from "@/hooks/useAppSettings";
 import { DiskUsageBar } from "@/components/DiskUsageBar";
 import { humanBytes } from "@/lib/format";
 
@@ -14,11 +21,14 @@ const SAVED_MS = 1200;
 
 export default function Settings() {
   const { settings, update, reset } = useSettings();
+  const appSettings = useAppSettings();
+  const updateAppSettings = useUpdateAppSettings();
   const [customMb, setCustomMb] = useState<string>(
     settings.minSizeBytes && !SIZE_PRESETS.some((p) => p.bytes === settings.minSizeBytes)
       ? String(Math.round(settings.minSizeBytes / 1_000_000))
       : "",
   );
+  const [sqlitePath, setSqlitePath] = useState("");
   const [savedFlash, setSavedFlash] = useState(false);
 
   useEffect(() => {
@@ -26,6 +36,12 @@ export default function Settings() {
     const t = setTimeout(() => setSavedFlash(false), SAVED_MS);
     return () => clearTimeout(t);
   }, [savedFlash]);
+
+  useEffect(() => {
+    if (appSettings.data?.sqlite_path) {
+      setSqlitePath(appSettings.data.sqlite_path);
+    }
+  }, [appSettings.data?.sqlite_path]);
 
   function applyAndFlash(patch: Parameters<typeof update>[0]) {
     update(patch);
@@ -47,6 +63,30 @@ export default function Settings() {
 
   function setTheme(t: Theme) {
     applyAndFlash({ theme: t });
+  }
+
+  function setToolNavigation(toolNavigation: ToolNavigation) {
+    applyAndFlash({ toolNavigation });
+  }
+
+  function setLandingPage(landingPage: ResourceDomain) {
+    applyAndFlash({ landingPage });
+  }
+
+  function setStorageBackend(storageBackend: StorageBackend) {
+    updateAppSettings.mutate(
+      { storage_backend: storageBackend },
+      { onSuccess: () => setSavedFlash(true) },
+    );
+  }
+
+  function saveSqlitePath() {
+    const trimmed = sqlitePath.trim();
+    if (!trimmed) return;
+    updateAppSettings.mutate(
+      { sqlite_path: trimmed },
+      { onSuccess: () => setSavedFlash(true) },
+    );
   }
 
   function setCustom(mbRaw: string) {
@@ -93,7 +133,7 @@ export default function Settings() {
 
       <Section
         title="Minimum size cutoff"
-        description="Hide tiny entries from the scan table. Items below the threshold are bucketed into a single 'small items' summary row so you can see the totals without the noise."
+        description="Hide tiny entries from the disk table. Items below the threshold are bucketed into a single 'small items' summary row so you can see the totals without the noise."
       >
         <div className="flex gap-2 flex-wrap">
           {SIZE_PRESETS.map((p) => (
@@ -127,7 +167,7 @@ export default function Settings() {
 
       <Section
         title="Row density"
-        description="Scan table row height. Dense collapses provider and label onto one line so more entries fit on screen without scrolling."
+        description="Disk table row height. Dense collapses provider and label onto one line so more entries fit on screen without scrolling."
       >
         <div className="flex gap-2">
           <Chip active={settings.density === "sparse"} onClick={() => setDensity("sparse")}>
@@ -140,8 +180,48 @@ export default function Settings() {
       </Section>
 
       <Section
+        title="Tool navigation"
+        description="Controls whether disk and memory tools live in the left sidebar or in horizontal tabs inside each resource page."
+      >
+        <div className="space-y-1.5">
+          <RadioRow
+            checked={settings.toolNavigation === "sidebar"}
+            onClick={() => setToolNavigation("sidebar")}
+            label="Sidebar"
+            caption="Show disk and memory tools in the left navigation."
+          />
+          <RadioRow
+            checked={settings.toolNavigation === "tabs"}
+            onClick={() => setToolNavigation("tabs")}
+            label="Page tabs"
+            caption="Show only resource roots in the sidebar and put tools in each page header."
+          />
+        </div>
+      </Section>
+
+      <Section
+        title="Landing page"
+        description="Choose which resource opens when you visit DevDoctor without a specific path."
+      >
+        <div className="space-y-1.5">
+          <RadioRow
+            checked={settings.landingPage === "disk"}
+            onClick={() => setLandingPage("disk")}
+            label="Disk"
+            caption="Open the disk scan by default."
+          />
+          <RadioRow
+            checked={settings.landingPage === "memory"}
+            onClick={() => setLandingPage("memory")}
+            label="Memory"
+            caption="Open the live memory view by default."
+          />
+        </div>
+      </Section>
+
+      <Section
         title="Rescan cadence"
-        description="Controls how often the Scan page re-hits the backend during navigation. Reloading the browser always triggers a fresh scan — cadence only applies while moving between pages within an app session."
+        description="Controls how often the Disk page re-hits the backend during navigation. Reloading the browser always triggers a fresh scan — cadence only applies while moving between pages within an app session."
       >
         <div className="space-y-1.5">
           {CADENCE_PRESETS.map((c) => (
@@ -154,6 +234,63 @@ export default function Settings() {
             />
           ))}
         </div>
+      </Section>
+
+      <Section
+        title="Storage backend"
+        description="Controls where DevDoctor stores server-side records such as disk snapshots and cleanup history. Filesystem keeps the existing JSON files; SQLite stores records in one local database."
+      >
+        {appSettings.isLoading ? (
+          <div className="text-text-muted text-[11px] animate-pulse">loading storage settings…</div>
+        ) : appSettings.isError ? (
+          <div className="text-risk-danger text-[11px]">
+            Failed to load storage settings: {String(appSettings.error)}
+          </div>
+        ) : appSettings.data ? (
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Chip
+                active={appSettings.data.storage_backend === "filesystem"}
+                onClick={() => setStorageBackend("filesystem")}
+              >
+                filesystem
+              </Chip>
+              <Chip
+                active={appSettings.data.storage_backend === "sqlite"}
+                onClick={() => setStorageBackend("sqlite")}
+              >
+                sqlite
+              </Chip>
+            </div>
+            <div className="grid gap-2 text-[10.5px] text-text-dim">
+              <PathRow label="Data directory" value={appSettings.data.data_dir} />
+              <label className="grid gap-1">
+                <span>SQLite path</span>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={sqlitePath}
+                    onChange={(e) => setSqlitePath(e.target.value)}
+                    className="flex-1 bg-bg-elev-1 border border-border rounded px-2 py-1 text-[11px] text-text focus:outline-none focus:border-risk-reclaim"
+                  />
+                  <button
+                    type="button"
+                    onClick={saveSqlitePath}
+                    disabled={updateAppSettings.isPending}
+                    className="px-3 py-1 rounded border border-border text-text-dim hover:text-text disabled:opacity-50"
+                  >
+                    save
+                  </button>
+                </div>
+              </label>
+              {updateAppSettings.isError && (
+                <div className="text-risk-danger">
+                  Failed to save storage settings: {String(updateAppSettings.error)}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
       </Section>
 
         <div className="mt-8 pt-4 border-t border-border flex justify-between items-center">
@@ -193,6 +330,17 @@ function Section({
       )}
       {children}
     </section>
+  );
+}
+
+function PathRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid gap-1">
+      <span>{label}</span>
+      <code className="block bg-bg-elev-1 border border-border rounded px-2 py-1 text-text break-all">
+        {value}
+      </code>
+    </div>
   );
 }
 

@@ -3,7 +3,8 @@ import { DiffTable } from "@/components/DiffTable";
 import { useCreateSnapshot, useSnapshot, useSnapshots } from "@/hooks/useSnapshots";
 import type { SnapshotMeta } from "@/hooks/useSnapshots";
 import { useDiff } from "@/hooks/useDiff";
-import { DiskUsageBar } from "@/components/DiskUsageBar";
+import { DiskPageHeader } from "@/components/DiskPageHeader";
+import { DomainToolTabs } from "@/components/DomainToolTabs";
 import {
   byteMagnitudeTier,
   formatAbsTime,
@@ -104,11 +105,14 @@ export default function Snapshots() {
 
   return (
     <div className="flex flex-col h-screen font-mono text-[11px]">
-      <header className="px-4 py-3 border-b border-border flex items-center gap-4">
+      <DiskPageHeader>
         <div className="text-text-dim">
           <b className="text-text">{snapshots.length}</b> snapshot
           {snapshots.length === 1 ? "" : "s"}
         </div>
+      </DiskPageHeader>
+      <DomainToolTabs domain="disk" />
+      <header className="px-4 py-2.5 border-b border-border flex items-center gap-4">
         <div className="ml-auto flex items-center gap-2">
           <input
             type="text"
@@ -140,7 +144,6 @@ export default function Snapshots() {
             )}
           </button>
         </div>
-        <DiskUsageBar />
       </header>
 
       {create.isError && (

@@ -1,6 +1,9 @@
 import { NavLink } from "react-router-dom";
 import { SidebarResizeHandle } from "@/components/SidebarResizeHandle";
 import { useSidebarWidth } from "@/hooks/useSidebarWidth";
+import { useSettings } from "@/hooks/useSettings";
+import { APP_NAME } from "@/lib/brand";
+import { DISK_TOOL_ITEMS, MEMORY_TOOL_ITEMS, RESOURCE_ITEMS } from "@/lib/navigation";
 
 const linkBase =
   "flex items-center px-3 py-1.5 rounded text-[10.5px] font-mono transition-colors";
@@ -49,6 +52,35 @@ function Item({
   );
 }
 
+function Section({
+  title,
+  items,
+  collapsed,
+}: {
+  title: string;
+  items: Array<{ to: string; glyph: string; label: string }>;
+  collapsed: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      {!collapsed && (
+        <div className="text-text-muted text-[9px] uppercase tracking-widest px-2 pb-1">
+          {title}
+        </div>
+      )}
+      {items.map((item) => (
+        <Item
+          key={item.to}
+          to={item.to}
+          glyph={item.glyph}
+          label={item.label}
+          collapsed={collapsed}
+        />
+      ))}
+    </div>
+  );
+}
+
 function ChevronToggle({
   collapsed,
   onClick,
@@ -73,6 +105,8 @@ function ChevronToggle({
 export function Sidebar() {
   const { width, collapsed, setWidth, toggle, maxWidth, forceCollapsedByViewport } =
     useSidebarWidth();
+  const { settings } = useSettings();
+  const showTools = settings.toolNavigation === "sidebar";
 
   return (
     <aside className="bg-bg-elev-1 border-r border-border p-3 sticky top-0 h-screen relative">
@@ -87,24 +121,40 @@ export function Sidebar() {
             style={{ boxShadow: "0 0 10px var(--risk-reclaim)" }}
           />
           {!collapsed && (
-            <span className="font-mono font-semibold text-[12px]">diskdoctor</span>
+            <span className="font-mono font-semibold text-[12px]">{APP_NAME}</span>
           )}
         </div>
         {!forceCollapsedByViewport && (
           <ChevronToggle collapsed={collapsed} onClick={toggle} />
         )}
       </div>
-      {!collapsed && (
-        <div className="text-text-muted text-[9px] uppercase tracking-widest px-2 pb-1">
-          workspace
-        </div>
-      )}
-      <nav className="flex flex-col gap-0.5 mb-4">
-        <Item to="/" glyph="◆" label="scan" collapsed={collapsed} />
-        <Item to="/snapshots" glyph="⏱" label="snapshots" collapsed={collapsed} />
-        <Item to="/history" glyph="≡" label="history" collapsed={collapsed} />
-        <Item to="/providers" glyph="⚙" label="providers" collapsed={collapsed} />
-        <Item to="/settings" glyph="⚡" label="settings" collapsed={collapsed} />
+      <nav className="flex flex-col gap-3 mb-4" aria-label="Primary">
+        <Section
+          title="resources"
+          collapsed={collapsed}
+          items={RESOURCE_ITEMS}
+        />
+        {showTools && (
+          <>
+            <Section
+              title="disk tools"
+              collapsed={collapsed}
+              items={DISK_TOOL_ITEMS.filter((item) => item.label !== "scan")}
+            />
+            <Section
+              title="memory tools"
+              collapsed={collapsed}
+              items={MEMORY_TOOL_ITEMS.filter((item) => item.label !== "live")}
+            />
+          </>
+        )}
+        <Section
+          title="app"
+          collapsed={collapsed}
+          items={[
+            { to: "/settings", glyph: "⚙", label: "settings" },
+          ]}
+        />
       </nav>
       <SidebarResizeHandle
         width={width}

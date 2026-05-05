@@ -12,6 +12,7 @@ from rich.table import Table
 from diskdoctor import discovery, history, registry
 from diskdoctor.cleanup import build_script
 from diskdoctor.cleanup import run as cleanup_run
+from diskdoctor.config import load_app_settings
 from diskdoctor.ports import RealShell, Shell
 from diskdoctor.rendering import (
     real_prompts,
@@ -19,6 +20,7 @@ from diskdoctor.rendering import (
     render_report_table,
     spinner,
 )
+from diskdoctor.storage import build_storage
 from diskdoctor.types import CleanupOpts, Risk, ScanFilters
 
 _SIZE_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([KMGT]?)$", re.IGNORECASE)
@@ -182,20 +184,25 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
             report = discovery.scan(providers_list, ScanFilters(), datetime.now(UTC))
         if note:
             report.note = note
-        target = history.write_snapshot(report, history.default_snapshot_dir())
-        click.echo(f"wrote {target}")
+        target = build_storage(load_app_settings()).write_disk_snapshot(report)
+        click.echo(f"wrote {target.path}")
 
     @cli.command()
     @click.option("--from", "from_", default=None, help="Path to earlier snapshot.")
     @click.option("--to", "to_", default=None, help="Path to later snapshot, or 'live'.")
     @click.pass_context
     def diff(ctx: click.Context, from_: str | None, to_: str | None) -> None:
-        snap_dir = history.default_snapshot_dir()
-        recent = history.latest_snapshots(snap_dir, n=2)
+        storage = build_storage(load_app_settings())
+        recent = storage.list_disk_snapshots(limit=2, kind=None)
         if from_:
-            before = history.load_snapshot(Path(from_))
+            before_path = Path(from_)
+            before = (
+                history.load_snapshot(before_path)
+                if before_path.is_file()
+                else storage.load_disk_snapshot(from_)
+            )
         elif len(recent) >= _MIN_SNAPSHOTS_FOR_DIFF:
-            before = history.load_snapshot(recent[-2])
+            before = storage.load_disk_snapshot(recent[-1].name)
         else:
             raise click.UsageError("need at least two snapshots, or pass --from")
 
@@ -203,9 +210,14 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
             providers_list = registry.load_providers(ctx.obj["shell"])
             after = discovery.scan(providers_list, ScanFilters(), datetime.now(UTC))
         elif to_:
-            after = history.load_snapshot(Path(to_))
+            after_path = Path(to_)
+            after = (
+                history.load_snapshot(after_path)
+                if after_path.is_file()
+                else storage.load_disk_snapshot(to_)
+            )
         else:
-            after = history.load_snapshot(recent[-1])
+            after = storage.load_disk_snapshot(recent[0].name)
 
         d = history.diff(before, after)
         render_diff_table(Console(), d)
@@ -269,7 +281,7 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         app = build_app(ctx.obj["shell"], allowed_hosts=allowed_hosts)
 
         url = f"http://127.0.0.1:{bind_port}"
-        click.echo(f"diskdoctor web UI -> {url}\nCtrl-C to stop.")
+        click.echo(f"DevDoctor web UI -> {url}\nCtrl-C to stop.")
 
         if not no_browser:
             # Swallow every error: headless CI, missing DISPLAY, broken

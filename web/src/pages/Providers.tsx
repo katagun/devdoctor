@@ -3,7 +3,8 @@ import { useProviders, type ProviderRow } from "@/hooks/useProviders";
 import { useSelectedProviders } from "@/hooks/useSelectedProviders";
 import { useLatestAutoSnapshot, type ProviderTimingMeta } from "@/hooks/useSnapshots";
 import { RiskBadge } from "@/components/RiskBadge";
-import { DiskUsageBar } from "@/components/DiskUsageBar";
+import { DiskPageHeader } from "@/components/DiskPageHeader";
+import { DomainToolTabs } from "@/components/DomainToolTabs";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { ProviderDetailsPanel } from "@/components/ProviderDetailsPanel";
 
@@ -62,7 +63,14 @@ export default function Providers() {
 
   return (
     <div className="font-mono text-[11px]">
-      <header className="px-6 pt-6 pb-3 flex items-center gap-4 flex-wrap">
+      <DiskPageHeader>
+        <span className="tabular-nums">
+          <b className="text-text">{enabledCount}</b> of{" "}
+          <b className="text-text">{providers.length}</b> providers enabled
+        </span>
+      </DiskPageHeader>
+      <DomainToolTabs domain="disk" />
+      <header className="px-4 py-2.5 border-b border-border flex items-center gap-4 flex-wrap">
         <label className="relative block w-full max-w-[360px] flex-1 min-w-[260px]">
           <input
             type="search"
@@ -86,12 +94,9 @@ export default function Providers() {
         </label>
 
         <div className="ml-auto text-text-dim text-[11px] tabular-nums">
-          <b className="text-text">{enabledCount}</b> of{" "}
-          <b className="text-text">{providers.length}</b> enabled
           {query && (
             <span className="text-text-muted">
-              {" "}
-              · {filtered.length} match{filtered.length === 1 ? "" : "es"}
+              {filtered.length} match{filtered.length === 1 ? "" : "es"}
             </span>
           )}
         </div>
@@ -117,10 +122,9 @@ export default function Providers() {
             />
           </button>
         </div>
-        <DiskUsageBar />
       </header>
 
-      <div className="px-6 pb-3 text-text-muted text-[10px]">
+      <div className="px-4 py-2 border-b border-border text-text-muted text-[10px]">
         Toggle off to exclude a provider from scans. Preference is stored locally.
       </div>
 

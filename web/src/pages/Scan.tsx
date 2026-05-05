@@ -3,7 +3,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { CacheTable } from "@/components/CacheTable";
 import { CleanupWizard } from "@/components/CleanupWizard";
 import { ColumnsPicker } from "@/components/ColumnsPicker";
-import { TopStats } from "@/components/TopStats";
+import { DiskPageHeader } from "@/components/DiskPageHeader";
+import { DomainToolTabs } from "@/components/DomainToolTabs";
+import { SparklineBar } from "@/components/SparklineBar";
 import { useScan } from "@/hooks/useScan";
 import { useProviders } from "@/hooks/useProviders";
 import { useSelectedProviders } from "@/hooks/useSelectedProviders";
@@ -86,10 +88,16 @@ export default function Scan() {
 
   return (
     <div className="flex flex-col h-screen">
-      <TopStats
-        reclaimable={data?.totalBytes ?? 0}
-        cacheCount={allRows.length}
-      />
+      <DiskPageHeader>
+        <span>
+          <b className="text-text">{humanBytes(data?.totalBytes ?? 0)}</b> reclaimable
+        </span>
+        <SparklineBar heights={[20, 35, 45, 58, 70, 82, 92, 85]} />
+        <span>
+          <b className="text-text">{allRows.length}</b> caches
+        </span>
+      </DiskPageHeader>
+      <DomainToolTabs domain="disk" />
       <div className="px-4 py-2.5 border-b border-border flex gap-2 items-center flex-wrap">
         {RISK_CHIPS.map((chip) => (
           <button

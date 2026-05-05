@@ -12,6 +12,7 @@ from starlette.responses import JSONResponse
 from diskdoctor import cleanup as cleanup_mod
 from diskdoctor import discovery, history, registry
 from diskdoctor.providers.base import PathProvider
+from diskdoctor.storage.base import StorageBackend
 from diskdoctor.types import Report, Risk, ScanFilters, SnapshotKind
 from diskdoctor.web.models import ProviderInfo, RecipeRequest, RecipeResponse
 
@@ -39,6 +40,7 @@ def _parse_risks(csv: str | None) -> frozenset[Risk] | None:
 
 
 @router.get("/scan")
+@router.get("/disk/scan")
 def scan(
     request: Request,
     min_size: str | None = Query(default=None),
@@ -54,14 +56,12 @@ def scan(
     )
     providers_list = registry.load_providers(request.app.state.shell)
     report = discovery.scan(providers_list, filters, datetime.now(UTC))
-    if snapshot and _should_write_auto_snapshot(snapshot_min_interval_ms):
+    storage: StorageBackend = request.app.state.storage
+    if snapshot and _should_write_auto_snapshot(storage, snapshot_min_interval_ms):
         auto_report = dataclasses.replace(report, kind=SnapshotKind.AUTO)
         try:
-            history.write_snapshot(auto_report, history.default_snapshot_dir())
-            history.prune_auto_snapshots(
-                history.default_snapshot_dir(),
-                keep=history.AUTO_SNAPSHOT_RETENTION,
-            )
+            storage.write_disk_snapshot(auto_report)
+            storage.prune_auto_disk_snapshots(keep=history.AUTO_SNAPSHOT_RETENTION)
         except OSError:
             # Disk full / permission denied / whatever — don't fail the
             # scan response because the auto-snapshot write choked. Client
@@ -70,7 +70,10 @@ def scan(
     return JSONResponse(content=_report_to_dict(report))
 
 
-def _should_write_auto_snapshot(min_interval_ms: int | None) -> bool:
+def _should_write_auto_snapshot(
+    storage: StorageBackend,
+    min_interval_ms: int | None,
+) -> bool:
     """Honour the client's cadence by skipping auto-snapshot writes that
     fall inside `min_interval_ms` of the most recent auto-snapshot.
 
@@ -82,17 +85,14 @@ def _should_write_auto_snapshot(min_interval_ms: int | None) -> bool:
     """
     if min_interval_ms is None or min_interval_ms <= 0:
         return True
-    directory = history.default_snapshot_dir()
-    if not directory.exists():
-        return True
-    autos = sorted(directory.glob("*--auto.json"), reverse=True)  # newest first
+    autos = storage.list_disk_snapshots(limit=1, kind=SnapshotKind.AUTO)
     if not autos:
         return True
     try:
-        last_mtime = autos[0].stat().st_mtime
-    except OSError:
+        last_seen = datetime.fromisoformat(autos[0].scanned_at).timestamp()
+    except ValueError:
         return True
-    age_ms = (datetime.now(UTC).timestamp() - last_mtime) * 1000
+    age_ms = (datetime.now(UTC).timestamp() - last_seen) * 1000
     return age_ms >= min_interval_ms
 
 
@@ -101,8 +101,18 @@ def providers(request: Request) -> list[ProviderInfo]:
     providers_list = registry.load_providers(request.app.state.shell)
     out: list[ProviderInfo] = []
     for p in providers_list:
-        is_yaml = isinstance(p, PathProvider)
-        kind: Literal["class", "yaml"] = "yaml" if is_yaml else "class"
+        if isinstance(p, PathProvider):
+            kind: Literal["class", "yaml"] = "yaml"
+            details = None
+            raw_paths = list(p.raw_paths)
+            resolved_paths = [str(rp) for rp in p.resolve_paths()]
+            recipe_template = list(p.recipe_template)
+        else:
+            kind = "class"
+            details = p.details
+            raw_paths = None
+            resolved_paths = None
+            recipe_template = None
         info = ProviderInfo(
             name=p.name,
             description=p.description,
@@ -111,10 +121,10 @@ def providers(request: Request) -> list[ProviderInfo]:
             available=p.available(),
             required_binary=p.required_binary,
             kind=kind,
-            details=None if is_yaml else p.details,
-            raw_paths=list(p.raw_paths) if is_yaml else None,
-            resolved_paths=[str(rp) for rp in p.resolve_paths()] if is_yaml else None,
-            recipe_template=list(p.recipe_template) if is_yaml else None,
+            details=details,
+            raw_paths=raw_paths,
+            resolved_paths=resolved_paths,
+            recipe_template=recipe_template,
         )
         out.append(info)
     return out

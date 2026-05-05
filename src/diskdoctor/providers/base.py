@@ -7,7 +7,7 @@ import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypedDict
 
 from diskdoctor.ports import Shell
 from diskdoctor.sizer import size_path, stat_fields
@@ -53,7 +53,16 @@ def _normalize_platform(raw: str) -> str:
 _ALLOWED_PLATFORMS = frozenset({"darwin", "linux"})
 
 
-def _stat_kwargs(path: Path) -> dict[str, object]:
+class EntryStatKwargs(TypedDict, total=False):
+    uid: int | None
+    gid: int | None
+    mode: int | None
+    owner: str | None
+    group: str | None
+    perms: str | None
+
+
+def _stat_kwargs(path: Path) -> EntryStatKwargs:
     """Return the stat-field kwargs for Entry(...) construction.
 
     Empty dict when stat fails, so callers can use

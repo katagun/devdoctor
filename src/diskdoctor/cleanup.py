@@ -294,7 +294,7 @@ def build_script(report: Report) -> str:
     """Emit a reviewable shell script with every destructive line commented out."""
     lines: list[str] = [
         "#!/usr/bin/env bash",
-        "# diskdoctor cleanup script",
+        "# DevDoctor disk cleanup script",
         "# All destructive commands are commented out. Review each section,",
         "# uncomment the lines you want to run, then execute this file.",
         "set -euo pipefail",

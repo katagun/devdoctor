@@ -7,6 +7,7 @@ from typing import Any
 
 from diskdoctor import cleanup as cleanup_mod
 from diskdoctor import history_log
+from diskdoctor.storage.base import StorageBackend
 from diskdoctor.types import (
     AsyncRunLine,
     Choice,
@@ -37,6 +38,7 @@ class CleanupRunner:
     opts: CleanupOpts
     run_line: AsyncRunLine
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    storage: StorageBackend | None = None
     events: asyncio.Queue[dict[str, Any]] = field(default_factory=asyncio.Queue)
     _pending_prompts: dict[str, asyncio.Future[Choice]] = field(default_factory=dict)
     _pending_confirm: asyncio.Future[bool] | None = None
@@ -132,7 +134,10 @@ class CleanupRunner:
             }
             if error is not None:
                 payload["error"] = error
-            history_log.append_event(payload)
+            if self.storage is not None:
+                self.storage.append_audit_event(payload)
+            else:
+                history_log.append_event(payload)
         except Exception:
             # Never let audit logging break the job outcome.
             pass

@@ -49,6 +49,7 @@ async def start_job(body: CleanJobCreate, request: Request) -> Response:
                     allow_dangerous=body.allow_dangerous,
                 ),
                 run_line=run_line,
+                storage=request.app.state.storage,
             )
         )
     except RuntimeError:

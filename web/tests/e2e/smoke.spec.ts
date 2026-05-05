@@ -53,8 +53,8 @@ test.afterAll(async () => {
   if (fixtureDir) fs.rmSync(fixtureDir, { recursive: true, force: true });
 });
 
-test("scan page loads with at least one row", async ({ page }) => {
-  await page.goto("/");
+test("disk page loads with at least one row", async ({ page }) => {
+  await page.goto("/disk");
   await expect(page.getByText(/\d+\s+caches/i)).toBeVisible();
   await expect(page.getByText(/e2e-sample/i)).toBeVisible({ timeout: 5000 });
 });

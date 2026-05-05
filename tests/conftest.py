@@ -14,6 +14,7 @@ def _isolate_xdg_data_home(tmp_path: Path, monkeypatch):
     audit writes (e.g. CleanupRunner's audit log) never touch the real
     ~/.local/share/diskdoctor."""
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
 
 
 @dataclass
