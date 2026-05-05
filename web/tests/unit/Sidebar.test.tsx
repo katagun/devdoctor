@@ -30,6 +30,7 @@ describe("Sidebar", () => {
     const nav = screen.getByRole("navigation", { name: /primary/i });
     const labels = within(nav).getAllByRole("link").map((link) => link.textContent?.trim());
     expect(labels).toEqual([
+      "▧ dashboard",
       "◆ disk",
       "◫ memory",
       "▣ providers",
@@ -53,6 +54,7 @@ describe("Sidebar", () => {
   it("each nav link renders its glyph", () => {
     renderSidebar();
     const expected = [
+      ["/dashboard", "▧"],
       ["/disk", "◆"],
       ["/memory", "◫"],
       ["/disk/providers", "▣"],
@@ -82,7 +84,7 @@ describe("Sidebar", () => {
 
     const nav = screen.getByRole("navigation", { name: /primary/i });
     const labels = within(nav).getAllByRole("link").map((link) => link.textContent?.trim());
-    expect(labels).toEqual(["◆ disk", "◫ memory", "⚙ settings"]);
+    expect(labels).toEqual(["▧ dashboard", "◆ disk", "◫ memory", "⚙ settings"]);
     expect(screen.queryByText(/^disk tools$/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/^memory tools$/i)).not.toBeInTheDocument();
   });
@@ -115,6 +117,7 @@ describe("Sidebar", () => {
     it("each nav link carries a title attribute equal to its label", () => {
       renderSidebar();
       const expected = [
+        ["/dashboard", "dashboard"],
         ["/disk", "disk"],
         ["/memory", "memory"],
         ["/disk/providers", "providers"],

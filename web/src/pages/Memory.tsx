@@ -29,6 +29,7 @@ import {
 } from "@/hooks/useMemory";
 import { useSelectedMemoryProviders } from "@/hooks/useSelectedMemoryProviders";
 import { humanBytes, timeAgo } from "@/lib/format";
+import { memoryProviderIds } from "@/lib/providerFilters";
 
 const KIND_LABEL: Record<MemoryConsumerKind, string> = {
   browser: "browsers",
@@ -89,13 +90,10 @@ export default function Memory() {
     : "live";
   const memoryProviders = useMemoryProviders();
   const selectedProviders = useSelectedMemoryProviders();
-  const selectedProviderIds = useMemo(() => {
-    const rows = memoryProviders.data;
-    if (!rows) return undefined;
-    return rows
-      .filter((provider) => !selectedProviders.disabled.has(provider.id))
-      .map((provider) => provider.id);
-  }, [memoryProviders.data, selectedProviders.disabled]);
+  const selectedProviderIds = useMemo(
+    () => memoryProviderIds(memoryProviders.data, selectedProviders.disabled),
+    [memoryProviders.data, selectedProviders.disabled],
+  );
   const { data, isLoading, isFetching, error, refetch } = useMemory(selectedProviderIds);
   const history = useMemoryHistory(tab === "history");
   const snapshots = useMemorySnapshots(tab === "snapshots");

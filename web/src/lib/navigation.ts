@@ -1,5 +1,6 @@
 export type ToolNavigation = "sidebar" | "tabs";
 export type ResourceDomain = "disk" | "memory";
+export type LandingPage = "dashboard" | ResourceDomain;
 
 export interface ToolNavItem {
   to: string;
@@ -8,6 +9,7 @@ export interface ToolNavItem {
 }
 
 export const RESOURCE_ITEMS: ToolNavItem[] = [
+  { to: "/dashboard", glyph: "▧", label: "dashboard" },
   { to: "/disk", glyph: "◆", label: "disk" },
   { to: "/memory", glyph: "◫", label: "memory" },
 ];

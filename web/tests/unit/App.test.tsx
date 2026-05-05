@@ -26,7 +26,19 @@ describe("LandingRedirect", () => {
     __testReloadSettings();
   });
 
-  it("opens disk by default", async () => {
+  it("opens dashboard by default", async () => {
+    renderLandingRedirect();
+
+    expect(await screen.findByTestId("location")).toHaveTextContent("/dashboard");
+  });
+
+  it("can open disk from local settings", async () => {
+    localStorage.setItem(
+      "diskdoctor.settings.v1",
+      JSON.stringify({ landingPage: "disk" }),
+    );
+    __testReloadSettings();
+
     renderLandingRedirect();
 
     expect(await screen.findByTestId("location")).toHaveTextContent("/disk");

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import type { ColumnId } from "@/components/CacheTable/columns";
 import { COLUMNS, DEFAULT_HIDDEN_COLUMNS } from "@/components/CacheTable/columns";
-import type { ResourceDomain, ToolNavigation } from "@/lib/navigation";
+import type { LandingPage, ToolNavigation } from "@/lib/navigation";
 
 const KEY = "diskdoctor.settings.v1";
 
@@ -48,7 +48,7 @@ export const SIZE_PRESETS = [
 
 export type Density = "sparse" | "dense";
 export type Theme = "light" | "dark" | "system";
-export type { ResourceDomain, ToolNavigation };
+export type { LandingPage, ToolNavigation };
 
 export interface Settings {
   minSizeBytes: number;
@@ -56,7 +56,7 @@ export interface Settings {
   density: Density;
   theme: Theme;
   toolNavigation: ToolNavigation;
-  landingPage: ResourceDomain;
+  landingPage: LandingPage;
   sidebarWidth: number;
   sidebarExpandedWidth: number;
   scanTableHiddenColumns: ColumnId[];
@@ -82,7 +82,7 @@ const DEFAULTS: Settings = {
   density: "sparse",
   theme: "system",
   toolNavigation: "sidebar",
-  landingPage: "disk",
+  landingPage: "dashboard",
   sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
   sidebarExpandedWidth: SIDEBAR_DEFAULT_WIDTH,
   scanTableHiddenColumns: [...DEFAULT_HIDDEN_COLUMNS],
@@ -112,8 +112,10 @@ function read(): Settings {
       parsed.toolNavigation === "tabs" || parsed.toolNavigation === "sidebar"
         ? parsed.toolNavigation
         : DEFAULTS.toolNavigation;
-    const landingPage: ResourceDomain =
-      parsed.landingPage === "memory" || parsed.landingPage === "disk"
+    const landingPage: LandingPage =
+      parsed.landingPage === "dashboard" ||
+      parsed.landingPage === "memory" ||
+      parsed.landingPage === "disk"
         ? parsed.landingPage
         : DEFAULTS.landingPage;
     // Sidebar width migration:

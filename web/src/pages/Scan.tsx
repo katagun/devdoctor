@@ -12,6 +12,7 @@ import { useSelectedProviders } from "@/hooks/useSelectedProviders";
 import { cadenceMs, useSettings } from "@/hooks/useSettings";
 import { useScanETA } from "@/hooks/useScanETA";
 import { formatMs, humanBytes, RiskValue, timeAgo } from "@/lib/format";
+import { diskProviderParam } from "@/lib/providerFilters";
 
 const RISK_CHIPS: Array<{ key: string; label: string; risks: RiskValue[] }> = [
   { key: "all", label: "all", risks: [] },
@@ -27,11 +28,10 @@ export default function Scan() {
 
   const { data: providers } = useProviders();
   const { disabled } = useSelectedProviders();
-  const providerParam = useMemo(() => {
-    if (!providers || disabled.size === 0) return undefined;
-    const enabled = providers.filter((p) => !disabled.has(p.name)).map((p) => p.name);
-    return enabled.length ? enabled.join(",") : "__diskdoctor_nothing_enabled__";
-  }, [providers, disabled]);
+  const providerParam = useMemo(
+    () => diskProviderParam(providers, disabled),
+    [providers, disabled],
+  );
 
   const { settings } = useSettings();
   const staleTime = cadenceMs(settings.cadence);

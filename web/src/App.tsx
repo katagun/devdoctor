@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppShell from "./AppShell";
 import Scan from "./pages/Scan";
@@ -8,9 +9,25 @@ import Settings from "./pages/Settings";
 import Memory from "./pages/Memory";
 import { useSettings } from "./hooks/useSettings";
 
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+
 export function LandingRedirect() {
   const { settings } = useSettings();
   return <Navigate to={`/${settings.landingPage}`} replace />;
+}
+
+function DashboardRoute() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-8 text-text-muted font-mono text-sm animate-pulse">
+          loading dashboard…
+        </div>
+      }
+    >
+      <Dashboard />
+    </Suspense>
+  );
 }
 
 export default function App() {
@@ -21,6 +38,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<AppShell />}>
           <Route index element={<LandingRedirect />} />
+          <Route path="dashboard" element={<DashboardRoute />} />
           <Route path="disk" element={<Scan />} />
           <Route path="disk/providers" element={<Providers />} />
           <Route path="disk/snapshots" element={<Snapshots />} />

@@ -5,7 +5,7 @@ import {
   useSettings,
   type CadenceId,
   type Density,
-  type ResourceDomain,
+  type LandingPage,
   type Theme,
   type ToolNavigation,
 } from "@/hooks/useSettings";
@@ -69,7 +69,7 @@ export default function Settings() {
     applyAndFlash({ toolNavigation });
   }
 
-  function setLandingPage(landingPage: ResourceDomain) {
+  function setLandingPage(landingPage: LandingPage) {
     applyAndFlash({ landingPage });
   }
 
@@ -204,6 +204,12 @@ export default function Settings() {
         description="Choose which resource opens when you visit DevDoctor without a specific path."
       >
         <div className="space-y-1.5">
+          <RadioRow
+            checked={settings.landingPage === "dashboard"}
+            onClick={() => setLandingPage("dashboard")}
+            label="Dashboard"
+            caption="Open the combined disk and memory overview by default."
+          />
           <RadioRow
             checked={settings.landingPage === "disk"}
             onClick={() => setLandingPage("disk")}
