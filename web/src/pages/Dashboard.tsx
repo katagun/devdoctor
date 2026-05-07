@@ -236,8 +236,9 @@ function StatusLine({
   return (
     <div className="text-[10.5px] text-text-dim flex items-center gap-3 flex-wrap">
       <span title={diskAt ?? undefined}>
-        disk {diskAt ? timeAgo(diskAt) : "pending"}
-        {diskCached ? " cached" : ""}
+        {diskCached
+          ? `disk cached ${diskAt ? timeAgo(diskAt) : "pending"}`
+          : `disk ${diskAt ? timeAgo(diskAt) : "pending"}`}
       </span>
       <span className="text-text-muted">/</span>
       <span title={memoryAt ?? undefined}>

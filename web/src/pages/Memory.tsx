@@ -147,7 +147,12 @@ export default function Memory() {
                 : undefined
             }
           >
-            {providerScope.enabledCount}/{providerScope.totalCount} providers
+            <span className="sm:hidden">
+              {providerScope.enabledCount}/{providerScope.totalCount} providers
+            </span>
+            <span className="hidden sm:inline">
+              {providerScope.enabledCount} of {providerScope.totalCount} providers enabled
+            </span>
           </span>
         )}
         <button
@@ -779,6 +784,19 @@ function MemoryProvidersPanel({
   setEnabled: (id: string, enabled: boolean) => void;
   setMany: (ids: string[], enabled: boolean) => void;
 }) {
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (provider) =>
+        provider.name.toLowerCase().includes(q) ||
+        provider.kind.toLowerCase().includes(q) ||
+        provider.description.toLowerCase().includes(q) ||
+        (provider.detail ?? "").toLowerCase().includes(q),
+    );
+  }, [query, rows]);
+
   if (error) return <div className="p-8 text-risk-danger text-sm">{String(error)}</div>;
   if (loading) return <div className="p-8 text-text-muted text-sm animate-pulse">loading providers...</div>;
   const enabledCount = rows.filter((provider) => !disabled.has(provider.id)).length;
@@ -791,96 +809,142 @@ function MemoryProvidersPanel({
   }
 
   return (
-    <div className="p-4 space-y-3">
-      <div className="flex items-center gap-4 text-[11px] text-text-dim">
-        <span>
-          <b className="text-text">{enabledCount}</b> of{" "}
-          <b className="text-text">{rows.length}</b> enabled
-        </span>
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-text-muted text-[10px]">{noneEnabled ? "enable all" : "disable all"}</span>
-          <button
-            type="button"
-            onClick={toggleAll}
-            disabled={rows.length === 0}
-            aria-pressed={!noneEnabled}
-            aria-label={noneEnabled ? "Enable all memory providers" : "Disable all memory providers"}
-            className={`w-[36px] h-[18px] rounded-full relative transition-colors ${
-              allEnabled
-                ? "bg-btn-primary-to"
-                : mixed
-                  ? "bg-btn-primary-to/50"
-                  : "bg-bg-control-off"
-            }`}
-          >
-            <span
-              className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-all ${
-                noneEnabled ? "left-[2px] bg-text-muted" : "right-[2px]"
-              }`}
-            />
-          </button>
-        </div>
-      </div>
-      <div className="grid grid-cols-[60px_minmax(160px,1fr)_120px_minmax(220px,2fr)] gap-3 px-3 py-2 border-b border-border text-[9.5px] uppercase tracking-widest text-text-muted">
-        <div>enabled</div>
-        <div>provider</div>
-        <div>status</div>
-        <div>scope</div>
-      </div>
-      {rows.map((provider) => {
-        const enabled = isEnabled(provider.id);
-        return (
-          <div
-            key={provider.id}
-            className="grid grid-cols-[60px_minmax(160px,1fr)_120px_minmax(220px,2fr)] gap-3 px-3 py-2.5 items-center border-b border-border-subtle hover:bg-bg-elev-1 text-[11px]"
-          >
+    <>
+      <header className="px-4 py-2.5 border-b border-border flex items-center gap-4 flex-wrap">
+        <label className="relative block w-full max-w-[360px] flex-1 min-w-[260px]">
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search memory providers by name or scope..."
+            className="w-full bg-bg-elev-1 border border-border rounded pl-7 pr-8 py-1.5 text-[11px] text-text placeholder:text-text-muted focus:outline-none focus:border-risk-reclaim"
+          />
+          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none">
+            ⌕
+          </span>
+          {query && (
             <button
               type="button"
-              onClick={() => setEnabled(provider.id, !enabled)}
-              aria-pressed={enabled}
-              aria-label={`Toggle ${provider.name}`}
-              className={`w-[30px] h-[16px] rounded-full relative transition-colors ${
-                enabled ? "bg-btn-primary-to" : "bg-bg-control-off"
+              onClick={() => setQuery("")}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text"
+            >
+              ✕
+            </button>
+          )}
+        </label>
+        <div className="ml-auto flex items-center gap-4 text-[11px] text-text-dim">
+          {query && (
+            <span className="text-text-muted">
+              {filtered.length} match{filtered.length === 1 ? "" : "es"}
+            </span>
+          )}
+          <span>
+            <b className="text-text">{enabledCount}</b> of{" "}
+            <b className="text-text">{rows.length}</b> providers enabled
+          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-text-muted text-[10px]">{noneEnabled ? "enable all" : "disable all"}</span>
+            <button
+              type="button"
+              onClick={toggleAll}
+              disabled={rows.length === 0}
+              aria-pressed={!noneEnabled}
+              aria-label={noneEnabled ? "Enable all memory providers" : "Disable all memory providers"}
+              className={`w-[36px] h-[18px] rounded-full relative transition-colors ${
+                allEnabled
+                  ? "bg-btn-primary-to"
+                  : mixed
+                    ? "bg-btn-primary-to/50"
+                    : "bg-bg-control-off"
               }`}
             >
               <span
-                className={`absolute top-[2px] w-[12px] h-[12px] rounded-full bg-white transition-all ${
-                  enabled ? "right-[2px]" : "left-[2px] bg-text-muted"
+                className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-all ${
+                  noneEnabled ? "left-[2px] bg-text-muted" : "right-[2px]"
                 }`}
               />
             </button>
-            <div className="min-w-0">
-              <div className={`font-medium truncate ${enabled ? "text-text" : "text-text-muted"}`}>
-                {provider.name}
-              </div>
-              <div className="text-text-muted text-[9.5px] mt-px">{provider.kind}</div>
-            </div>
-            <span
-              className={`text-[9.5px] uppercase tracking-widest ${
-                provider.status === "available"
-                  ? "text-risk-safe"
-                  : provider.status === "planned"
-                    ? "text-text-muted"
-                    : "text-risk-danger"
-              }`}
-            >
-              {provider.status}
-            </span>
-            <div className="min-w-0">
-              <div className="text-text-dim leading-relaxed">{provider.description}</div>
-              {provider.detail && (
-                <div className="text-text-muted text-[9.5px] mt-1 truncate" title={provider.detail}>
-                  {provider.detail}
-                </div>
-              )}
-            </div>
           </div>
-        );
-      })}
-      {rows.length === 0 && (
-        <div className="p-8 text-center text-text-dim text-sm">No memory providers.</div>
-      )}
-    </div>
+        </div>
+      </header>
+      <div className="px-4 py-2 border-b border-border text-text-muted text-[10px]">
+        Toggle off to exclude a memory provider from live reports, plans, snapshots, and history.
+        Preference is stored locally.
+      </div>
+      <div className="px-4">
+        <div className="grid grid-cols-[48px_minmax(120px,1fr)_92px] lg:grid-cols-[60px_minmax(160px,1fr)_120px_minmax(220px,2fr)] gap-3 px-3 py-2 border-b border-border text-[9.5px] uppercase tracking-widest text-text-muted">
+          <div>enabled</div>
+          <div>provider</div>
+          <div>status</div>
+          <div className="hidden lg:block">scope</div>
+        </div>
+        {filtered.map((provider) => {
+          const enabled = isEnabled(provider.id);
+          return (
+            <div
+              key={provider.id}
+              className="grid grid-cols-[48px_minmax(120px,1fr)_92px] lg:grid-cols-[60px_minmax(160px,1fr)_120px_minmax(220px,2fr)] gap-3 px-3 py-2.5 items-center border-b border-border-subtle hover:bg-bg-elev-1 text-[11px]"
+            >
+              <button
+                type="button"
+                onClick={() => setEnabled(provider.id, !enabled)}
+                aria-pressed={enabled}
+                aria-label={`Toggle ${provider.name}`}
+                className={`w-[30px] h-[16px] rounded-full relative transition-colors ${
+                  enabled ? "bg-btn-primary-to" : "bg-bg-control-off"
+                }`}
+              >
+                <span
+                  className={`absolute top-[2px] w-[12px] h-[12px] rounded-full bg-white transition-all ${
+                    enabled ? "right-[2px]" : "left-[2px] bg-text-muted"
+                  }`}
+                />
+              </button>
+              <div className="min-w-0">
+                <div className={`font-medium truncate ${enabled ? "text-text" : "text-text-muted"}`}>
+                  {provider.name}
+                </div>
+                <div className="text-text-muted text-[9.5px] mt-px">{provider.kind}</div>
+                <div className="lg:hidden text-text-dim text-[10px] mt-1 leading-relaxed">
+                  {provider.description}
+                </div>
+              </div>
+              <span
+                className={`text-[9.5px] uppercase tracking-widest ${
+                  provider.status === "available"
+                    ? "text-risk-safe"
+                    : provider.status === "planned"
+                      ? "text-text-muted"
+                      : "text-risk-danger"
+                }`}
+              >
+                {provider.status}
+              </span>
+              <div className="hidden lg:block min-w-0">
+                <div className="text-text-dim leading-relaxed">{provider.description}</div>
+                {provider.detail && (
+                  <div className="text-text-muted text-[9.5px] mt-1 truncate" title={provider.detail}>
+                    {provider.detail}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {filtered.length === 0 && (
+          <div className="p-8 text-center text-text-dim text-sm">
+            {query ? (
+              <>
+                No memory providers match <span className="text-text">&ldquo;{query}&rdquo;</span>.
+              </>
+            ) : (
+              "No memory providers."
+            )}
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 

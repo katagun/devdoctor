@@ -8,7 +8,8 @@ import { DomainToolTabs } from "@/components/DomainToolTabs";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { ProviderDetailsPanel } from "@/components/ProviderDetailsPanel";
 
-const GRID_COLS = "24px 60px 20px 1.3fr 0.8fr 1fr 0.6fr 0.9fr";
+const GRID_CLASS =
+  "grid-cols-[24px_48px_20px_minmax(120px,1fr)_72px] lg:grid-cols-[24px_60px_20px_1.3fr_0.8fr_1fr_0.6fr_0.9fr]";
 
 export default function Providers() {
   const { data, isLoading, error } = useProviders();
@@ -130,17 +131,16 @@ export default function Providers() {
 
       <div className="px-6">
         <div
-          className="grid gap-3 px-3 py-2 text-[9.5px] uppercase tracking-widest text-text-muted border-b border-border"
-          style={{ gridTemplateColumns: GRID_COLS }}
+          className={`grid ${GRID_CLASS} gap-3 px-3 py-2 text-[9.5px] uppercase tracking-widest text-text-muted border-b border-border`}
         >
           <div aria-hidden="true" />
           <div>enabled</div>
           <div aria-hidden="true" />
           <div>name</div>
           <div>risk</div>
-          <div>platforms</div>
-          <div>available</div>
-          <div>required binary</div>
+          <div className="hidden lg:block">platforms</div>
+          <div className="hidden lg:block">available</div>
+          <div className="hidden lg:block">required binary</div>
         </div>
         {filtered.length === 0 ? (
           <div className="p-8 text-center text-text-dim">
@@ -193,8 +193,7 @@ function ProviderRowView({
   return (
     <>
       <div
-        className="grid gap-3 px-3 py-2 items-center border-b border-border-subtle hover:bg-bg-elev-1"
-        style={{ gridTemplateColumns: GRID_COLS }}
+        className={`grid ${GRID_CLASS} gap-3 px-3 py-2 items-center border-b border-border-subtle hover:bg-bg-elev-1`}
       >
         <button
           type="button"
@@ -235,7 +234,7 @@ function ProviderRowView({
             className={isOn ? "text-text" : "text-text-muted"}
           />
         </div>
-        <div>
+        <div className="min-w-0">
           <div className={`font-medium ${isOn ? "text-text" : "text-text-muted"}`}>
             <Highlight text={p.name} query={query} />
           </div>
@@ -246,8 +245,8 @@ function ProviderRowView({
         <div>
           <RiskBadge risk={p.risk} />
         </div>
-        <div className="text-text-dim">{p.platforms.join(", ")}</div>
-        <div>
+        <div className="hidden lg:block text-text-dim">{p.platforms.join(", ")}</div>
+        <div className="hidden lg:block">
           <span
             className={`inline-block w-2 h-2 rounded-full ${
               p.available ? "bg-risk-safe shadow-[0_0_6px_var(--risk-safe)]" : "bg-text-muted"
@@ -255,7 +254,7 @@ function ProviderRowView({
           />
           <span className="ml-2 text-text-dim">{p.available ? "yes" : "no"}</span>
         </div>
-        <div className="text-text-muted">{p.required_binary ?? "—"}</div>
+        <div className="hidden lg:block text-text-muted">{p.required_binary ?? "—"}</div>
       </div>
       {isExpanded && (
         <div
