@@ -1,8 +1,9 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { DiskUsageBar } from "@/components/DiskUsageBar";
-import { MosaicTreemap } from "@/components/MosaicTreemap";
+import { colorForMosaicTone, MosaicTreemap } from "@/components/MosaicTreemap";
+import { useDiskDashboardSummary } from "@/hooks/useDashboard";
 import { useMemory, useMemoryProviders } from "@/hooks/useMemory";
 import { useProviders } from "@/hooks/useProviders";
 import { useScan } from "@/hooks/useScan";
@@ -13,12 +14,9 @@ import {
   buildDiskMosaicItems,
   buildMemoryMosaicItems,
   diskProviderTotals,
+  type MosaicTone,
   topMemoryConsumers,
 } from "@/lib/dashboard";
-import {
-  readDashboardDiskCache,
-  writeDashboardDiskCache,
-} from "@/lib/dashboardDiskCache";
 import { humanBytes, timeAgo } from "@/lib/format";
 import { diskProviderParam, memoryProviderIds } from "@/lib/providerFilters";
 
@@ -32,6 +30,7 @@ export default function Dashboard() {
     () => diskProviderParam(diskProviders.data, selectedDiskProviders.disabled),
     [diskProviders.data, selectedDiskProviders.disabled],
   );
+  const diskSummary = useDiskDashboardSummary(diskProvider);
   const disk = useScan({
     provider: diskProvider,
     staleTime: 0,
@@ -46,40 +45,34 @@ export default function Dashboard() {
   );
   const memory = useMemory(selectedMemoryProviderIds);
 
-  const cachedDisk = useMemo(
-    () => readDashboardDiskCache(diskProvider),
-    [diskProvider],
-  );
-  useEffect(() => {
-    if (!disk.data) return;
-    writeDashboardDiskCache({
-      scannedAt: disk.data.scannedAt,
-      totalBytes: disk.data.totalBytes,
-      providerParam: diskProvider ?? null,
-      rows: disk.data.rows.map((row) => ({
-        id: row.id,
-        provider: row.provider,
-        label: row.label,
-        size_bytes: row.size_bytes,
-        risk: row.risk,
-      })),
-    });
-  }, [disk.data, diskProvider]);
-
-  const diskRows = disk.data?.rows ?? cachedDisk?.rows ?? [];
-  const diskTotalBytes = disk.data?.totalBytes ?? cachedDisk?.totalBytes ?? null;
-  const diskScannedAt = disk.data?.scannedAt ?? cachedDisk?.scannedAt ?? null;
-  const diskShowingCached = !disk.data && cachedDisk !== null;
+  const diskRows = disk.data?.rows ?? diskSummary.data?.entries ?? [];
+  const diskTotalBytes = disk.data?.totalBytes ?? diskSummary.data?.total_bytes ?? null;
+  const diskScannedAt = disk.data?.scannedAt ?? diskSummary.data?.scanned_at ?? null;
+  const diskShowingCached = !disk.data && diskSummary.data !== null && diskSummary.data !== undefined;
   const memoryReport = memory.data;
   const diskMosaic = useMemo(() => buildDiskMosaicItems(diskRows, 14), [diskRows]);
-  const memoryMosaic = useMemo(
-    () => buildMemoryMosaicItems(memoryReport?.provider_totals ?? [], 10),
-    [memoryReport?.provider_totals],
-  );
-  const diskProvidersBySize = useMemo(() => diskProviderTotals(diskRows), [diskRows]);
   const topMemory = useMemo(
     () => topMemoryConsumers(memoryReport?.consumers ?? [], 5),
     [memoryReport?.consumers],
+  );
+  const memoryMosaicConsumers = useMemo(
+    () => topMemoryConsumers(memoryReport?.consumers ?? [], 16),
+    [memoryReport?.consumers],
+  );
+  const memoryMosaic = useMemo(
+    () => buildMemoryMosaicItems(memoryMosaicConsumers, 12),
+    [memoryMosaicConsumers],
+  );
+  const diskProvidersBySize = useMemo(
+    () =>
+      disk.data
+        ? diskProviderTotals(diskRows)
+        : (diskSummary.data?.provider_totals.map((total) => ({
+            provider: total.provider,
+            bytes: total.bytes,
+            count: total.count,
+          })) ?? []),
+    [disk.data, diskRows, diskSummary.data?.provider_totals],
   );
   const topSuggestions = memoryReport?.suggestions.slice(0, 3) ?? [];
   const memorySystem = memoryReport?.system;
@@ -122,9 +115,14 @@ export default function Dashboard() {
             eyebrow="largest safe and reclaimable entries"
             to="/disk"
             action="open disk scan"
-            loading={disk.isLoading && !cachedDisk}
+            loading={disk.isLoading && !diskSummary.data}
             error={disk.error}
-            refreshing={disk.isFetching && !!cachedDisk}
+            refreshing={disk.isFetching && !!diskSummary.data}
+            legend={[
+              ["reclaimable", "reclaimable"],
+              ["safe", "safe"],
+              ["other", "other"],
+            ]}
             stats={[
               ["reclaimable", diskTotalBytes === null ? "…" : humanBytes(diskTotalBytes)],
               ["entries", diskTotalBytes === null ? "…" : String(diskRows.length)],
@@ -147,11 +145,18 @@ export default function Dashboard() {
 
           <ResourcePanel
             title="Memory pressure mosaic"
-            eyebrow="resident memory by provider"
+            eyebrow="largest resident memory consumers"
             to="/memory"
             action="open memory live"
             loading={memory.isLoading}
             error={memory.error}
+            legend={[
+              ["browser", "browser"],
+              ["electron", "electron"],
+              ["docker", "docker"],
+              ["app", "app"],
+              ["process", "process/other"],
+            ]}
             stats={[
               [
                 "pressure",
@@ -250,6 +255,7 @@ function ResourcePanel({
   loading,
   error,
   refreshing = false,
+  legend,
   stats,
   children,
 }: {
@@ -260,11 +266,12 @@ function ResourcePanel({
   loading: boolean;
   error: unknown;
   refreshing?: boolean;
+  legend?: Array<[MosaicTone, string]>;
   stats: Array<[string, string]>;
   children: ReactNode;
 }) {
   return (
-    <section className="border border-border bg-bg-elev-1 rounded overflow-hidden min-h-[470px] flex flex-col">
+    <section className="border border-border bg-bg-elev-1 rounded overflow-hidden min-h-[390px] flex flex-col">
       <div className="px-4 py-3 border-b border-border flex items-center gap-3">
         <div className="min-w-0">
           <div className="text-[9px] uppercase tracking-widest text-text-muted">
@@ -272,12 +279,19 @@ function ResourcePanel({
           </div>
           <h2 className="text-text text-[13px] font-medium mt-0.5">{title}</h2>
         </div>
-        <Link
-          to={to}
-          className="ml-auto shrink-0 px-2.5 py-[3px] rounded text-[10px] border border-border text-text-dim hover:text-text hover:border-risk-reclaim"
-        >
-          {action}
-        </Link>
+        <div className="ml-auto shrink-0 flex items-center gap-2">
+          {refreshing && !loading && !error && (
+            <span className="px-2 py-[3px] rounded border border-border text-text-muted text-[10px]">
+              refreshing…
+            </span>
+          )}
+          <Link
+            to={to}
+            className="px-2.5 py-[3px] rounded text-[10px] border border-border text-text-dim hover:text-text hover:border-risk-reclaim"
+          >
+            {action}
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 border-b border-border">
@@ -293,12 +307,21 @@ function ResourcePanel({
         ))}
       </div>
 
-      <div className="relative flex-1 min-h-[330px] bg-bg-code">
-        {refreshing && !loading && !error && (
-          <div className="absolute right-3 top-3 z-10 px-2 py-1 rounded border border-border bg-bg-elev-1/90 text-text-muted text-[10px]">
-            refreshing…
-          </div>
-        )}
+      {legend && (
+        <div className="px-4 py-2 border-b border-border flex items-center gap-3 flex-wrap text-[9.5px] text-text-muted">
+          {legend.map(([tone, label]) => (
+            <span key={tone} className="inline-flex items-center gap-1.5">
+              <span
+                className="w-2 h-2 rounded-sm"
+                style={{ background: colorForMosaicTone(tone) }}
+              />
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="relative flex-1 min-h-[250px] bg-bg-code">
         {loading ? (
           <div className="absolute inset-0 flex items-center justify-center text-text-muted text-[11px] animate-pulse">
             loading…

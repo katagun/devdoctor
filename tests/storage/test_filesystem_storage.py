@@ -55,6 +55,21 @@ def test_filesystem_storage_reads_and_filters_snapshots(tmp_path: Path) -> None:
     assert autos[0].kind == "auto"
 
 
+def test_filesystem_storage_disk_dashboard_summary_round_trip(tmp_path: Path) -> None:
+    storage = FilesystemStorage(data_dir=tmp_path)
+    ts = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
+
+    storage.write_disk_dashboard_summary(_report(ts))
+    summary = storage.load_disk_dashboard_summary()
+
+    assert summary is not None
+    assert summary.scanned_at == ts.isoformat()
+    assert summary.total_bytes == 123
+    assert summary.entry_count == 1
+    assert summary.entries[0].label == "/tmp/x"
+    assert summary.provider_totals[0].provider == "p"
+
+
 def test_filesystem_storage_audit_round_trip(tmp_path: Path) -> None:
     storage = FilesystemStorage(data_dir=tmp_path)
 

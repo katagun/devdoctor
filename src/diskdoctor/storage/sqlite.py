@@ -9,9 +9,15 @@ from pathlib import Path
 from typing import cast
 
 from diskdoctor import history_log
+from diskdoctor.dashboard import (
+    build_disk_dashboard_summary,
+    disk_dashboard_summary_from_dict,
+    disk_dashboard_summary_to_dict,
+)
 from diskdoctor.memory import serde as memory_serde
 from diskdoctor.memory.types import MemoryReport, MemorySuggestion
 from diskdoctor.storage.base import (
+    DiskDashboardSummary,
     MemoryObservationMeta,
     MemorySnapshotMeta,
     StoredMemoryObservation,
@@ -59,6 +65,12 @@ CREATE TABLE IF NOT EXISTS audit_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_events_at ON audit_events(at DESC);
+
+CREATE TABLE IF NOT EXISTS dashboard_cache (
+  key TEXT PRIMARY KEY,
+  updated_at TEXT NOT NULL,
+  payload_json TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS memory_observations (
   id TEXT PRIMARY KEY,
@@ -213,6 +225,37 @@ class SQLiteStorage:
                     [(name,) for name in victims],
                 )
         return victims
+
+    def write_disk_dashboard_summary(self, report: Report) -> None:
+        summary = build_disk_dashboard_summary(report)
+        payload_json = json.dumps(disk_dashboard_summary_to_dict(summary), sort_keys=True)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO dashboard_cache (key, updated_at, payload_json)
+                VALUES (?, ?, ?)
+                """,
+                ("disk-summary", summary.scanned_at, payload_json),
+            )
+
+    def load_disk_dashboard_summary(self) -> DiskDashboardSummary | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT payload_json FROM dashboard_cache WHERE key = ?",
+                ("disk-summary",),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            payload = json.loads(row["payload_json"])
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        try:
+            return disk_dashboard_summary_from_dict(cast(dict[str, object], payload))
+        except (KeyError, TypeError, ValueError):
+            return None
 
     def append_audit_event(self, event: Mapping[str, object]) -> None:
         payload = dict(event)

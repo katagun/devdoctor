@@ -57,6 +57,21 @@ def test_sqlite_storage_snapshot_round_trip(tmp_path: Path) -> None:
     assert listed[0].total_bytes == 456
 
 
+def test_sqlite_storage_disk_dashboard_summary_round_trip(tmp_path: Path) -> None:
+    storage = SQLiteStorage(tmp_path / "devdoctor.sqlite3")
+    ts = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
+
+    storage.write_disk_dashboard_summary(_report(ts))
+    summary = storage.load_disk_dashboard_summary()
+
+    assert summary is not None
+    assert summary.scanned_at == ts.isoformat()
+    assert summary.total_bytes == 456
+    assert summary.entry_count == 1
+    assert summary.entries[0].provider == "p"
+    assert summary.provider_totals[0].bytes == 456
+
+
 def test_sqlite_storage_prunes_auto_snapshots(tmp_path: Path) -> None:
     storage = SQLiteStorage(tmp_path / "devdoctor.sqlite3")
     for second in range(4):

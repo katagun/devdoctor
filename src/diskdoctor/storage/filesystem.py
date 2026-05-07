@@ -11,9 +11,15 @@ from typing import Any, cast
 
 from diskdoctor import history, history_log
 from diskdoctor._storage import default_data_dir
+from diskdoctor.dashboard import (
+    build_disk_dashboard_summary,
+    disk_dashboard_summary_from_dict,
+    disk_dashboard_summary_to_dict,
+)
 from diskdoctor.memory import serde as memory_serde
 from diskdoctor.memory.types import MemoryConsumer, MemoryReport, MemorySuggestion
 from diskdoctor.storage.base import (
+    DiskDashboardSummary,
     MemoryObservationMeta,
     MemorySnapshotMeta,
     StoredMemoryObservation,
@@ -42,6 +48,9 @@ class FilesystemStorage:
 
     def memory_snapshots_dir(self) -> Path:
         return self.data_dir() / "memory" / "snapshots"
+
+    def disk_dashboard_summary_path(self) -> Path:
+        return self.data_dir() / "dashboard" / "disk-summary.json"
 
     def write_disk_snapshot(self, report: Report) -> StoredSnapshot:
         target = history.write_snapshot(report, self.snapshot_dir())
@@ -77,6 +86,35 @@ class FilesystemStorage:
 
     def prune_auto_disk_snapshots(self, *, keep: int) -> list[str]:
         return [p.name for p in history.prune_auto_snapshots(self.snapshot_dir(), keep=keep)]
+
+    def write_disk_dashboard_summary(self, report: Report) -> None:
+        summary = build_disk_dashboard_summary(report)
+        target = self.disk_dashboard_summary_path()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_name(target.name + ".tmp")
+        try:
+            tmp.write_text(
+                json.dumps(disk_dashboard_summary_to_dict(summary), indent=2, sort_keys=True) + "\n"
+            )
+            os.replace(tmp, target)
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                tmp.unlink()
+
+    def load_disk_dashboard_summary(self) -> DiskDashboardSummary | None:
+        target = self.disk_dashboard_summary_path()
+        if not target.is_file():
+            return None
+        try:
+            payload = json.loads(target.read_text())
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        try:
+            return disk_dashboard_summary_from_dict(cast(dict[str, object], payload))
+        except (KeyError, TypeError, ValueError):
+            return None
 
     def append_audit_event(self, event: Mapping[str, object]) -> None:
         history_log.append_event(dict(event), path=self.audit_path())

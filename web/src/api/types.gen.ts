@@ -72,6 +72,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dashboard/disk-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Disk Dashboard Summary */
+        get: operations["disk_dashboard_summary_api_dashboard_disk_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/snapshots": {
         parameters: {
             query?: never;
@@ -481,6 +498,48 @@ export interface components {
         ConfirmAnswer: {
             /** Confirmed */
             confirmed: boolean;
+        };
+        /** DiskDashboardEntryInfo */
+        DiskDashboardEntryInfo: {
+            /** Id */
+            id: string;
+            /** Provider */
+            provider: string;
+            /** Label */
+            label: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Risk
+             * @enum {string}
+             */
+            risk: "safe" | "reclaimable" | "dangerous";
+        };
+        /** DiskDashboardProviderTotalInfo */
+        DiskDashboardProviderTotalInfo: {
+            /** Provider */
+            provider: string;
+            /** Bytes */
+            bytes: number;
+            /** Count */
+            count: number;
+        };
+        /** DiskDashboardSummaryInfo */
+        DiskDashboardSummaryInfo: {
+            /** Scanned At */
+            scanned_at: string;
+            /** Hostname */
+            hostname: string;
+            /** Platform */
+            platform: string;
+            /** Total Bytes */
+            total_bytes: number;
+            /** Entry Count */
+            entry_count: number;
+            /** Entries */
+            entries?: components["schemas"]["DiskDashboardEntryInfo"][];
+            /** Provider Totals */
+            provider_totals?: components["schemas"]["DiskDashboardProviderTotalInfo"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1075,6 +1134,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecipeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disk_dashboard_summary_api_dashboard_disk_summary_get: {
+        parameters: {
+            query?: {
+                provider?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiskDashboardSummaryInfo"] | null;
                 };
             };
             /** @description Validation Error */

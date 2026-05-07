@@ -20,24 +20,40 @@ describe("dashboard data shaping", () => {
     );
 
     expect(items).toEqual([
-      expect.objectContaining({ id: "docker:images", label: "images", value: 90, tone: "reclaimable" }),
-      expect.objectContaining({ id: "ollama:models", label: "models", value: 70, tone: "reclaimable" }),
+      expect.objectContaining({ id: "docker:images", label: "docker", value: 90, tone: "reclaimable" }),
+      expect.objectContaining({ id: "ollama:models", label: "ollama", value: 70, tone: "reclaimable" }),
       expect.objectContaining({ id: "disk-other", label: "other disk entries", value: 80, tone: "other" }),
     ]);
   });
 
-  it("builds memory mosaic items from selected provider totals", () => {
+  it("builds memory mosaic items from top consumers", () => {
     const items = buildMemoryMosaicItems(
       [
-        memory("browsers", "Browsers", "browser", 120, true),
-        memory("docker", "Docker", "docker", 80, true),
-        memory("apps", "Apps", "app", 30, false),
+        memory("firefox", "Firefox", "browser", 120),
+        memory("docker", "Docker Desktop", "docker", 80),
+        memory("slack", "Slack", "electron", 30),
       ],
-      4,
+      2,
     );
 
-    expect(items.map((item) => item.id)).toEqual(["browsers", "docker"]);
-    expect(items[0]).toMatchObject({ label: "Browsers", value: 120, tone: "browser" });
+    expect(items).toEqual([
+      expect.objectContaining({ id: "firefox", label: "Firefox", value: 120, tone: "browser" }),
+      expect.objectContaining({ id: "memory-other", label: "other memory consumers", value: 110, tone: "other" }),
+    ]);
+  });
+
+  it("compacts bundle identifiers for memory mosaic labels", () => {
+    const items = buildMemoryMosaicItems(
+      [memory("vm", "com.apple.Virtualization.VirtualMachine", "other", 120)],
+      2,
+    );
+
+    expect(items[0]).toMatchObject({
+      id: "vm",
+      label: "Virtual Machine",
+      detail: "com.apple.Virtualization.VirtualMachine · other",
+      tone: "process",
+    });
   });
 
   it("summarizes disk totals by provider", () => {
@@ -88,16 +104,13 @@ function row(
 function memory(
   id: string,
   name: string,
-  kind: "browser" | "electron" | "docker" | "llm" | "app" | "process",
+  kind: "browser" | "electron" | "docker" | "llm" | "app" | "process" | "other",
   rssBytes: number,
-  selected: boolean,
 ) {
   return {
     id,
     name,
     kind,
-    selected,
     rss_bytes: rssBytes,
-    consumer_count: 1,
   };
 }

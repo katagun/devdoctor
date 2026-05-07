@@ -7,14 +7,18 @@ const FILL_BY_TONE: Record<MosaicTone, string> = {
   safe: "var(--risk-safe)",
   reclaimable: "var(--risk-reclaim)",
   dangerous: "var(--risk-danger)",
-  browser: "var(--risk-reclaim)",
-  electron: "var(--text-accent)",
+  browser: "var(--text-accent)",
+  electron: "var(--risk-reclaim)",
   docker: "var(--risk-safe)",
   llm: "var(--risk-danger)",
   app: "var(--accent)",
   process: "var(--border-strong)",
   other: "var(--bg-control-off)",
 };
+
+export function colorForMosaicTone(tone: MosaicTone): string {
+  return FILL_BY_TONE[tone];
+}
 
 interface MosaicTreemapProps {
   items: MosaicDatum[];
@@ -25,15 +29,15 @@ interface MosaicTreemapProps {
 export function MosaicTreemap({ items, ariaLabel, emptyLabel }: MosaicTreemapProps) {
   if (items.length === 0) {
     return (
-      <div className="h-full min-h-[280px] flex items-center justify-center text-text-muted text-[11px] border border-border-subtle bg-bg-code">
+      <div className="h-full min-h-[220px] flex items-center justify-center text-text-muted text-[11px] border border-border-subtle bg-bg-code">
         {emptyLabel}
       </div>
     );
   }
 
   return (
-    <div role="img" aria-label={ariaLabel} className="h-full min-h-[280px] p-2">
-      <div className="h-full min-h-[264px] rounded overflow-hidden bg-bg-elev-1 border border-border-subtle">
+    <div role="img" aria-label={ariaLabel} className="h-full min-h-[220px] p-2">
+      <div className="h-full min-h-[204px] rounded overflow-hidden bg-bg-elev-1 border border-border-subtle">
         <ResponsiveContainer width="100%" height="100%">
           <Treemap
             data={items.map((item) => ({ ...item, name: item.label }))}

@@ -17,6 +17,7 @@ from diskdoctor.ports import Shell
 from diskdoctor.storage import build_storage
 from diskdoctor.web.middleware import HostHeaderMiddleware
 from diskdoctor.web.routes_clean import router as clean_router
+from diskdoctor.web.routes_dashboard import router as dashboard_router
 from diskdoctor.web.routes_disk_usage import router as disk_usage_router
 from diskdoctor.web.routes_history import router as history_router
 from diskdoctor.web.routes_memory import router as memory_router
@@ -92,6 +93,7 @@ def build_app(
 
     # /api routers — subsequent tasks attach additional routers the same way.
     app.include_router(scan_router)
+    app.include_router(dashboard_router)
     app.include_router(history_router)
     app.include_router(clean_router)
     app.include_router(disk_usage_router)

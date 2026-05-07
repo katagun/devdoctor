@@ -74,6 +74,30 @@ class SnapshotMeta(BaseModel):
     per_provider: list[dict[str, object]] | None = None
 
 
+class DiskDashboardEntryInfo(BaseModel):
+    id: str
+    provider: str
+    label: str
+    size_bytes: int
+    risk: Literal["safe", "reclaimable", "dangerous"]
+
+
+class DiskDashboardProviderTotalInfo(BaseModel):
+    provider: str
+    bytes: int
+    count: int
+
+
+class DiskDashboardSummaryInfo(BaseModel):
+    scanned_at: str
+    hostname: str
+    platform: str
+    total_bytes: int
+    entry_count: int
+    entries: list[DiskDashboardEntryInfo] = Field(default_factory=list)
+    provider_totals: list[DiskDashboardProviderTotalInfo] = Field(default_factory=list)
+
+
 class SystemMemoryInfo(BaseModel):
     total_bytes: int
     available_bytes: int

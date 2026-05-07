@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
+from typing import Literal, Protocol
 
 from diskdoctor.memory.types import MemoryReport, MemorySuggestion
 from diskdoctor.types import Report, SnapshotKind
@@ -28,6 +28,33 @@ class StoredSnapshotMeta:
     duration_ms: int | None
     entry_count: int | None
     per_provider: list[dict[str, object]] | None
+
+
+@dataclass(frozen=True)
+class DiskDashboardEntry:
+    id: str
+    provider: str
+    label: str
+    size_bytes: int
+    risk: Literal["safe", "reclaimable", "dangerous"]
+
+
+@dataclass(frozen=True)
+class DiskDashboardProviderTotal:
+    provider: str
+    bytes: int
+    count: int
+
+
+@dataclass(frozen=True)
+class DiskDashboardSummary:
+    scanned_at: str
+    hostname: str
+    platform: str
+    total_bytes: int
+    entry_count: int
+    entries: list[DiskDashboardEntry]
+    provider_totals: list[DiskDashboardProviderTotal]
 
 
 @dataclass(frozen=True)
@@ -90,6 +117,10 @@ class StorageBackend(Protocol):
     def load_disk_snapshot(self, name: str) -> Report: ...
 
     def prune_auto_disk_snapshots(self, *, keep: int) -> list[str]: ...
+
+    def write_disk_dashboard_summary(self, report: Report) -> None: ...
+
+    def load_disk_dashboard_summary(self) -> DiskDashboardSummary | None: ...
 
     def append_audit_event(self, event: Mapping[str, object]) -> None: ...
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import json
 import re
@@ -57,6 +58,9 @@ def scan(
     providers_list = registry.load_providers(request.app.state.shell)
     report = discovery.scan(providers_list, filters, datetime.now(UTC))
     storage: StorageBackend = request.app.state.storage
+    if filters.min_size_bytes == 0 and filters.risks is None and filters.providers is None:
+        with contextlib.suppress(OSError):
+            storage.write_disk_dashboard_summary(report)
     if snapshot and _should_write_auto_snapshot(storage, snapshot_min_interval_ms):
         auto_report = dataclasses.replace(report, kind=SnapshotKind.AUTO)
         try:

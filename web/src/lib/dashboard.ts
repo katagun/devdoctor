@@ -39,10 +39,8 @@ export interface DiskMosaicInput {
 export interface MemoryMosaicInput {
   id: string;
   name: string;
-  kind: "browser" | "electron" | "docker" | "llm" | "app" | "process";
-  selected: boolean;
+  kind: MemoryConsumerKind;
   rss_bytes: number;
-  consumer_count: number;
 }
 
 export interface MemoryConsumerInput {
@@ -67,10 +65,10 @@ export function buildDiskMosaicItems(
       .filter((row) => row.risk !== "dangerous")
       .map((row) => ({
         id: row.id,
-        label: row.label,
+        label: row.provider,
         value: row.size_bytes,
         tone: row.risk,
-        detail: row.provider,
+        detail: row.label,
       })),
     maxItems,
     {
@@ -83,25 +81,38 @@ export function buildDiskMosaicItems(
 
 export function buildMemoryMosaicItems(
   rows: MemoryMosaicInput[],
-  maxItems = 10,
+  maxItems = 12,
 ): MosaicDatum[] {
   return topWeightedItems(
     rows
-      .filter((row) => row.selected)
-      .map((row) => ({
-        id: row.id,
-        label: row.name,
-        value: row.rss_bytes,
-        tone: row.kind,
-        detail: `${row.consumer_count} process${row.consumer_count === 1 ? "" : "es"}`,
-      })),
+      .map((row) => {
+        const label = compactMemoryLabel(row.name);
+        return {
+          id: row.id,
+          label,
+          value: row.rss_bytes,
+          tone: row.kind === "other" ? "process" : row.kind,
+          detail: label === row.name ? row.kind : `${row.name} · ${row.kind}`,
+        };
+      }),
     maxItems,
     {
       id: "memory-other",
-      label: "other memory providers",
+      label: "other memory consumers",
       tone: "other",
     },
   );
+}
+
+function compactMemoryLabel(name: string): string {
+  if (!name.startsWith("com.")) return name;
+  const parts = name.split(".").filter(Boolean);
+  const tail = parts[parts.length - 1];
+  return tail ? splitCamelCase(tail) : name;
+}
+
+function splitCamelCase(value: string): string {
+  return value.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
 }
 
 export function diskProviderTotals(rows: DiskMosaicInput[]): DiskProviderTotal[] {
