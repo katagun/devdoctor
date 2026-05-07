@@ -32,18 +32,20 @@ export function MosaicTreemap({ items, ariaLabel, emptyLabel }: MosaicTreemapPro
   }
 
   return (
-    <div role="img" aria-label={ariaLabel} className="h-full min-h-[280px]">
-      <ResponsiveContainer width="100%" height="100%">
-        <Treemap
-          data={items.map((item) => ({ ...item, name: item.label }))}
-          dataKey="value"
-          nameKey="label"
-          aspectRatio={4 / 3}
-          isAnimationActive={false}
-          stroke="var(--bg)"
-          content={<MosaicTile />}
-        />
-      </ResponsiveContainer>
+    <div role="img" aria-label={ariaLabel} className="h-full min-h-[280px] p-2">
+      <div className="h-full min-h-[264px] rounded overflow-hidden bg-bg-elev-1 border border-border-subtle">
+        <ResponsiveContainer width="100%" height="100%">
+          <Treemap
+            data={items.map((item) => ({ ...item, name: item.label }))}
+            dataKey="value"
+            nameKey="label"
+            aspectRatio={1}
+            isAnimationActive={false}
+            stroke="var(--bg)"
+            content={<MosaicTile />}
+          />
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
@@ -59,19 +61,30 @@ function MosaicTile(props: Partial<TreemapNode> & Partial<MosaicDatum>) {
   const detail = props.detail;
   const showLabel = width >= 78 && height >= 36;
   const showValue = width >= 98 && height >= 54;
+  const clipId = `mosaic-${String(props.id ?? props.index ?? label).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   const textColor = tone === "other" || tone === "process"
     ? "var(--text-dim)"
     : "var(--text-on-accent)";
 
   return (
     <g>
+      <clipPath id={clipId}>
+        <rect
+          x={x + 4}
+          y={y + 4}
+          width={Math.max(0, width - 8)}
+          height={Math.max(0, height - 8)}
+          rx={2}
+          ry={2}
+        />
+      </clipPath>
       <rect
         x={x}
         y={y}
         width={width}
         height={height}
-        rx={3}
-        ry={3}
+        rx={2}
+        ry={2}
         fill={FILL_BY_TONE[tone]}
         opacity={tone === "other" ? 0.62 : 0.9}
         stroke="var(--bg)"
@@ -82,28 +95,32 @@ function MosaicTile(props: Partial<TreemapNode> & Partial<MosaicDatum>) {
         {detail ? ` · ${detail}` : ""}
       </title>
       {showLabel && (
-        <text
-          x={x + 8}
-          y={y + 17}
-          fill={textColor}
-          fontSize={11}
-          fontFamily="var(--font-mono)"
-          fontWeight={600}
-        >
-          {truncate(label, Math.floor((width - 14) / 6.2))}
-        </text>
+        <g clipPath={`url(#${clipId})`}>
+          <text
+            x={x + 8}
+            y={y + 18}
+            fill={textColor}
+            fontSize={11}
+            fontFamily="var(--font-mono)"
+            fontWeight={600}
+          >
+            {truncate(label, Math.floor((width - 16) / 6.2))}
+          </text>
+        </g>
       )}
       {showValue && (
-        <text
-          x={x + 8}
-          y={y + 35}
-          fill={textColor}
-          opacity={0.82}
-          fontSize={10}
-          fontFamily="var(--font-mono)"
-        >
-          {humanBytes(value)}
-        </text>
+        <g clipPath={`url(#${clipId})`}>
+          <text
+            x={x + 8}
+            y={y + 36}
+            fill={textColor}
+            opacity={0.82}
+            fontSize={10}
+            fontFamily="var(--font-mono)"
+          >
+            {humanBytes(value)}
+          </text>
+        </g>
       )}
     </g>
   );

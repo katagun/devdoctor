@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { DiskUsageBar } from "@/components/DiskUsageBar";
@@ -8,19 +8,22 @@ import { useProviders } from "@/hooks/useProviders";
 import { useScan } from "@/hooks/useScan";
 import { useSelectedMemoryProviders } from "@/hooks/useSelectedMemoryProviders";
 import { useSelectedProviders } from "@/hooks/useSelectedProviders";
-import { cadenceMs, useSettings } from "@/hooks/useSettings";
+import { useSettings } from "@/hooks/useSettings";
 import {
   buildDiskMosaicItems,
   buildMemoryMosaicItems,
   diskProviderTotals,
   topMemoryConsumers,
 } from "@/lib/dashboard";
+import {
+  readDashboardDiskCache,
+  writeDashboardDiskCache,
+} from "@/lib/dashboardDiskCache";
 import { humanBytes, timeAgo } from "@/lib/format";
 import { diskProviderParam, memoryProviderIds } from "@/lib/providerFilters";
 
 export default function Dashboard() {
   const { settings } = useSettings();
-  const staleTime = cadenceMs(settings.cadence);
   const manualOnly = settings.cadence === "manual";
 
   const diskProviders = useProviders();
@@ -31,7 +34,7 @@ export default function Dashboard() {
   );
   const disk = useScan({
     provider: diskProvider,
-    staleTime,
+    staleTime: 0,
     refetchOnMount: !manualOnly,
   });
 
@@ -43,7 +46,30 @@ export default function Dashboard() {
   );
   const memory = useMemory(selectedMemoryProviderIds);
 
-  const diskRows = disk.data?.rows ?? [];
+  const cachedDisk = useMemo(
+    () => readDashboardDiskCache(diskProvider),
+    [diskProvider],
+  );
+  useEffect(() => {
+    if (!disk.data) return;
+    writeDashboardDiskCache({
+      scannedAt: disk.data.scannedAt,
+      totalBytes: disk.data.totalBytes,
+      providerParam: diskProvider ?? null,
+      rows: disk.data.rows.map((row) => ({
+        id: row.id,
+        provider: row.provider,
+        label: row.label,
+        size_bytes: row.size_bytes,
+        risk: row.risk,
+      })),
+    });
+  }, [disk.data, diskProvider]);
+
+  const diskRows = disk.data?.rows ?? cachedDisk?.rows ?? [];
+  const diskTotalBytes = disk.data?.totalBytes ?? cachedDisk?.totalBytes ?? null;
+  const diskScannedAt = disk.data?.scannedAt ?? cachedDisk?.scannedAt ?? null;
+  const diskShowingCached = !disk.data && cachedDisk !== null;
   const memoryReport = memory.data;
   const diskMosaic = useMemo(() => buildDiskMosaicItems(diskRows, 14), [diskRows]);
   const memoryMosaic = useMemo(
@@ -70,7 +96,8 @@ export default function Dashboard() {
       <header className="px-4 py-3 border-b border-border flex items-center gap-4 flex-wrap">
         <h1 className="text-text text-[14px] font-medium">Dashboard</h1>
         <StatusLine
-          diskAt={disk.data?.scannedAt ?? null}
+          diskAt={diskScannedAt}
+          diskCached={diskShowingCached}
           memoryAt={memoryReport?.scanned_at ?? null}
         />
         <button
@@ -95,11 +122,12 @@ export default function Dashboard() {
             eyebrow="largest safe and reclaimable entries"
             to="/disk"
             action="open disk scan"
-            loading={disk.isLoading}
+            loading={disk.isLoading && !cachedDisk}
             error={disk.error}
+            refreshing={disk.isFetching && !!cachedDisk}
             stats={[
-              ["reclaimable", disk.data ? humanBytes(disk.data.totalBytes) : "…"],
-              ["entries", disk.data ? String(diskRows.length) : "…"],
+              ["reclaimable", diskTotalBytes === null ? "…" : humanBytes(diskTotalBytes)],
+              ["entries", diskTotalBytes === null ? "…" : String(diskRows.length)],
               [
                 "top provider",
                 diskTopProvider
@@ -193,14 +221,19 @@ export default function Dashboard() {
 
 function StatusLine({
   diskAt,
+  diskCached,
   memoryAt,
 }: {
   diskAt: string | null;
+  diskCached: boolean;
   memoryAt: string | null;
 }) {
   return (
     <div className="text-[10.5px] text-text-dim flex items-center gap-3 flex-wrap">
-      <span title={diskAt ?? undefined}>disk {diskAt ? timeAgo(diskAt) : "pending"}</span>
+      <span title={diskAt ?? undefined}>
+        disk {diskAt ? timeAgo(diskAt) : "pending"}
+        {diskCached ? " cached" : ""}
+      </span>
       <span className="text-text-muted">/</span>
       <span title={memoryAt ?? undefined}>
         memory {memoryAt ? timeAgo(memoryAt) : "pending"}
@@ -216,6 +249,7 @@ function ResourcePanel({
   action,
   loading,
   error,
+  refreshing = false,
   stats,
   children,
 }: {
@@ -225,6 +259,7 @@ function ResourcePanel({
   action: string;
   loading: boolean;
   error: unknown;
+  refreshing?: boolean;
   stats: Array<[string, string]>;
   children: ReactNode;
 }) {
@@ -259,6 +294,11 @@ function ResourcePanel({
       </div>
 
       <div className="relative flex-1 min-h-[330px] bg-bg-code">
+        {refreshing && !loading && !error && (
+          <div className="absolute right-3 top-3 z-10 px-2 py-1 rounded border border-border bg-bg-elev-1/90 text-text-muted text-[10px]">
+            refreshing…
+          </div>
+        )}
         {loading ? (
           <div className="absolute inset-0 flex items-center justify-center text-text-muted text-[11px] animate-pulse">
             loading…
