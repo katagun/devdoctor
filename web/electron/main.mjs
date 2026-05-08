@@ -6,6 +6,10 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  FULL_DISK_ACCESS_SETTINGS_URL,
+  fullDiskAccessDialogOptions,
+} from "./full-disk-access.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
@@ -260,8 +264,35 @@ function installAppMenu() {
       label: "Window",
       submenu: [{ role: "minimize" }, { role: "close" }],
     },
+    {
+      label: "Help",
+      submenu: [
+        ...(process.platform === "darwin"
+          ? [
+              {
+                label: "Full Disk Access...",
+                click: () => showFullDiskAccessHelp(),
+              },
+            ]
+          : []),
+        {
+          label: "Open Logs",
+          click: () => openLogs(),
+        },
+      ],
+    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+async function showFullDiskAccessHelp() {
+  const options = fullDiskAccessDialogOptions();
+  const result = mainWindow
+    ? await dialog.showMessageBox(mainWindow, options)
+    : await dialog.showMessageBox(options);
+  if (result.response === 0) {
+    void shell.openExternal(FULL_DISK_ACCESS_SETTINGS_URL);
+  }
 }
 
 function openLogs() {

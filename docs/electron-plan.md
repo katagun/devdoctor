@@ -37,9 +37,15 @@ it is a generated platform-specific artifact.
 ## Next Packaging Milestones
 
 1. Run and smoke-test the unpacked Electron app from `web/release/`.
-2. Add Full Disk Access guidance for macOS.
+2. Add a real app icon.
 3. Add signing, notarization, and release automation.
 4. Add release CI once signing assets exist.
+
+## macOS Permissions
+
+The Electron Help menu includes a Full Disk Access item. It explains why disk
+scans can miss protected folders and opens the macOS Privacy & Security > Full
+Disk Access settings pane.
 
 The Electron launcher already switches backend command by mode:
 
