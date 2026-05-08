@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
+const bundledBackendPath = path.join(process.resourcesPath, "backend", backendExecutableName());
 const START_TIMEOUT_MS = 30_000;
 const HEALTH_INTERVAL_MS = 250;
 const BACKEND_STOP_TIMEOUT_MS = 2_000;
@@ -97,8 +98,11 @@ function createWindow(url) {
 }
 
 function startBackend(port) {
-  const child = spawn("uv", ["run", "diskdoctor", "serve", "--port", String(port), "--no-browser"], {
-    cwd: repoRoot,
+  const command = backendCommand(port);
+  writeLog("electron", `backendCommand=${command.command} ${command.args.join(" ")}${os.EOL}`);
+
+  const child = spawn(command.command, command.args, {
+    cwd: command.cwd,
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -269,5 +273,31 @@ function openLogs() {
 }
 
 function startupHint() {
+  if (app.isPackaged) {
+    return ` Expected bundled backend at ${bundledBackendPath}. Build the backend executable before packaging.`;
+  }
   return " Make sure `uv` is installed and available on PATH, then run `uv run diskdoctor serve --port 0 --no-browser` from the repository to inspect backend startup errors.";
+}
+
+function backendCommand(port) {
+  const commonArgs = ["serve", "--port", String(port), "--no-browser"];
+  if (app.isPackaged) {
+    if (!fs.existsSync(bundledBackendPath)) {
+      throw new Error(`Bundled backend executable not found at ${bundledBackendPath}.`);
+    }
+    return {
+      command: bundledBackendPath,
+      args: commonArgs,
+      cwd: path.dirname(bundledBackendPath),
+    };
+  }
+  return {
+    command: "uv",
+    args: ["run", "diskdoctor", ...commonArgs],
+    cwd: repoRoot,
+  };
+}
+
+function backendExecutableName() {
+  return process.platform === "win32" ? "diskdoctor.exe" : "diskdoctor";
 }

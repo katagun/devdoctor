@@ -1,0 +1,28 @@
+{
+  "appId": "com.devdoctor.app",
+  "productName": "DevDoctor",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "electron/**/*",
+    "../src/diskdoctor/web/_static/dist/**/*",
+    "package.json"
+  ],
+  "extraResources": [
+    {
+      "from": "dist-backend",
+      "to": "backend",
+      "filter": [
+        "**/*"
+      ]
+    }
+  ],
+  "mac": {
+    "category": "public.app-category.utilities",
+    "target": [
+      "dmg",
+      "zip"
+    ]
+  }
+}
