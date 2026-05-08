@@ -30,47 +30,47 @@ describe("Sidebar", () => {
     const nav = screen.getByRole("navigation", { name: /primary/i });
     const labels = within(nav).getAllByRole("link").map((link) => link.textContent?.trim());
     expect(labels).toEqual([
-      "▧ dashboard",
-      "💽 disk",
-      "🧠 memory",
-      "▣ providers",
-      "⏱ snapshots",
-      "≡ history",
-      "▤ planner",
-      "▣ providers",
-      "⏱ snapshots",
-      "≡ history",
-      "⚙ settings",
+      "dashboard",
+      "disk",
+      "memory",
+      "providers",
+      "snapshots",
+      "history",
+      "planner",
+      "providers",
+      "snapshots",
+      "history",
+      "settings",
     ]);
   });
 
   it("renders section headers for the expanded sidebar", () => {
     renderSidebar();
-    for (const label of ["resources", "💽 disk tools", "🧠 memory tools", "app"]) {
+    for (const label of ["resources", "disk tools", "memory tools", "app"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
   });
 
-  it("each nav link renders its glyph", () => {
+  it("each nav link renders an icon", () => {
     renderSidebar();
     const expected = [
-      ["/dashboard", "▧"],
-      ["/disk", "💽"],
-      ["/memory", "🧠"],
-      ["/disk/providers", "▣"],
-      ["/disk/snapshots", "⏱"],
-      ["/disk/history", "≡"],
-      ["/memory/planner", "▤"],
-      ["/memory/providers", "▣"],
-      ["/memory/snapshots", "⏱"],
-      ["/memory/history", "≡"],
-      ["/settings", "⚙"],
+      "/dashboard",
+      "/disk",
+      "/memory",
+      "/disk/providers",
+      "/disk/snapshots",
+      "/disk/history",
+      "/memory/planner",
+      "/memory/providers",
+      "/memory/snapshots",
+      "/memory/history",
+      "/settings",
     ] as const;
     const links = screen.getAllByRole("link");
-    for (const [href, glyph] of expected) {
+    for (const href of expected) {
       const link = links.find((item) => item.getAttribute("href") === href);
       expect(link).toBeDefined();
-      expect(link?.textContent).toContain(glyph);
+      expect(link?.querySelector("svg")).not.toBeNull();
     }
   });
 
@@ -84,9 +84,9 @@ describe("Sidebar", () => {
 
     const nav = screen.getByRole("navigation", { name: /primary/i });
     const labels = within(nav).getAllByRole("link").map((link) => link.textContent?.trim());
-    expect(labels).toEqual(["▧ dashboard", "💽 disk", "🧠 memory", "⚙ settings"]);
-    expect(screen.queryByText(/^💽 disk tools$/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/^🧠 memory tools$/i)).not.toBeInTheDocument();
+    expect(labels).toEqual(["dashboard", "disk", "memory", "settings"]);
+    expect(screen.queryByText(/^disk tools$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^memory tools$/i)).not.toBeInTheDocument();
   });
 
   describe("when collapsed", () => {
@@ -101,7 +101,7 @@ describe("Sidebar", () => {
 
     it("hides section headers", () => {
       renderSidebar();
-      for (const label of ["resources", "💽 disk tools", "🧠 memory tools", "app"]) {
+      for (const label of ["resources", "disk tools", "memory tools", "app"]) {
         expect(screen.queryByText(new RegExp(`^${label}$`, "i"))).not.toBeInTheDocument();
       }
     });

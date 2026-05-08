@@ -1,4 +1,13 @@
-import { DISK_MARK, MEMORY_MARK } from "@/lib/resourceLabels";
+import {
+  Boxes,
+  Clock,
+  HardDrive,
+  History,
+  LayoutDashboard,
+  ListChecks,
+  MemoryStick,
+  type LucideIcon,
+} from "lucide-react";
 
 export type ToolNavigation = "sidebar" | "tabs";
 export type ResourceDomain = "disk" | "memory";
@@ -6,29 +15,29 @@ export type LandingPage = "dashboard" | ResourceDomain;
 
 export interface ToolNavItem {
   to: string;
-  glyph: string;
+  icon: LucideIcon;
   label: string;
 }
 
 export const RESOURCE_ITEMS: ToolNavItem[] = [
-  { to: "/dashboard", glyph: "▧", label: "dashboard" },
-  { to: "/disk", glyph: DISK_MARK, label: "disk" },
-  { to: "/memory", glyph: MEMORY_MARK, label: "memory" },
+  { to: "/dashboard", icon: LayoutDashboard, label: "dashboard" },
+  { to: "/disk", icon: HardDrive, label: "disk" },
+  { to: "/memory", icon: MemoryStick, label: "memory" },
 ];
 
 export const DISK_TOOL_ITEMS: ToolNavItem[] = [
-  { to: "/disk", glyph: DISK_MARK, label: "scan" },
-  { to: "/disk/providers", glyph: "▣", label: "providers" },
-  { to: "/disk/snapshots", glyph: "⏱", label: "snapshots" },
-  { to: "/disk/history", glyph: "≡", label: "history" },
+  { to: "/disk", icon: HardDrive, label: "scan" },
+  { to: "/disk/providers", icon: Boxes, label: "providers" },
+  { to: "/disk/snapshots", icon: Clock, label: "snapshots" },
+  { to: "/disk/history", icon: History, label: "history" },
 ];
 
 export const MEMORY_TOOL_ITEMS: ToolNavItem[] = [
-  { to: "/memory", glyph: MEMORY_MARK, label: "live" },
-  { to: "/memory/planner", glyph: "▤", label: "planner" },
-  { to: "/memory/providers", glyph: "▣", label: "providers" },
-  { to: "/memory/snapshots", glyph: "⏱", label: "snapshots" },
-  { to: "/memory/history", glyph: "≡", label: "history" },
+  { to: "/memory", icon: MemoryStick, label: "live" },
+  { to: "/memory/planner", icon: ListChecks, label: "planner" },
+  { to: "/memory/providers", icon: Boxes, label: "providers" },
+  { to: "/memory/snapshots", icon: Clock, label: "snapshots" },
+  { to: "/memory/history", icon: History, label: "history" },
 ];
 
 export function domainToolItems(domain: ResourceDomain): ToolNavItem[] {

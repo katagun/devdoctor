@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { NavIcon } from "@/components/NavIcon";
 import { useSettings } from "@/hooks/useSettings";
 import { domainToolItems, type ResourceDomain } from "@/lib/navigation";
 
@@ -22,7 +23,7 @@ export function DomainToolTabs({ domain }: { domain: ResourceDomain }) {
           }
         >
           <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden="true">{item.glyph}</span>
+            <NavIcon icon={item.icon} size={13} />
             <span>{item.label}</span>
           </span>
         </NavLink>

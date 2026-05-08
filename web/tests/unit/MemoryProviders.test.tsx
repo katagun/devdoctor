@@ -83,7 +83,7 @@ describe("Memory providers page", () => {
     expect(await screen.findByText("2 of 2 providers enabled")).toBeInTheDocument();
 
     await user.type(
-      screen.getByPlaceholderText("Search 🧠 memory providers by name or scope..."),
+      screen.getByPlaceholderText("Search memory providers by name or scope..."),
       "docker",
     );
 

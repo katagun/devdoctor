@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { DomainToolTabs } from "@/components/DomainToolTabs";
+import { ResourceLabel } from "@/components/ResourceLabel";
 import {
   useExecuteMemoryAction,
   useCreateMemorySnapshot,
@@ -140,7 +141,9 @@ export default function Memory() {
   return (
     <div className="flex flex-col h-screen font-mono">
       <header className="px-4 py-3 border-b border-border flex items-center gap-4">
-        <h1 className="text-text text-[14px] font-medium">{MEMORY_TITLE}</h1>
+        <h1 className="text-text text-[14px] font-medium">
+          <ResourceLabel resource="memory" label={MEMORY_TITLE} size={15} />
+        </h1>
         {data?.scanned_at && (
           <span className="text-text-dim text-[11px]" title={data.scanned_at}>
             updated {timeAgo(data.scanned_at)}

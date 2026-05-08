@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { DiskUsageBar } from "@/components/DiskUsageBar";
 import { colorForMosaicTone, MosaicTreemap } from "@/components/MosaicTreemap";
+import { ResourceLabel } from "@/components/ResourceLabel";
 import { useDiskDashboardSummary } from "@/hooks/useDashboard";
 import { useMemory, useMemoryProviders } from "@/hooks/useMemory";
 import { useProviders } from "@/hooks/useProviders";
@@ -115,7 +116,7 @@ export default function Dashboard() {
       <main className="flex-1 overflow-auto">
         <div className="p-4 grid gap-4 xl:grid-cols-2">
           <ResourcePanel
-            title={`${DISK_TITLE} reclaim mosaic`}
+            title={<ResourceLabel resource="disk" label={`${DISK_TITLE} reclaim mosaic`} />}
             eyebrow="largest safe and reclaimable entries"
             to="/disk"
             action={`open ${DISK_LABEL} scan`}
@@ -153,7 +154,7 @@ export default function Dashboard() {
           </ResourcePanel>
 
           <ResourcePanel
-            title={`${MEMORY_TITLE} pressure mosaic`}
+            title={<ResourceLabel resource="memory" label={`${MEMORY_TITLE} pressure mosaic`} />}
             eyebrow={`largest resident ${MEMORY_LABEL} consumers`}
             to="/memory"
             action={`open ${MEMORY_LABEL} live`}
@@ -196,7 +197,7 @@ export default function Dashboard() {
 
         <div className="px-4 pb-4 grid gap-4 xl:grid-cols-3">
           <SummaryList
-            title={`${DISK_TITLE} opportunities`}
+            title={<ResourceLabel resource="disk" label={`${DISK_TITLE} opportunities`} />}
             emptyLabel={`No ${DISK_LABEL} entries reported.`}
             rows={diskProvidersBySize.slice(0, 5).map((provider) => ({
               id: provider.provider,
@@ -207,7 +208,7 @@ export default function Dashboard() {
             }))}
           />
           <SummaryList
-            title={`${MEMORY_TITLE} contributors`}
+            title={<ResourceLabel resource="memory" label={`${MEMORY_TITLE} contributors`} />}
             emptyLabel={`No ${MEMORY_LABEL} consumers reported.`}
             rows={topMemory.map((consumer) => ({
               id: consumer.id,
@@ -249,13 +250,23 @@ function StatusLine({
   return (
     <div className="text-[10.5px] text-text-dim flex items-center gap-3 flex-wrap">
       <span title={diskAt ?? undefined}>
-        {diskCached
-          ? `${DISK_LABEL} cached ${diskAt ? timeAgo(diskAt) : "pending"}`
-          : `${DISK_LABEL} ${diskAt ? timeAgo(diskAt) : "pending"}`}
+        <ResourceLabel
+          resource="disk"
+          label={
+            diskCached
+              ? `${DISK_LABEL} cached ${diskAt ? timeAgo(diskAt) : "pending"}`
+              : `${DISK_LABEL} ${diskAt ? timeAgo(diskAt) : "pending"}`
+          }
+          size={12}
+        />
       </span>
       <span className="text-text-muted">/</span>
       <span title={memoryAt ?? undefined}>
-        {MEMORY_LABEL} {memoryAt ? timeAgo(memoryAt) : "pending"}
+        <ResourceLabel
+          resource="memory"
+          label={`${MEMORY_LABEL} ${memoryAt ? timeAgo(memoryAt) : "pending"}`}
+          size={12}
+        />
       </span>
     </div>
   );
@@ -274,7 +285,7 @@ function ResourcePanel({
   stats,
   children,
 }: {
-  title: string;
+  title: ReactNode;
   eyebrow: string;
   to: string;
   action: string;
@@ -359,7 +370,7 @@ function SummaryList({
   rows,
   emptyLabel,
 }: {
-  title: string;
+  title: ReactNode;
   rows: Array<{ id: string; label: string; detail: string; value: string; href?: string }>;
   emptyLabel: string;
 }) {

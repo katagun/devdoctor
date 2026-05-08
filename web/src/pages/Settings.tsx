@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import {
   CADENCE_PRESETS,
   SIZE_PRESETS,
@@ -15,6 +16,7 @@ import {
   type StorageBackend,
 } from "@/hooks/useAppSettings";
 import { DiskUsageBar } from "@/components/DiskUsageBar";
+import { ResourceLabel } from "@/components/ResourceLabel";
 import { humanBytes } from "@/lib/format";
 import { DISK_LABEL, DISK_TITLE, MEMORY_LABEL, MEMORY_TITLE } from "@/lib/resourceLabels";
 
@@ -214,13 +216,13 @@ export default function Settings() {
           <RadioRow
             checked={settings.landingPage === "disk"}
             onClick={() => setLandingPage("disk")}
-            label={DISK_TITLE}
+            label={<ResourceLabel resource="disk" label={DISK_TITLE} />}
             caption={`Open the ${DISK_LABEL} scan by default.`}
           />
           <RadioRow
             checked={settings.landingPage === "memory"}
             onClick={() => setLandingPage("memory")}
-            label={MEMORY_TITLE}
+            label={<ResourceLabel resource="memory" label={MEMORY_TITLE} />}
             caption={`Open the live ${MEMORY_LABEL} view by default.`}
           />
         </div>
@@ -325,7 +327,7 @@ function Section({
 }: {
   title: string;
   description?: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <section className="mb-8">
@@ -358,7 +360,7 @@ function Chip({
 }: {
   active: boolean;
   onClick: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <button
@@ -382,7 +384,7 @@ function RadioRow({
 }: {
   checked: boolean;
   onClick: () => void;
-  label: string;
+  label: ReactNode;
   caption: string;
 }) {
   return (

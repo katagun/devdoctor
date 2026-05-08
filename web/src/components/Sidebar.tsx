@@ -1,4 +1,9 @@
 import { NavLink } from "react-router-dom";
+import type { ReactNode } from "react";
+import { Settings } from "lucide-react";
+import { NavIcon } from "@/components/NavIcon";
+import { ResourceLabel } from "@/components/ResourceLabel";
+import type { ToolNavItem } from "@/lib/navigation";
 import { SidebarResizeHandle } from "@/components/SidebarResizeHandle";
 import { useSidebarWidth } from "@/hooks/useSidebarWidth";
 import { useSettings } from "@/hooks/useSettings";
@@ -11,20 +16,9 @@ const linkBase =
 const linkActive = "bg-bg-elev-2 text-text";
 const linkIdle = "text-text-dim hover:bg-bg-elev-1";
 
-function Item({
-  to,
-  glyph,
-  label,
-  count,
-  collapsed,
-}: {
-  to: string;
-  glyph: string;
-  label: string;
-  count?: number;
-  collapsed: boolean;
-}) {
+function Item({ item, count, collapsed }: { item: ToolNavItem; count?: number; collapsed: boolean }) {
   const alignment = collapsed ? "justify-center" : "justify-between";
+  const { to, icon, label } = item;
   return (
     <NavLink
       to={to}
@@ -36,13 +30,14 @@ function Item({
     >
       {collapsed ? (
         <>
-          <span aria-hidden="true">{glyph}</span>
+          <NavIcon icon={icon} />
           <span className="sr-only">{label}</span>
         </>
       ) : (
         <>
-          <span>
-            <span aria-hidden="true">{glyph}</span> {label}
+          <span className="inline-flex items-center gap-2 min-w-0">
+            <NavIcon icon={icon} />
+            <span className="truncate">{label}</span>
           </span>
           {count !== undefined && (
             <span className="text-text-muted text-[9.5px]">{count}</span>
@@ -58,8 +53,8 @@ function Section({
   items,
   collapsed,
 }: {
-  title: string;
-  items: Array<{ to: string; glyph: string; label: string }>;
+  title: ReactNode;
+  items: ToolNavItem[];
   collapsed: boolean;
 }) {
   return (
@@ -72,9 +67,7 @@ function Section({
       {items.map((item) => (
         <Item
           key={item.to}
-          to={item.to}
-          glyph={item.glyph}
-          label={item.label}
+          item={item}
           collapsed={collapsed}
         />
       ))}
@@ -138,12 +131,12 @@ export function Sidebar() {
         {showTools && (
           <>
             <Section
-              title={`${DISK_LABEL} tools`}
+              title={<ResourceLabel resource="disk" label={`${DISK_LABEL} tools`} size={12} />}
               collapsed={collapsed}
               items={DISK_TOOL_ITEMS.filter((item) => item.label !== "scan")}
             />
             <Section
-              title={`${MEMORY_LABEL} tools`}
+              title={<ResourceLabel resource="memory" label={`${MEMORY_LABEL} tools`} size={12} />}
               collapsed={collapsed}
               items={MEMORY_TOOL_ITEMS.filter((item) => item.label !== "live")}
             />
@@ -153,7 +146,7 @@ export function Sidebar() {
           title="app"
           collapsed={collapsed}
           items={[
-            { to: "/settings", glyph: "⚙", label: "settings" },
+            { to: "/settings", icon: Settings, label: "settings" },
           ]}
         />
       </nav>

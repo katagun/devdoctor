@@ -36,7 +36,7 @@ describe("dashboard data shaping", () => {
         tone: "reclaimable",
         href: "/disk?provider=ollama",
       }),
-      expect.objectContaining({ id: "disk-other", label: "other 💽 disk entries", value: 80, tone: "other" }),
+      expect.objectContaining({ id: "disk-other", label: "other disk entries", value: 80, tone: "other" }),
     ]);
   });
 
@@ -58,7 +58,7 @@ describe("dashboard data shaping", () => {
         tone: "browser",
         href: "/memory?provider=browsers",
       }),
-      expect.objectContaining({ id: "memory-other", label: "other 🧠 memory consumers", value: 110, tone: "other" }),
+      expect.objectContaining({ id: "memory-other", label: "other memory consumers", value: 110, tone: "other" }),
     ]);
   });
 
