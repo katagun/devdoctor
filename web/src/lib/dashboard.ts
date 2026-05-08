@@ -1,4 +1,5 @@
 import type { MemoryConsumerKind } from "@/hooks/useMemory";
+import { DISK_LABEL, MEMORY_LABEL } from "@/lib/resourceLabels";
 
 export type MosaicTone =
   | "safe"
@@ -18,6 +19,7 @@ export interface MosaicDatum {
   value: number;
   tone: MosaicTone;
   detail?: string;
+  href?: string;
 }
 
 interface WeightedInput {
@@ -26,6 +28,7 @@ interface WeightedInput {
   value: number;
   tone: MosaicTone;
   detail?: string;
+  href?: string;
 }
 
 export interface DiskMosaicInput {
@@ -69,11 +72,12 @@ export function buildDiskMosaicItems(
         value: row.size_bytes,
         tone: row.risk,
         detail: row.label,
+        href: diskProviderHref(row.provider),
       })),
     maxItems,
     {
       id: "disk-other",
-      label: "other disk entries",
+      label: `other ${DISK_LABEL} entries`,
       tone: "other",
     },
   );
@@ -93,12 +97,13 @@ export function buildMemoryMosaicItems(
           value: row.rss_bytes,
           tone: row.kind === "other" ? "process" : row.kind,
           detail: label === row.name ? row.kind : `${row.name} · ${row.kind}`,
+          href: memoryProviderHref(row.kind),
         };
       }),
     maxItems,
     {
       id: "memory-other",
-      label: "other memory consumers",
+      label: `other ${MEMORY_LABEL} consumers`,
       tone: "other",
     },
   );
@@ -142,6 +147,32 @@ export function topMemoryConsumers<T extends MemoryConsumerInput>(
     .filter((row) => row.rss_bytes > 0)
     .sort((a, b) => b.rss_bytes - a.rss_bytes)
     .slice(0, limit);
+}
+
+export function diskProviderHref(provider: string): string {
+  return `/disk?provider=${encodeURIComponent(provider)}`;
+}
+
+export function memoryProviderHref(kind: MemoryConsumerKind): string {
+  return `/memory?provider=${encodeURIComponent(memoryProviderIdForKind(kind))}`;
+}
+
+function memoryProviderIdForKind(kind: MemoryConsumerKind): string {
+  switch (kind) {
+    case "browser":
+      return "browsers";
+    case "docker":
+      return "docker";
+    case "electron":
+      return "electron-apps";
+    case "llm":
+      return "local-llms";
+    case "app":
+      return "native-apps";
+    case "process":
+    case "other":
+      return "other-processes";
+  }
 }
 
 function topWeightedItems(

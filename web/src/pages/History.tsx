@@ -9,6 +9,7 @@ import {
 import { DiskPageHeader } from "@/components/DiskPageHeader";
 import { DomainToolTabs } from "@/components/DomainToolTabs";
 import { formatAbsTime, humanBytes, timeAgo } from "@/lib/format";
+import { MEMORY_LABEL } from "@/lib/resourceLabels";
 
 type Filter = "all" | "cleanup" | "snapshot" | "memory_action";
 
@@ -51,7 +52,7 @@ export default function History() {
             <b className="text-text-dim">{counts.cleanup}</b> cleanups ·{" "}
             <b className="text-risk-safe">{humanBytes(counts.freed)}</b> reclaimed ·{" "}
             <b className="text-text-dim">{counts.snapshot}</b> snapshots ·{" "}
-            <b className="text-text-dim">{counts.memoryAction}</b> memory actions
+            <b className="text-text-dim">{counts.memoryAction}</b> {MEMORY_LABEL} actions
           </span>
         </div>
       </DiskPageHeader>
@@ -70,7 +71,7 @@ export default function History() {
             onClick={() => setFilter("snapshot")}
           />
           <FilterChip
-            label="memory"
+            label={MEMORY_LABEL}
             active={filter === "memory_action"}
             onClick={() => setFilter("memory_action")}
           />
@@ -240,7 +241,7 @@ function MemoryActionRow({ event }: { event: MemoryActionEvent }) {
     <li className="border border-border rounded bg-bg-elev-1">
       <div className="px-3 py-2.5 flex items-start gap-3">
         <span className={`shrink-0 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-widest border ${tone}`}>
-          memory
+          {MEMORY_LABEL}
         </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 justify-between">
@@ -304,7 +305,7 @@ function EmptyState({ filter }: { filter: Filter }) {
       : filter === "snapshot"
         ? "No snapshots yet."
         : filter === "memory_action"
-          ? "No memory actions run yet."
+          ? `No ${MEMORY_LABEL} actions run yet.`
           : "No history yet. Run a scan, create a snapshot, or execute an action to populate the audit trail.";
   return (
     <div className="p-8 text-center text-text-dim">

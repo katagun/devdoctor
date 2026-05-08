@@ -13,6 +13,7 @@ import {
   timeAgo,
   type ByteMagnitude,
 } from "@/lib/format";
+import { DISK_LABEL } from "@/lib/resourceLabels";
 
 const FLASH_MS = 2000;
 
@@ -137,7 +138,7 @@ export default function Snapshots() {
             {create.isPending ? (
               <span className="flex items-center gap-2">
                 <span className="inline-block w-2 h-2 rounded-full bg-risk-reclaim animate-pulse" />
-                scanning disk…
+                scanning {DISK_LABEL}…
               </span>
             ) : (
               "+ create snapshot"
@@ -360,7 +361,7 @@ function EmptyState() {
       <div className="max-w-md text-center space-y-3">
         <div className="text-text text-[14px] font-medium">No snapshots yet</div>
         <div className="text-text-dim leading-relaxed">
-          Snapshots capture your disk usage at a point in time. Create one now and another after
+          Snapshots capture your {DISK_LABEL} usage at a point in time. Create one now and another after
           cleaning up to see exactly what reclaimed space.
         </div>
       </div>
@@ -464,7 +465,7 @@ function SingleSnapshotSummary({
           compare to live ↗
         </button>
         <div className="text-text-muted text-[10px] mt-1.5">
-          Runs a fresh scan and diffs this snapshot against what's on disk right now.
+          Runs a fresh scan and diffs this snapshot against what's on {DISK_LABEL} right now.
         </div>
       </div>
     </div>
@@ -507,7 +508,7 @@ function DiffPane({
 }) {
   const toLabel =
     toName === "live"
-      ? "live (current disk)"
+      ? `live (current ${DISK_LABEL})`
       : toMeta
         ? timeAgo(toMeta.scanned_at)
         : toName;
@@ -545,7 +546,7 @@ function DiffPane({
               {humanBytes(Math.abs(totalDelta))}
             </div>
             <div className="text-text-muted text-[9px] mt-0.5">
-              {totalDelta > 0 ? "disk grew" : totalDelta < 0 ? "disk shrank" : "no net change"}
+              {totalDelta > 0 ? `${DISK_LABEL} grew` : totalDelta < 0 ? `${DISK_LABEL} shrank` : "no net change"}
             </div>
           </div>
         )}

@@ -6,6 +6,7 @@ import { ReviewStep } from "./ReviewStep";
 import { ExecuteStep } from "./ExecuteStep";
 import { SummaryStep } from "./SummaryStep";
 import { APP_NAME } from "@/lib/brand";
+import { DISK_LABEL } from "@/lib/resourceLabels";
 
 export function CleanupWizard({
   entries,
@@ -26,7 +27,7 @@ export function CleanupWizard({
           <header className="px-4 py-3 bg-gradient-to-b from-bg-header-from to-bg-header-to border-b border-border flex items-center justify-between">
             <div className="font-mono font-semibold flex items-center gap-2">
               <span className="w-[7px] h-[7px] rounded-full bg-risk-reclaim" style={{boxShadow:"0 0 10px var(--risk-reclaim)"}} />
-              {APP_NAME} <span className="text-text-muted font-normal">/ disk clean</span>
+              {APP_NAME} <span className="text-text-muted font-normal">/ {DISK_LABEL} clean</span>
             </div>
             <div className="flex gap-2 text-[10px]">
               {(["review", "execute", "summary"] as const).map((s, i) => (

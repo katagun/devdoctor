@@ -31,8 +31,8 @@ describe("Sidebar", () => {
     const labels = within(nav).getAllByRole("link").map((link) => link.textContent?.trim());
     expect(labels).toEqual([
       "▧ dashboard",
-      "◆ disk",
-      "◫ memory",
+      "💽 disk",
+      "🧠 memory",
       "▣ providers",
       "⏱ snapshots",
       "≡ history",
@@ -46,7 +46,7 @@ describe("Sidebar", () => {
 
   it("renders section headers for the expanded sidebar", () => {
     renderSidebar();
-    for (const label of ["resources", "disk tools", "memory tools", "app"]) {
+    for (const label of ["resources", "💽 disk tools", "🧠 memory tools", "app"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
   });
@@ -55,8 +55,8 @@ describe("Sidebar", () => {
     renderSidebar();
     const expected = [
       ["/dashboard", "▧"],
-      ["/disk", "◆"],
-      ["/memory", "◫"],
+      ["/disk", "💽"],
+      ["/memory", "🧠"],
       ["/disk/providers", "▣"],
       ["/disk/snapshots", "⏱"],
       ["/disk/history", "≡"],
@@ -84,9 +84,9 @@ describe("Sidebar", () => {
 
     const nav = screen.getByRole("navigation", { name: /primary/i });
     const labels = within(nav).getAllByRole("link").map((link) => link.textContent?.trim());
-    expect(labels).toEqual(["▧ dashboard", "◆ disk", "◫ memory", "⚙ settings"]);
-    expect(screen.queryByText(/^disk tools$/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/^memory tools$/i)).not.toBeInTheDocument();
+    expect(labels).toEqual(["▧ dashboard", "💽 disk", "🧠 memory", "⚙ settings"]);
+    expect(screen.queryByText(/^💽 disk tools$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^🧠 memory tools$/i)).not.toBeInTheDocument();
   });
 
   describe("when collapsed", () => {
@@ -101,7 +101,7 @@ describe("Sidebar", () => {
 
     it("hides section headers", () => {
       renderSidebar();
-      for (const label of ["resources", "disk tools", "memory tools", "app"]) {
+      for (const label of ["resources", "💽 disk tools", "🧠 memory tools", "app"]) {
         expect(screen.queryByText(new RegExp(`^${label}$`, "i"))).not.toBeInTheDocument();
       }
     });

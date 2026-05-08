@@ -75,4 +75,22 @@ describe("useScan", () => {
     await waitFor(() => expect(result.current.data).toBeTruthy());
     expect(result.current.data?.totalBytes).toBe(0);
   });
+
+  it("passes provider filters through to the scan API", async () => {
+    mockApiFetch.mockResolvedValue({
+      entries: [],
+      scanned_at: "2026-04-25T10:00:00Z",
+      hostname: "h",
+      platform: "darwin",
+      skipped_paths: [],
+    });
+    const { useScan } = await import("@/hooks/useScan");
+    const { result } = renderHook(() => useScan({ provider: "docker-vm-disk" }), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.data).toBeTruthy());
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/scan?provider=docker-vm-disk");
+  });
 });

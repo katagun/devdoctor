@@ -4,6 +4,7 @@ import { useSidebarWidth } from "@/hooks/useSidebarWidth";
 import { useSettings } from "@/hooks/useSettings";
 import { APP_NAME } from "@/lib/brand";
 import { DISK_TOOL_ITEMS, MEMORY_TOOL_ITEMS, RESOURCE_ITEMS } from "@/lib/navigation";
+import { DISK_LABEL, MEMORY_LABEL } from "@/lib/resourceLabels";
 
 const linkBase =
   "flex items-center px-3 py-1.5 rounded text-[10.5px] font-mono transition-colors";
@@ -137,12 +138,12 @@ export function Sidebar() {
         {showTools && (
           <>
             <Section
-              title="disk tools"
+              title={`${DISK_LABEL} tools`}
               collapsed={collapsed}
               items={DISK_TOOL_ITEMS.filter((item) => item.label !== "scan")}
             />
             <Section
-              title="memory tools"
+              title={`${MEMORY_LABEL} tools`}
               collapsed={collapsed}
               items={MEMORY_TOOL_ITEMS.filter((item) => item.label !== "live")}
             />

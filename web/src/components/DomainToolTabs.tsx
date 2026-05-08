@@ -21,7 +21,10 @@ export function DomainToolTabs({ domain }: { domain: ResourceDomain }) {
             }`
           }
         >
-          {item.label}
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden="true">{item.glyph}</span>
+            <span>{item.label}</span>
+          </span>
         </NavLink>
       ))}
     </div>

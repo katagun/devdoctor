@@ -16,6 +16,7 @@ import {
 } from "@/hooks/useAppSettings";
 import { DiskUsageBar } from "@/components/DiskUsageBar";
 import { humanBytes } from "@/lib/format";
+import { DISK_LABEL, DISK_TITLE, MEMORY_LABEL, MEMORY_TITLE } from "@/lib/resourceLabels";
 
 const SAVED_MS = 1200;
 
@@ -133,7 +134,7 @@ export default function Settings() {
 
       <Section
         title="Minimum size cutoff"
-        description="Hide tiny entries from the disk table. Items below the threshold are bucketed into a single 'small items' summary row so you can see the totals without the noise."
+        description={`Hide tiny entries from the ${DISK_LABEL} table. Items below the threshold are bucketed into a single 'small items' summary row so you can see the totals without the noise.`}
       >
         <div className="flex gap-2 flex-wrap">
           {SIZE_PRESETS.map((p) => (
@@ -167,7 +168,7 @@ export default function Settings() {
 
       <Section
         title="Row density"
-        description="Disk table row height. Dense collapses provider and label onto one line so more entries fit on screen without scrolling."
+        description={`${DISK_TITLE} table row height. Dense collapses provider and label onto one line so more entries fit on screen without scrolling.`}
       >
         <div className="flex gap-2">
           <Chip active={settings.density === "sparse"} onClick={() => setDensity("sparse")}>
@@ -181,14 +182,14 @@ export default function Settings() {
 
       <Section
         title="Tool navigation"
-        description="Controls whether disk and memory tools live in the left sidebar or in horizontal tabs inside each resource page."
+        description={`Controls whether ${DISK_LABEL} and ${MEMORY_LABEL} tools live in the left sidebar or in horizontal tabs inside each resource page.`}
       >
         <div className="space-y-1.5">
           <RadioRow
             checked={settings.toolNavigation === "sidebar"}
             onClick={() => setToolNavigation("sidebar")}
             label="Sidebar"
-            caption="Show disk and memory tools in the left navigation."
+            caption={`Show ${DISK_LABEL} and ${MEMORY_LABEL} tools in the left navigation.`}
           />
           <RadioRow
             checked={settings.toolNavigation === "tabs"}
@@ -208,26 +209,26 @@ export default function Settings() {
             checked={settings.landingPage === "dashboard"}
             onClick={() => setLandingPage("dashboard")}
             label="Dashboard"
-            caption="Open the combined disk and memory overview by default."
+            caption={`Open the combined ${DISK_LABEL} and ${MEMORY_LABEL} overview by default.`}
           />
           <RadioRow
             checked={settings.landingPage === "disk"}
             onClick={() => setLandingPage("disk")}
-            label="Disk"
-            caption="Open the disk scan by default."
+            label={DISK_TITLE}
+            caption={`Open the ${DISK_LABEL} scan by default.`}
           />
           <RadioRow
             checked={settings.landingPage === "memory"}
             onClick={() => setLandingPage("memory")}
-            label="Memory"
-            caption="Open the live memory view by default."
+            label={MEMORY_TITLE}
+            caption={`Open the live ${MEMORY_LABEL} view by default.`}
           />
         </div>
       </Section>
 
       <Section
         title="Rescan cadence"
-        description="Controls how often the Disk page re-hits the backend during navigation. Reloading the browser always triggers a fresh scan — cadence only applies while moving between pages within an app session."
+        description={`Controls how often the ${DISK_TITLE} page re-hits the backend during navigation. Reloading the browser always triggers a fresh scan — cadence only applies while moving between pages within an app session.`}
       >
         <div className="space-y-1.5">
           {CADENCE_PRESETS.map((c) => (
@@ -244,7 +245,7 @@ export default function Settings() {
 
       <Section
         title="Storage backend"
-        description="Controls where DevDoctor stores server-side records such as disk snapshots and cleanup history. Filesystem keeps the existing JSON files; SQLite stores records in one local database."
+        description={`Controls where DevDoctor stores server-side records such as ${DISK_LABEL} snapshots and cleanup history. Filesystem keeps the existing JSON files; SQLite stores records in one local database.`}
       >
         {appSettings.isLoading ? (
           <div className="text-text-muted text-[11px] animate-pulse">loading storage settings…</div>

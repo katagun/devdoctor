@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Link, useSearchParams } from "react-router-dom";
 import { CacheTable } from "@/components/CacheTable";
 import { CleanupWizard } from "@/components/CleanupWizard";
 import { ColumnsPicker } from "@/components/ColumnsPicker";
@@ -22,6 +23,8 @@ const RISK_CHIPS: Array<{ key: string; label: string; risks: RiskValue[] }> = [
 ];
 
 export default function Scan() {
+  const [searchParams] = useSearchParams();
+  const providerQuery = searchParams.get("provider")?.trim() || undefined;
   const [activeChip, setActiveChip] = useState<string>("all");
   const riskParam =
     activeChip === "all" ? undefined : RISK_CHIPS.find((c) => c.key === activeChip)?.risks.join(",");
@@ -32,6 +35,7 @@ export default function Scan() {
     () => diskProviderParam(providers, disabled),
     [providers, disabled],
   );
+  const effectiveProviderParam = providerQuery ?? providerParam;
 
   const { settings } = useSettings();
   const staleTime = cadenceMs(settings.cadence);
@@ -39,7 +43,7 @@ export default function Scan() {
 
   const { data, isLoading, error, refetch, isFetching } = useScan({
     risk: riskParam,
-    provider: providerParam,
+    provider: effectiveProviderParam,
     staleTime,
     refetchOnMount: !manualOnly,
     explicit: true,
@@ -96,6 +100,17 @@ export default function Scan() {
         <span>
           <b className="text-text">{allRows.length}</b> caches
         </span>
+        {providerQuery && (
+          <span className="inline-flex items-center gap-2 text-risk-reclaim">
+            provider <b className="text-text">{providerQuery}</b>
+            <Link
+              to="/disk"
+              className="px-1.5 py-px rounded border border-border text-text-dim hover:text-text"
+            >
+              clear
+            </Link>
+          </span>
+        )}
       </DiskPageHeader>
       <DomainToolTabs domain="disk" />
       <div className="px-4 py-2.5 border-b border-border flex gap-2 items-center flex-wrap">

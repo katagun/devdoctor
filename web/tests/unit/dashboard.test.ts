@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildDiskMosaicItems,
   buildMemoryMosaicItems,
+  diskProviderHref,
   diskProviderTotals,
+  memoryProviderHref,
   topMemoryConsumers,
 } from "@/lib/dashboard";
 
@@ -20,9 +22,21 @@ describe("dashboard data shaping", () => {
     );
 
     expect(items).toEqual([
-      expect.objectContaining({ id: "docker:images", label: "docker", value: 90, tone: "reclaimable" }),
-      expect.objectContaining({ id: "ollama:models", label: "ollama", value: 70, tone: "reclaimable" }),
-      expect.objectContaining({ id: "disk-other", label: "other disk entries", value: 80, tone: "other" }),
+      expect.objectContaining({
+        id: "docker:images",
+        label: "docker",
+        value: 90,
+        tone: "reclaimable",
+        href: "/disk?provider=docker",
+      }),
+      expect.objectContaining({
+        id: "ollama:models",
+        label: "ollama",
+        value: 70,
+        tone: "reclaimable",
+        href: "/disk?provider=ollama",
+      }),
+      expect.objectContaining({ id: "disk-other", label: "other 💽 disk entries", value: 80, tone: "other" }),
     ]);
   });
 
@@ -37,8 +51,14 @@ describe("dashboard data shaping", () => {
     );
 
     expect(items).toEqual([
-      expect.objectContaining({ id: "firefox", label: "Firefox", value: 120, tone: "browser" }),
-      expect.objectContaining({ id: "memory-other", label: "other memory consumers", value: 110, tone: "other" }),
+      expect.objectContaining({
+        id: "firefox",
+        label: "Firefox",
+        value: 120,
+        tone: "browser",
+        href: "/memory?provider=browsers",
+      }),
+      expect.objectContaining({ id: "memory-other", label: "other 🧠 memory consumers", value: 110, tone: "other" }),
     ]);
   });
 
@@ -83,6 +103,12 @@ describe("dashboard data shaping", () => {
       { id: "b", name: "Firefox", kind: "browser", rss_bytes: 90 },
       { id: "c", name: "Docker", kind: "docker", rss_bytes: 60 },
     ]);
+  });
+
+  it("builds encoded drill-down hrefs", () => {
+    expect(diskProviderHref("docker vm")).toBe("/disk?provider=docker%20vm");
+    expect(memoryProviderHref("browser")).toBe("/memory?provider=browsers");
+    expect(memoryProviderHref("other")).toBe("/memory?provider=other-processes");
   });
 });
 

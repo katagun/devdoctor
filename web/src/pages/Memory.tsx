@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { DomainToolTabs } from "@/components/DomainToolTabs";
 import {
   useExecuteMemoryAction,
@@ -30,6 +30,7 @@ import {
 import { useSelectedMemoryProviders } from "@/hooks/useSelectedMemoryProviders";
 import { humanBytes, timeAgo } from "@/lib/format";
 import { memoryProviderIds } from "@/lib/providerFilters";
+import { MEMORY_LABEL, MEMORY_TITLE } from "@/lib/resourceLabels";
 
 const KIND_LABEL: Record<MemoryConsumerKind, string> = {
   browser: "browsers",
@@ -85,14 +86,23 @@ function pct(n: number, d: number): number {
 
 export default function Memory() {
   const { tab: rawTab } = useParams();
+  const [searchParams] = useSearchParams();
+  const providerQueryIds = useMemo(() => {
+    const raw = searchParams.get("provider");
+    if (!raw) return undefined;
+    const ids = raw.split(",").map((part) => part.trim()).filter(Boolean);
+    return ids.length > 0 ? ids : undefined;
+  }, [searchParams]);
   const tab: MemoryTab = MEMORY_TABS.has(rawTab ?? "")
     ? (rawTab as MemoryTab)
     : "live";
   const memoryProviders = useMemoryProviders();
   const selectedProviders = useSelectedMemoryProviders();
   const selectedProviderIds = useMemo(
-    () => memoryProviderIds(memoryProviders.data, selectedProviders.disabled),
-    [memoryProviders.data, selectedProviders.disabled],
+    () =>
+      providerQueryIds ??
+      memoryProviderIds(memoryProviders.data, selectedProviders.disabled),
+    [memoryProviders.data, providerQueryIds, selectedProviders.disabled],
   );
   const { data, isLoading, isFetching, error, refetch } = useMemory(selectedProviderIds);
   const history = useMemoryHistory(tab === "history");
@@ -130,7 +140,7 @@ export default function Memory() {
   return (
     <div className="flex flex-col h-screen font-mono">
       <header className="px-4 py-3 border-b border-border flex items-center gap-4">
-        <h1 className="text-text text-[14px] font-medium">Memory</h1>
+        <h1 className="text-text text-[14px] font-medium">{MEMORY_TITLE}</h1>
         {data?.scanned_at && (
           <span className="text-text-dim text-[11px]" title={data.scanned_at}>
             updated {timeAgo(data.scanned_at)}
@@ -153,6 +163,17 @@ export default function Memory() {
             <span className="hidden sm:inline">
               {providerScope.enabledCount} of {providerScope.totalCount} providers enabled
             </span>
+          </span>
+        )}
+        {providerQueryIds && (
+          <span className="inline-flex items-center gap-2 text-[10.5px] text-risk-reclaim">
+            provider <b className="text-text">{providerQueryIds.join(", ")}</b>
+            <Link
+              to="/memory"
+              className="px-1.5 py-px rounded border border-border text-text-dim hover:text-text"
+            >
+              clear
+            </Link>
           </span>
         )}
         <button
@@ -234,11 +255,11 @@ export default function Memory() {
       <div className="flex-1 overflow-auto">
         {tab === "live" && error && (
           <div className="p-8 text-risk-danger text-sm">
-            Error loading memory report: {String(error)}
+            Error loading {MEMORY_LABEL} report: {String(error)}
           </div>
         )}
         {tab === "live" && isLoading && (
-          <div className="p-8 text-text-muted text-sm animate-pulse">reading memory...</div>
+          <div className="p-8 text-text-muted text-sm animate-pulse">reading {MEMORY_LABEL}...</div>
         )}
         {tab === "live" && !isLoading && !error && data && (
           <div>
@@ -260,7 +281,7 @@ export default function Memory() {
               </section>
             ))}
             {grouped.length === 0 && (
-              <div className="p-8 text-center text-text-dim text-sm">(no memory consumers)</div>
+              <div className="p-8 text-center text-text-dim text-sm">(no {MEMORY_LABEL} consumers)</div>
             )}
           </div>
         )}
@@ -389,7 +410,7 @@ function MemoryPlannerPanel({ providerIds }: { providerIds?: string[] }) {
         {plan.isError && <div className="text-risk-danger text-sm">{String(plan.error)}</div>}
         {!plan.data && !plan.isPending && (
           <div className="text-text-dim text-sm p-6 border border-border rounded bg-bg-elev-1">
-            Pick a workload and check fit against current memory headroom.
+            Pick a workload and check fit against current {MEMORY_LABEL} headroom.
           </div>
         )}
         {plan.data && <PlanResult plan={plan.data} />}
@@ -577,10 +598,10 @@ function MemoryHistoryPanel({
     return <div className="p-8 text-risk-danger text-sm">{String(error)}</div>;
   }
   if (loading) {
-    return <div className="p-8 text-text-muted text-sm animate-pulse">loading memory history...</div>;
+    return <div className="p-8 text-text-muted text-sm animate-pulse">loading {MEMORY_LABEL} history...</div>;
   }
   if (rows.length === 0) {
-    return <div className="p-8 text-text-dim text-sm">No memory observations recorded yet.</div>;
+    return <div className="p-8 text-text-dim text-sm">No {MEMORY_LABEL} observations recorded yet.</div>;
   }
   return (
     <div>
@@ -664,14 +685,14 @@ function MemorySnapshotsPanel({
           disabled={create.isPending}
           className="px-3 py-1 rounded border border-border text-[11px] text-text-dim hover:text-text disabled:opacity-50"
         >
-          {create.isPending ? "capturing..." : "+ memory snapshot"}
+          {create.isPending ? "capturing..." : `+ ${MEMORY_LABEL} snapshot`}
         </button>
         <span className="text-text-muted text-[10px] ml-auto">{rows.length} snapshots</span>
       </div>
       {error ? <div className="text-risk-danger text-sm">{String(error)}</div> : null}
       {loading && <div className="text-text-muted text-sm animate-pulse">loading snapshots...</div>}
       {!loading && rows.length === 0 && (
-        <div className="text-text-dim text-sm">No memory snapshots yet.</div>
+        <div className="text-text-dim text-sm">No {MEMORY_LABEL} snapshots yet.</div>
       )}
       {rows.length > 0 && (
         <div className="grid grid-cols-[24px_160px_90px_1fr_120px_120px] gap-3 border-t border-border text-[11px]">
@@ -816,7 +837,7 @@ function MemoryProvidersPanel({
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search memory providers by name or scope..."
+            placeholder={`Search ${MEMORY_LABEL} providers by name or scope...`}
             className="w-full bg-bg-elev-1 border border-border rounded pl-7 pr-8 py-1.5 text-[11px] text-text placeholder:text-text-muted focus:outline-none focus:border-risk-reclaim"
           />
           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none">
@@ -850,7 +871,7 @@ function MemoryProvidersPanel({
               onClick={toggleAll}
               disabled={rows.length === 0}
               aria-pressed={!noneEnabled}
-              aria-label={noneEnabled ? "Enable all memory providers" : "Disable all memory providers"}
+              aria-label={noneEnabled ? `Enable all ${MEMORY_LABEL} providers` : `Disable all ${MEMORY_LABEL} providers`}
               className={`w-[36px] h-[18px] rounded-full relative transition-colors ${
                 allEnabled
                   ? "bg-btn-primary-to"
@@ -869,7 +890,7 @@ function MemoryProvidersPanel({
         </div>
       </header>
       <div className="px-4 py-2 border-b border-border text-text-muted text-[10px]">
-        Toggle off to exclude a memory provider from live reports, plans, snapshots, and history.
+        Toggle off to exclude a {MEMORY_LABEL} provider from live reports, plans, snapshots, and history.
         Preference is stored locally.
       </div>
       <div className="px-4">
@@ -936,10 +957,10 @@ function MemoryProvidersPanel({
           <div className="p-8 text-center text-text-dim text-sm">
             {query ? (
               <>
-                No memory providers match <span className="text-text">&ldquo;{query}&rdquo;</span>.
+                No {MEMORY_LABEL} providers match <span className="text-text">&ldquo;{query}&rdquo;</span>.
               </>
             ) : (
-              "No memory providers."
+              `No ${MEMORY_LABEL} providers.`
             )}
           </div>
         )}
@@ -957,7 +978,7 @@ function SuggestionsPanel({ suggestions }: { suggestions: MemorySuggestion[] }) 
   if (suggestions.length === 0) {
     return (
       <div className="px-4 py-3 border-b border-border text-[11px] text-text-dim">
-        No memory suggestions right now.
+        No {MEMORY_LABEL} suggestions right now.
       </div>
     );
   }

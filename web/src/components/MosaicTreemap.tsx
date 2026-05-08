@@ -70,7 +70,7 @@ function MosaicTile(props: Partial<TreemapNode> & Partial<MosaicDatum>) {
     ? "var(--text-dim)"
     : "var(--text-on-accent)";
 
-  return (
+  const content = (
     <g>
       <clipPath id={clipId}>
         <rect
@@ -127,6 +127,13 @@ function MosaicTile(props: Partial<TreemapNode> & Partial<MosaicDatum>) {
         </g>
       )}
     </g>
+  );
+
+  if (!props.href) return content;
+  return (
+    <a href={props.href} aria-label={`${label} drill-down`}>
+      {content}
+    </a>
   );
 }
 

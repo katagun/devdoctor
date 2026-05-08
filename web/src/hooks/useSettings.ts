@@ -2,6 +2,7 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 import type { ColumnId } from "@/components/CacheTable/columns";
 import { COLUMNS, DEFAULT_HIDDEN_COLUMNS } from "@/components/CacheTable/columns";
 import type { LandingPage, ToolNavigation } from "@/lib/navigation";
+import { DISK_TITLE } from "@/lib/resourceLabels";
 
 const KEY = "diskdoctor.settings.v1";
 
@@ -28,7 +29,7 @@ export function clampSidebarWidth(px: number, viewportWidth: number): number {
 // Cadence in milliseconds for TanStack Query's staleTime. `Infinity` disables
 // automatic refetching — only manual "Rescan now" forces a refetch.
 export const CADENCE_PRESETS = [
-  { id: "live", label: "Live", staleMs: 0, caption: "Rescan every time you open the Disk page" },
+  { id: "live", label: "Live", staleMs: 0, caption: `Rescan every time you open the ${DISK_TITLE} page` },
   { id: "hourly", label: "Hourly", staleMs: 60 * 60 * 1000, caption: "Reuse last scan for up to 1 hour" },
   { id: "six_hours", label: "Every 6 hours", staleMs: 6 * 60 * 60 * 1000, caption: "Reuse last scan for up to 6 hours" },
   { id: "daily", label: "Daily", staleMs: 24 * 60 * 60 * 1000, caption: "Reuse last scan for up to 24 hours" },

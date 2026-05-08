@@ -1,3 +1,5 @@
+import { DISK_MARK, MEMORY_MARK } from "@/lib/resourceLabels";
+
 export type ToolNavigation = "sidebar" | "tabs";
 export type ResourceDomain = "disk" | "memory";
 export type LandingPage = "dashboard" | ResourceDomain;
@@ -10,19 +12,19 @@ export interface ToolNavItem {
 
 export const RESOURCE_ITEMS: ToolNavItem[] = [
   { to: "/dashboard", glyph: "▧", label: "dashboard" },
-  { to: "/disk", glyph: "◆", label: "disk" },
-  { to: "/memory", glyph: "◫", label: "memory" },
+  { to: "/disk", glyph: DISK_MARK, label: "disk" },
+  { to: "/memory", glyph: MEMORY_MARK, label: "memory" },
 ];
 
 export const DISK_TOOL_ITEMS: ToolNavItem[] = [
-  { to: "/disk", glyph: "◆", label: "scan" },
+  { to: "/disk", glyph: DISK_MARK, label: "scan" },
   { to: "/disk/providers", glyph: "▣", label: "providers" },
   { to: "/disk/snapshots", glyph: "⏱", label: "snapshots" },
   { to: "/disk/history", glyph: "≡", label: "history" },
 ];
 
 export const MEMORY_TOOL_ITEMS: ToolNavItem[] = [
-  { to: "/memory", glyph: "◫", label: "live" },
+  { to: "/memory", glyph: MEMORY_MARK, label: "live" },
   { to: "/memory/planner", glyph: "▤", label: "planner" },
   { to: "/memory/providers", glyph: "▣", label: "providers" },
   { to: "/memory/snapshots", glyph: "⏱", label: "snapshots" },

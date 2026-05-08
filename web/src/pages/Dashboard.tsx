@@ -13,12 +13,15 @@ import { useSettings } from "@/hooks/useSettings";
 import {
   buildDiskMosaicItems,
   buildMemoryMosaicItems,
+  diskProviderHref,
   diskProviderTotals,
+  memoryProviderHref,
   type MosaicTone,
   topMemoryConsumers,
 } from "@/lib/dashboard";
 import { humanBytes, timeAgo } from "@/lib/format";
 import { diskProviderParam, memoryProviderIds } from "@/lib/providerFilters";
+import { DISK_LABEL, DISK_TITLE, MEMORY_LABEL, MEMORY_TITLE } from "@/lib/resourceLabels";
 
 export default function Dashboard() {
   const { settings } = useSettings();
@@ -49,6 +52,7 @@ export default function Dashboard() {
   const diskTotalBytes = disk.data?.totalBytes ?? diskSummary.data?.total_bytes ?? null;
   const diskScannedAt = disk.data?.scannedAt ?? diskSummary.data?.scanned_at ?? null;
   const diskShowingCached = !disk.data && diskSummary.data !== null && diskSummary.data !== undefined;
+  const diskHasNoCache = diskSummary.data === null && !disk.data;
   const memoryReport = memory.data;
   const diskMosaic = useMemo(() => buildDiskMosaicItems(diskRows, 14), [diskRows]);
   const topMemory = useMemo(
@@ -111,11 +115,12 @@ export default function Dashboard() {
       <main className="flex-1 overflow-auto">
         <div className="p-4 grid gap-4 xl:grid-cols-2">
           <ResourcePanel
-            title="Disk reclaim mosaic"
+            title={`${DISK_TITLE} reclaim mosaic`}
             eyebrow="largest safe and reclaimable entries"
             to="/disk"
-            action="open disk scan"
+            action={`open ${DISK_LABEL} scan`}
             loading={disk.isLoading && !diskSummary.data}
+            loadingLabel={diskHasNoCache ? "running first full scan…" : "loading…"}
             error={disk.error}
             refreshing={disk.isFetching && !!diskSummary.data}
             legend={[
@@ -138,17 +143,22 @@ export default function Dashboard() {
           >
             <MosaicTreemap
               items={diskMosaic}
-              ariaLabel="Disk reclaimable space mosaic"
-              emptyLabel="no disk entries to chart"
+              ariaLabel={`${DISK_TITLE} reclaimable space mosaic`}
+              emptyLabel={
+                diskHasNoCache
+                  ? `no cached ${DISK_LABEL} scan yet; run a full scan to populate the dashboard`
+                  : `no ${DISK_LABEL} entries to chart`
+              }
             />
           </ResourcePanel>
 
           <ResourcePanel
-            title="Memory pressure mosaic"
-            eyebrow="largest resident memory consumers"
+            title={`${MEMORY_TITLE} pressure mosaic`}
+            eyebrow={`largest resident ${MEMORY_LABEL} consumers`}
             to="/memory"
-            action="open memory live"
+            action={`open ${MEMORY_LABEL} live`}
             loading={memory.isLoading}
+            loadingLabel={`reading ${MEMORY_LABEL}…`}
             error={memory.error}
             legend={[
               ["browser", "browser"],
@@ -178,36 +188,38 @@ export default function Dashboard() {
           >
             <MosaicTreemap
               items={memoryMosaic}
-              ariaLabel="Memory usage by provider mosaic"
-              emptyLabel="no memory providers to chart"
+              ariaLabel={`${MEMORY_TITLE} usage by provider mosaic`}
+              emptyLabel={`no ${MEMORY_LABEL} providers to chart`}
             />
           </ResourcePanel>
         </div>
 
         <div className="px-4 pb-4 grid gap-4 xl:grid-cols-3">
           <SummaryList
-            title="Disk opportunities"
-            emptyLabel="No disk entries reported."
+            title={`${DISK_TITLE} opportunities`}
+            emptyLabel={`No ${DISK_LABEL} entries reported.`}
             rows={diskProvidersBySize.slice(0, 5).map((provider) => ({
               id: provider.provider,
               label: provider.provider,
               detail: `${provider.count} entr${provider.count === 1 ? "y" : "ies"}`,
               value: humanBytes(provider.bytes),
+              href: diskProviderHref(provider.provider),
             }))}
           />
           <SummaryList
-            title="Memory contributors"
-            emptyLabel="No memory consumers reported."
+            title={`${MEMORY_TITLE} contributors`}
+            emptyLabel={`No ${MEMORY_LABEL} consumers reported.`}
             rows={topMemory.map((consumer) => ({
               id: consumer.id,
               label: consumer.name,
               detail: consumer.kind,
               value: humanBytes(consumer.rss_bytes),
+              href: memoryProviderHref(consumer.kind),
             }))}
           />
           <SummaryList
             title="Next actions"
-            emptyLabel="No memory suggestions right now."
+            emptyLabel={`No ${MEMORY_LABEL} suggestions right now.`}
             rows={topSuggestions.map((suggestion) => ({
               id: suggestion.id,
               label: suggestion.title,
@@ -216,6 +228,7 @@ export default function Dashboard() {
                 suggestion.estimated_bytes === null
                   ? "unknown"
                   : humanBytes(suggestion.estimated_bytes),
+              href: "/memory/planner",
             }))}
           />
         </div>
@@ -237,12 +250,12 @@ function StatusLine({
     <div className="text-[10.5px] text-text-dim flex items-center gap-3 flex-wrap">
       <span title={diskAt ?? undefined}>
         {diskCached
-          ? `disk cached ${diskAt ? timeAgo(diskAt) : "pending"}`
-          : `disk ${diskAt ? timeAgo(diskAt) : "pending"}`}
+          ? `${DISK_LABEL} cached ${diskAt ? timeAgo(diskAt) : "pending"}`
+          : `${DISK_LABEL} ${diskAt ? timeAgo(diskAt) : "pending"}`}
       </span>
       <span className="text-text-muted">/</span>
       <span title={memoryAt ?? undefined}>
-        memory {memoryAt ? timeAgo(memoryAt) : "pending"}
+        {MEMORY_LABEL} {memoryAt ? timeAgo(memoryAt) : "pending"}
       </span>
     </div>
   );
@@ -254,6 +267,7 @@ function ResourcePanel({
   to,
   action,
   loading,
+  loadingLabel = "loading…",
   error,
   refreshing = false,
   legend,
@@ -265,6 +279,7 @@ function ResourcePanel({
   to: string;
   action: string;
   loading: boolean;
+  loadingLabel?: string;
   error: unknown;
   refreshing?: boolean;
   legend?: Array<[MosaicTone, string]>;
@@ -325,7 +340,7 @@ function ResourcePanel({
       <div className="relative flex-1 min-h-[250px] bg-bg-code">
         {loading ? (
           <div className="absolute inset-0 flex items-center justify-center text-text-muted text-[11px] animate-pulse">
-            loading…
+            {loadingLabel}
           </div>
         ) : error ? (
           <div className="absolute inset-0 flex items-center justify-center text-risk-danger text-[11px] px-6 text-center">
@@ -345,7 +360,7 @@ function SummaryList({
   emptyLabel,
 }: {
   title: string;
-  rows: Array<{ id: string; label: string; detail: string; value: string }>;
+  rows: Array<{ id: string; label: string; detail: string; value: string; href?: string }>;
   emptyLabel: string;
 }) {
   return (
@@ -360,24 +375,47 @@ function SummaryList({
           {rows.map((row) => (
             <li
               key={row.id}
-              className="px-4 py-2.5 border-b border-border-subtle last:border-b-0 flex items-start gap-3"
+              className="border-b border-border-subtle last:border-b-0"
             >
-              <div className="min-w-0 flex-1">
-                <div className="text-text text-[11px] truncate" title={row.label}>
-                  {row.label}
-                </div>
-                <div className="text-text-muted text-[10px] truncate" title={row.detail}>
-                  {row.detail}
-                </div>
-              </div>
-              <div className="text-text-dim text-[10.5px] tabular-nums shrink-0">
-                {row.value}
-              </div>
+              <DashboardRow row={row} />
             </li>
           ))}
         </ol>
       )}
     </section>
+  );
+}
+
+function DashboardRow({
+  row,
+}: {
+  row: { id: string; label: string; detail: string; value: string; href?: string };
+}) {
+  const content = (
+    <>
+      <div className="min-w-0 flex-1">
+        <div className="text-text text-[11px] truncate" title={row.label}>
+          {row.label}
+        </div>
+        <div className="text-text-muted text-[10px] truncate" title={row.detail}>
+          {row.detail}
+        </div>
+      </div>
+      <div className="text-text-dim text-[10.5px] tabular-nums shrink-0">
+        {row.value}
+      </div>
+    </>
+  );
+  if (!row.href) {
+    return <div className="px-4 py-2.5 flex items-start gap-3">{content}</div>;
+  }
+  return (
+    <Link
+      to={row.href}
+      className="px-4 py-2.5 flex items-start gap-3 hover:bg-bg-elev-2 transition-colors"
+    >
+      {content}
+    </Link>
   );
 }
 
