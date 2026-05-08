@@ -9,6 +9,7 @@ __pycache__/
 htmlcov/
 /dist/
 /build/
+/.build/
 .DS_Store
 .idea/
 .vscode/
@@ -19,6 +20,9 @@ htmlcov/
 .worktrees/
 web/test-results/
 web/playwright-report/
+web/release/
+web/dist-backend/*
+!web/dist-backend/.gitkeep
 
 # Built SPA bundle is a build artefact; the .keep + placeholder index.html stay tracked
 src/diskdoctor/web/_static/dist/*
