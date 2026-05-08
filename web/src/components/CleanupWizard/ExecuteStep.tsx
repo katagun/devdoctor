@@ -1,3 +1,12 @@
+import {
+  Check,
+  Circle,
+  LoaderCircle,
+  Minus,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+import { NavIcon } from "@/components/NavIcon";
 import { useWizardContext } from "./CleanupWizardState";
 import { humanBytes } from "@/lib/format";
 
@@ -72,7 +81,9 @@ export function ExecuteStep() {
       <div className="p-4 space-y-1">
         {progressList.map((p) => (
           <div key={p.entry_id} className="grid grid-cols-[18px_1fr_90px] gap-2.5 items-center py-1.5 border-b border-border-subtle">
-            <span className={`text-center ${icoColor(p.status)}`}>{ico(p.status)}</span>
+            <span className={`flex justify-center ${icoColor(p.status)}`}>
+              <NavIcon icon={ico(p.status)} size={13} />
+            </span>
             <div>
               <div className="text-text">{p.entry_id}</div>
               {p.status === "error" && p.message && (
@@ -92,8 +103,8 @@ export function ExecuteStep() {
   );
 }
 
-function ico(s: string) {
-  return { ok: "✓", error: "✗", skipped: "—", running: "◐", pending: "○" }[s] ?? "○";
+function ico(s: string): LucideIcon {
+  return { ok: Check, error: X, skipped: Minus, running: LoaderCircle, pending: Circle }[s] ?? Circle;
 }
 function icoColor(s: string) {
   return (

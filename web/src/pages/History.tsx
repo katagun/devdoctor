@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import {
   useHistory,
   type CleanupEvent,
@@ -8,6 +9,7 @@ import {
 } from "@/hooks/useHistory";
 import { DiskPageHeader } from "@/components/DiskPageHeader";
 import { DomainToolTabs } from "@/components/DomainToolTabs";
+import { NavIcon } from "@/components/NavIcon";
 import { formatAbsTime, humanBytes, timeAgo } from "@/lib/format";
 import { MEMORY_LABEL } from "@/lib/resourceLabels";
 
@@ -173,7 +175,10 @@ function CleanupRow({ event }: { event: CleanupEvent }) {
               {okCount} ok · {errors} errors ·{" "}
               <span className="font-mono">{event.results.length}</span> entries
             </span>
-            <span className="text-text-muted ml-auto">{open ? "▲ hide" : "▼ details"}</span>
+            <span className="inline-flex items-center gap-1 text-text-muted ml-auto">
+              <NavIcon icon={open ? ChevronUp : ChevronDown} size={12} />
+              {open ? "hide" : "details"}
+            </span>
           </div>
         </div>
       </button>

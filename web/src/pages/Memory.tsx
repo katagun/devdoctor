@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Circle, Search, X } from "lucide-react";
 import { DomainToolTabs } from "@/components/DomainToolTabs";
 import { ResourceLabel } from "@/components/ResourceLabel";
+import { NavIcon } from "@/components/NavIcon";
 import {
   useExecuteMemoryAction,
   useCreateMemorySnapshot,
@@ -708,7 +710,16 @@ function MemorySnapshotsPanel({
                 onClick={() => toggle(row.name)}
                 className={`contents text-left ${picked ? "text-risk-reclaim" : "text-text-dim"}`}
               >
-                <span className="px-2 py-2 border-b border-border-subtle">{picked ? "●" : "○"}</span>
+                <span className="px-2 py-2 border-b border-border-subtle flex items-center">
+                  {picked ? (
+                    <span
+                      aria-hidden="true"
+                      className="w-2.5 h-2.5 rounded-full bg-risk-reclaim shadow-[0_0_6px_var(--risk-reclaim)]"
+                    />
+                  ) : (
+                    <NavIcon icon={Circle} size={12} />
+                  )}
+                </span>
                 <span className="py-2 border-b border-border-subtle" title={row.created_at}>
                   {timeAgo(row.created_at)}
                 </span>
@@ -844,7 +855,7 @@ function MemoryProvidersPanel({
             className="w-full bg-bg-elev-1 border border-border rounded pl-7 pr-8 py-1.5 text-[11px] text-text placeholder:text-text-muted focus:outline-none focus:border-risk-reclaim"
           />
           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none">
-            ⌕
+            <NavIcon icon={Search} size={12} />
           </span>
           {query && (
             <button
@@ -853,7 +864,7 @@ function MemoryProvidersPanel({
               aria-label="Clear search"
               className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text"
             >
-              ✕
+              <NavIcon icon={X} size={12} />
             </button>
           )}
         </label>

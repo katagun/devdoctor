@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { ChevronRight, Search, X } from "lucide-react";
+import { NavIcon } from "@/components/NavIcon";
 import { useProviders, type ProviderRow } from "@/hooks/useProviders";
 import { useSelectedProviders } from "@/hooks/useSelectedProviders";
 import { useLatestAutoSnapshot, type ProviderTimingMeta } from "@/hooks/useSnapshots";
@@ -81,7 +83,7 @@ export default function Providers() {
             className="w-full bg-bg-elev-1 border border-border rounded pl-7 pr-8 py-1.5 text-[11px] text-text placeholder:text-text-muted focus:outline-none focus:border-risk-reclaim"
           />
           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none">
-            ⌕
+            <NavIcon icon={Search} size={12} />
           </span>
           {query && (
             <button
@@ -89,7 +91,7 @@ export default function Providers() {
               aria-label="Clear search"
               className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text"
             >
-              ✕
+              <NavIcon icon={X} size={12} />
             </button>
           )}
         </label>
@@ -202,15 +204,12 @@ function ProviderRowView({
           aria-label={`${isExpanded ? "Hide" : "Show"} details for ${p.name}`}
           className="text-text-muted hover:text-text w-[20px] h-[20px] flex items-center justify-center"
         >
-          <svg
+          <ChevronRight
             aria-hidden="true"
-            width="10"
-            height="10"
-            viewBox="0 0 10 10"
+            size={12}
+            strokeWidth={1.75}
             className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}
-          >
-            <path d="M3 1 L7 5 L3 9" stroke="currentColor" strokeWidth="1.5" fill="none" />
-          </svg>
+          />
         </button>
         <button
           type="button"

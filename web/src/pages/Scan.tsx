@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
+import { ChevronDown, ChevronRight, LoaderCircle, Play, RefreshCw } from "lucide-react";
 import { CacheTable } from "@/components/CacheTable";
 import { CleanupWizard } from "@/components/CleanupWizard";
 import { ColumnsPicker } from "@/components/ColumnsPicker";
 import { DiskPageHeader } from "@/components/DiskPageHeader";
 import { DomainToolTabs } from "@/components/DomainToolTabs";
 import { SparklineBar } from "@/components/SparklineBar";
+import { NavIcon } from "@/components/NavIcon";
 import { useScan } from "@/hooks/useScan";
 import { useProviders } from "@/hooks/useProviders";
 import { useSelectedProviders } from "@/hooks/useSelectedProviders";
@@ -146,12 +148,20 @@ export default function Scan() {
           >
             {isFetching ? (
               <span className="flex items-center gap-1.5">
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-risk-reclaim animate-pulse" />
+                <LoaderCircle
+                  aria-hidden="true"
+                  size={12}
+                  strokeWidth={1.75}
+                  className="animate-spin"
+                />
                 rescanning…
                 {eta && eta.etaMs !== null && <> · ~{formatMs(eta.etaMs)}</>}
               </span>
             ) : (
-              "↻ rescan now"
+              <span className="inline-flex items-center gap-1.5">
+                <NavIcon icon={RefreshCw} size={12} />
+                rescan now
+              </span>
             )}
           </button>
         </div>
@@ -192,11 +202,13 @@ export default function Scan() {
                 type="button"
                 onClick={() => setShowHiddenRows((s) => !s)}
                 aria-expanded={showHiddenRows}
-                className="text-text-muted hover:text-text underline-offset-2 hover:underline"
+                className="inline-flex items-center gap-1 text-text-muted hover:text-text underline-offset-2 hover:underline"
               >
-                {showHiddenRows ? "▾" : "▸"} +{hiddenRows.length} under{" "}
-                {humanBytes(settings.minSizeBytes)} totalling{" "}
-                <span className="tabular-nums">{humanBytes(hiddenBytes)}</span>
+                <NavIcon icon={showHiddenRows ? ChevronDown : ChevronRight} size={12} />
+                <span>
+                  +{hiddenRows.length} under {humanBytes(settings.minSizeBytes)} totalling{" "}
+                  <span className="tabular-nums">{humanBytes(hiddenBytes)}</span>
+                </span>
               </button>
             </>
           )}
@@ -217,7 +229,10 @@ export default function Scan() {
               : "bg-gradient-to-b from-btn-primary-from to-btn-primary-to text-btn-primary-fg px-4 py-1.5 rounded border border-btn-primary-bd font-medium text-[11px]"
           }
         >
-          ▸ clean up {selectedRows.length > 0 ? `${selectedRows.length} items` : ""}
+          <span className="inline-flex items-center gap-1.5">
+            <NavIcon icon={Play} size={12} />
+            clean up {selectedRows.length > 0 ? `${selectedRows.length} items` : ""}
+          </span>
         </button>
       </div>
       {wizardOpen && (

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { CheckCircle2, Monitor, Moon, RotateCcw, Sun } from "lucide-react";
 import {
   CADENCE_PRESETS,
   SIZE_PRESETS,
@@ -16,6 +17,7 @@ import {
   type StorageBackend,
 } from "@/hooks/useAppSettings";
 import { DiskUsageBar } from "@/components/DiskUsageBar";
+import { NavIcon } from "@/components/NavIcon";
 import { ResourceLabel } from "@/components/ResourceLabel";
 import { humanBytes } from "@/lib/format";
 import { DISK_LABEL, DISK_TITLE, MEMORY_LABEL, MEMORY_TITLE } from "@/lib/resourceLabels";
@@ -111,7 +113,10 @@ export default function Settings() {
             savedFlash ? "opacity-100 text-risk-safe" : "opacity-0"
           }`}
         >
-          ● saved
+          <span className="inline-flex items-center gap-1.5">
+            <NavIcon icon={CheckCircle2} size={12} />
+            saved
+          </span>
         </div>
         <DiskUsageBar />
       </header>
@@ -123,13 +128,22 @@ export default function Settings() {
       >
         <div className="flex gap-2">
           <Chip active={settings.theme === "light"} onClick={() => setTheme("light")}>
-            ☀ light
+            <span className="inline-flex items-center gap-1.5">
+              <NavIcon icon={Sun} size={12} />
+              light
+            </span>
           </Chip>
           <Chip active={settings.theme === "dark"} onClick={() => setTheme("dark")}>
-            ☾ dark
+            <span className="inline-flex items-center gap-1.5">
+              <NavIcon icon={Moon} size={12} />
+              dark
+            </span>
           </Chip>
           <Chip active={settings.theme === "system"} onClick={() => setTheme("system")}>
-            ⌘ system
+            <span className="inline-flex items-center gap-1.5">
+              <NavIcon icon={Monitor} size={12} />
+              system
+            </span>
           </Chip>
         </div>
       </Section>
@@ -311,7 +325,10 @@ export default function Settings() {
             }}
             className="text-[11px] text-text-dim hover:text-text"
           >
-            ↺ reset to defaults
+            <span className="inline-flex items-center gap-1.5">
+              <NavIcon icon={RotateCcw} size={12} />
+              reset to defaults
+            </span>
           </button>
           <span className="text-text-muted text-[10px]">stored in localStorage</span>
         </div>

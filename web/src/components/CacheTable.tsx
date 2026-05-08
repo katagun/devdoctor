@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { NavIcon } from "@/components/NavIcon";
 import { Checkbox } from "./Checkbox";
 import { RiskBadge } from "./RiskBadge";
 import { ProviderIcon } from "./ProviderIcon";
@@ -270,7 +272,6 @@ function SortHeader({
   onClick: (col: SortKey) => void;
 }) {
   const active = sort.key === col;
-  const caret = active ? (sort.dir === "asc" ? "▴" : "▾") : "";
   const ariaSort: "ascending" | "descending" | "none" = active
     ? sort.dir === "asc"
       ? "ascending"
@@ -286,7 +287,9 @@ function SortHeader({
       } ${align === "right" ? "justify-end" : ""}`}
     >
       <span>{label}</span>
-      <span className="w-2 text-[8px] leading-none text-risk-reclaim">{caret}</span>
+      <span className="w-3 text-risk-reclaim">
+        {active && <NavIcon icon={sort.dir === "asc" ? ChevronUp : ChevronDown} size={11} />}
+      </span>
     </button>
   );
 }

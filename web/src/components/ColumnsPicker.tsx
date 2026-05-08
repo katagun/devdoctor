@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { CheckSquare, ChevronDown, Square } from "lucide-react";
+import { NavIcon } from "@/components/NavIcon";
 import { COLUMNS } from "@/components/CacheTable/columns";
 import { useHiddenColumns } from "@/hooks/useHiddenColumns";
 
@@ -49,7 +51,10 @@ export function ColumnsPicker() {
         aria-controls={open ? panelId : undefined}
         className="px-3 py-1 rounded text-[11px] border border-border text-text-dim hover:text-text hover:border-border-strong transition-colors"
       >
-        columns ▾
+        <span className="inline-flex items-center gap-1.5">
+          columns
+          <NavIcon icon={ChevronDown} size={12} />
+        </span>
       </button>
       {open && (
         <div
@@ -80,9 +85,7 @@ export function ColumnsPicker() {
                   disabled ? "text-text-muted cursor-not-allowed" : "text-text hover:bg-bg-elev-2"
                 }`}
               >
-                <span aria-hidden="true" className="inline-block w-3 text-[10px]">
-                  {checked ? "☑" : "☐"}
-                </span>
+                <NavIcon icon={checked ? CheckSquare : Square} size={12} />
                 <span>{col.label}</span>
                 {disabled && (
                   <span className="text-text-muted text-[9px] ml-auto">locked</span>

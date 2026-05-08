@@ -1,3 +1,5 @@
+import { X } from "lucide-react";
+import { NavIcon } from "@/components/NavIcon";
 import { CleanupWizardContext } from "./CleanupWizardState";
 import type { CleanupResult } from "./CleanupWizardState";
 import { useCleanupWizard } from "@/hooks/useCleanupWizard";
@@ -45,7 +47,13 @@ export function CleanupWizard({
                 </span>
               ))}
             </div>
-            <button onClick={onClose} className="text-text-muted hover:text-text text-[11px]">✕</button>
+            <button
+              onClick={onClose}
+              aria-label="Close cleanup wizard"
+              className="text-text-muted hover:text-text text-[11px]"
+            >
+              <NavIcon icon={X} size={14} />
+            </button>
           </header>
           <div className="flex-1 overflow-auto">
             {step === "review" && <ReviewStep />}

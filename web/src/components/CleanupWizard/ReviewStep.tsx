@@ -1,3 +1,5 @@
+import { AlertTriangle, Play } from "lucide-react";
+import { NavIcon } from "@/components/NavIcon";
 import { RiskBadge } from "@/components/RiskBadge";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { humanBytes, parseRecipeHint } from "@/lib/format";
@@ -53,7 +55,10 @@ export function ReviewStep() {
                 if (hint.kind === "command") {
                   return (
                     <div className="bg-bg-code border border-bg-safe-tint rounded px-2.5 py-1.5 mt-2 text-risk-safe text-[10.5px] break-all">
-                      ▸ {hint.text}
+                      <span className="inline-flex items-center gap-1.5">
+                        <NavIcon icon={Play} size={12} />
+                        <span>{hint.text}</span>
+                      </span>
                     </div>
                   );
                 }
@@ -75,7 +80,12 @@ export function ReviewStep() {
               })()}
               {e.risk === "dangerous" && !on && (
                 <div className="text-risk-danger text-[10px] mt-1.5 pl-2 border-l-2 border-risk-danger">
-                  ⚠ Dangerous providers are off by default. Enable only if you understand the consequence.
+                  <span className="inline-flex items-center gap-1.5">
+                    <NavIcon icon={AlertTriangle} size={12} />
+                    <span>
+                      Dangerous providers are off by default. Enable only if you understand the consequence.
+                    </span>
+                  </span>
                 </div>
               )}
             </div>
@@ -94,7 +104,10 @@ export function ReviewStep() {
           disabled={state.enabled.size === 0}
           className="bg-gradient-to-b from-btn-primary-from to-btn-primary-to text-btn-primary-fg px-4 py-1.5 rounded border border-btn-primary-bd font-medium text-[11px] disabled:opacity-50"
         >
-          ▸ execute
+          <span className="inline-flex items-center gap-1.5">
+            <NavIcon icon={Play} size={12} />
+            execute
+          </span>
         </button>
       </div>
     </div>

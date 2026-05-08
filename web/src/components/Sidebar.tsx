@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import type { ReactNode } from "react";
-import { Settings } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
 import { NavIcon } from "@/components/NavIcon";
 import { ResourceLabel } from "@/components/ResourceLabel";
 import type { ToolNavItem } from "@/lib/navigation";
@@ -91,7 +91,7 @@ function ChevronToggle({
       aria-expanded={!collapsed}
       className="text-text-muted hover:text-text text-[11px] px-1 leading-none"
     >
-      {collapsed ? "▶" : "◀"}
+      <NavIcon icon={collapsed ? PanelLeftOpen : PanelLeftClose} size={14} />
     </button>
   );
 }
