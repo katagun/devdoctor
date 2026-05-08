@@ -100,6 +100,10 @@ def build_app(
     app.include_router(memory_router)
     app.include_router(settings_router)
 
+    @app.get(f"{API_PREFIX}/health")
+    def health() -> dict[str, bool | str]:
+        return {"ok": True, "app": "DevDoctor", "version": app.version}
+
     # Mount the SPA at /. Placed manually via Mount so we can keep a reference
     # and ensure it stays last in the route table as new routes are added.
     resolved_static = _resolve_static(static_dir)

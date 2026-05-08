@@ -42,6 +42,16 @@ def test_api_route_not_shadowed_by_static(tmp_path: Path):
     assert r.json() == {"ok": True}
 
 
+def test_health_route_supports_desktop_readiness(tmp_path: Path):
+    (tmp_path / "index.html").write_text("<!doctype html><title>x</title>")
+    app = build_app(FakeShell(), allowed_hosts={"testserver"}, static_dir=tmp_path)
+    client = TestClient(app)
+
+    r = client.get("/api/health", headers={"Host": "testserver"})
+    assert r.status_code == 200
+    assert r.json() == {"ok": True, "app": "DevDoctor", "version": "0.1.0"}
+
+
 def test_unknown_api_route_is_404_not_spa(tmp_path: Path):
     (tmp_path / "index.html").write_text("<!doctype html><title>x</title>")
     app = build_app(FakeShell(), allowed_hosts={"testserver"}, static_dir=tmp_path)
