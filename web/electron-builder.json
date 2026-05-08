@@ -20,6 +20,7 @@
   ],
   "mac": {
     "category": "public.app-category.utilities",
+    "icon": "assets/devdoctor.icns",
     "target": [
       "dmg",
       "zip"
