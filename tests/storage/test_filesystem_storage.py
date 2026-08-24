@@ -128,9 +128,56 @@ def test_load_memory_snapshot_rejects_traversal(tmp_path: Path, name: str) -> No
         storage.load_memory_snapshot(name)
 
 
-def _memory_report() -> MemoryReport:
+def test_latest_memory_observation_returns_newest(tmp_path: Path) -> None:
+    storage = FilesystemStorage(data_dir=tmp_path)
+    assert storage.latest_memory_observation() is None
+
+    base = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
+    for i, pressure in enumerate(["ok", "warn", "critical"]):
+        storage.write_memory_observation(
+            _memory_report(scanned_at=base.replace(second=i), pressure=pressure), []
+        )
+
+    latest = storage.latest_memory_observation()
+    assert latest is not None
+    assert latest.pressure == "critical"  # the last one appended
+    assert latest.scanned_at == base.replace(second=2).isoformat()
+
+
+def test_prune_memory_observations_amortizes_rewrites(tmp_path: Path, monkeypatch) -> None:
+    # Shrink the slack so the test doesn't need hundreds of writes to trip it.
+    monkeypatch.setattr("diskdoctor.storage.filesystem._PRUNE_SLACK", 2)
+    storage = FilesystemStorage(data_dir=tmp_path)
+    base = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
+
+    # keep=2, slack=2 → nothing is rewritten until there are > 4 observations.
+    for i in range(4):
+        storage.write_memory_observation(_memory_report(scanned_at=base.replace(second=i)), [])
+    assert storage.prune_memory_observations(keep=2) == []  # under the gate
+
+    for i in range(4, 6):
+        storage.write_memory_observation(_memory_report(scanned_at=base.replace(second=i)), [])
+    victims = storage.prune_memory_observations(keep=2)  # 6 > 2 + 2 → now prune
+    assert len(victims) == 4
+    assert len(storage.list_memory_observations()) == 2
+
+
+def test_same_second_snapshots_do_not_clobber(tmp_path: Path) -> None:
+    storage = FilesystemStorage(data_dir=tmp_path)
+    ts = datetime(2026, 5, 4, 12, 0, 0, tzinfo=UTC)
+    storage.write_disk_snapshot(_report(ts.replace(microsecond=1)))
+    storage.write_disk_snapshot(_report(ts.replace(microsecond=2)))
+    # Both must survive — microsecond precision keeps their filenames distinct.
+    assert len(storage.list_disk_snapshots()) == 2
+
+
+def _memory_report(
+    *,
+    scanned_at: datetime | None = None,
+    pressure: str = "warn",
+) -> MemoryReport:
     return MemoryReport(
-        scanned_at=datetime(2026, 5, 4, 12, 0, tzinfo=UTC),
+        scanned_at=scanned_at or datetime(2026, 5, 4, 12, 0, tzinfo=UTC),
         hostname="h",
         platform="darwin",
         system=SystemMemory(
@@ -139,7 +186,7 @@ def _memory_report() -> MemoryReport:
             used_bytes=512,
             swap_used_bytes=128,
             compressed_bytes=64,
-            pressure="warn",
+            pressure=pressure,
         ),
         consumers=[
             MemoryConsumer(

@@ -101,6 +101,18 @@ Modern Docker CLI emits `docker system df --format json` as **NDJSON** — one o
 
 ## 3. Medium-severity findings
 
+> **Update (2026-08-23):** The threat model was clarified — DevDoctor is a local,
+> single-user dev tool, so findings whose only harm requires a remote or
+> cross-user attacker (M1, M3, and the security angles of M2/M4/M7) are accepted
+> as-is. A "fix now" tier of the threat-model-independent issues has since been
+> implemented with tests: **M5** (kill re-validates the PID still maps to the
+> shown process), **M7b** (browser opens only after the server answers),
+> **P1** (per-poll observation reads/rewrites are now O(1) / amortized),
+> **P3** (cleanup console buffer capped), **P4+L2** (SQLite WAL + `busy_timeout`),
+> **A4** (microsecond snapshot names — no same-second clobber), and **L10**
+> (treemap tiles navigate via the SPA router). The remaining items below stand
+> as future work.
+
 ### Security
 
 **M1 — State-changing API is unauthenticated.** `POST /api/clean/jobs` (deletes files), `POST /api/memory/actions` (kills processes / quits apps), and `PATCH /api/settings` carry no auth token or CSRF token (`api/client.ts`). Protection rests entirely on loopback binding + the Host-header allow-list + absent CORS. That is a *reasonable* localhost posture and the JSON content-type forces a preflight for cross-origin callers — but any other local process, or any browser context that can present an allowed Host value, can drive destructive actions. **Fix:** mint a per-launch session token in `serve`, hand it to the SPA at load, and require it on state-changing routes; keep the Host allow-list tight (it currently is). At minimum, document the trust model explicitly.

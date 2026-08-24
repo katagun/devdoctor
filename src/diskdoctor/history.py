@@ -15,7 +15,10 @@ def write_snapshot(report: Report, directory: Path) -> Path:
     filtering) can glob without reading contents.
     """
     directory.mkdir(parents=True, exist_ok=True)
-    stamp = report.scanned_at.strftime("%Y-%m-%dT%H-%M-%S")
+    # Microseconds keep same-second snapshots distinct — without them two scans
+    # in the same second produce the same filename and os.replace silently
+    # clobbers the earlier one. Fixed-width, so lexical sort stays chronological.
+    stamp = report.scanned_at.strftime("%Y-%m-%dT%H-%M-%S-%f")
     target = directory / f"{stamp}--{report.kind.value}.json"
     tmp = target.with_name(target.name + ".tmp")
     try:

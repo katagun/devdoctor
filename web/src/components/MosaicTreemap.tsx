@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import { ResponsiveContainer, Treemap } from "recharts";
 import type { TreemapNode } from "recharts/types/util/types";
 import type { MosaicDatum, MosaicTone } from "@/lib/dashboard";
@@ -55,6 +56,7 @@ export function MosaicTreemap({ items, ariaLabel, emptyLabel }: MosaicTreemapPro
 }
 
 function MosaicTile(props: Partial<TreemapNode> & Partial<MosaicDatum>) {
+  const navigate = useNavigate();
   const x = props.x ?? 0;
   const y = props.y ?? 0;
   const width = Math.max(0, props.width ?? 0);
@@ -129,9 +131,22 @@ function MosaicTile(props: Partial<TreemapNode> & Partial<MosaicDatum>) {
     </g>
   );
 
-  if (!props.href) return content;
+  const href = props.href;
+  if (!href) return content;
   return (
-    <a href={props.href} aria-label={`${label} drill-down`}>
+    <a
+      href={href}
+      aria-label={`${label} drill-down`}
+      onClick={(e) => {
+        // Keep modifier/middle clicks as real navigations (open in new tab);
+        // route plain left-clicks through the SPA router instead of a full
+        // document reload.
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+          return;
+        e.preventDefault();
+        navigate(href);
+      }}
+    >
       {content}
     </a>
   );
