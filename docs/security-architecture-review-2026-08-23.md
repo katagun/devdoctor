@@ -37,6 +37,12 @@ None of these are remotely exploitable in the ordinary sense — the attack surf
 
 ## 2. High-severity findings
 
+> **Update (2026-08-23):** All three high-severity findings below have been fixed
+> in the same branch as this report. H1 adds a `_safe_component` guard to both
+> filesystem snapshot loaders; H2 quotes the whole `echo` message with
+> `shlex.quote`; H3 parses `docker system df` NDJSON keyed by `Type` (with a
+> legacy fallback). Each fix ships with regression tests.
+
 ### H1 — Path traversal in snapshot loading (`storage/filesystem.py`)
 
 `load_disk_snapshot` and `load_memory_snapshot` join a caller-supplied name straight onto the storage directory with no validation:

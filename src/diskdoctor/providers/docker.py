@@ -10,12 +10,26 @@ _SIZE_UNITS = {"B": 1, "KB": 1_000, "MB": 1_000_000, "GB": 1_000_000_000, "TB": 
 _SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(B|KB|MB|GB|TB)")
 
 
+# Canonical category id -> prune recipe, in display order.
 _CATEGORIES = [
-    ("Images", "images", "docker image prune -a -f"),
-    ("Containers", "containers", "docker container prune -f"),
-    ("Volumes", "volumes", "docker volume prune -f"),
-    ("BuildCache", "build-cache", "docker builder prune -a -f"),
+    ("images", "docker image prune -a -f"),
+    ("containers", "docker container prune -f"),
+    ("volumes", "docker volume prune -f"),
+    ("build-cache", "docker builder prune -a -f"),
 ]
+
+# Maps both the modern NDJSON `Type` field and the legacy single-object keys
+# of `docker system df --format json` onto our canonical category ids. Modern
+# Docker reports "Local Volumes" / "Build Cache"; older/alternate shapes use
+# "Volumes" / "BuildCache".
+_TYPE_TO_ID = {
+    "Images": "images",
+    "Containers": "containers",
+    "Local Volumes": "volumes",
+    "Volumes": "volumes",
+    "Build Cache": "build-cache",
+    "BuildCache": "build-cache",
+}
 
 
 class DockerProvider(Provider):
@@ -34,15 +48,11 @@ class DockerProvider(Provider):
         result = self._shell.run(["docker", "system", "df", "--format", "json"], check=False)
         if result.returncode != 0 or not result.stdout.strip():
             return []
-        try:
-            data = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            return []
+        items_by_id = _parse_df(result.stdout)
 
         entries: list[Entry] = []
-        for key, id_, cmd in _CATEGORIES:
-            items = data.get(key, []) or []
-            reclaimable = _sum_reclaimable(items)
+        for id_, cmd in _CATEGORIES:
+            reclaimable = _sum_reclaimable(items_by_id.get(id_, []))
             if reclaimable <= 0:
                 continue
             entries.append(
@@ -58,6 +68,61 @@ class DockerProvider(Provider):
                 )
             )
         return entries
+
+
+def _parse_df(stdout: str) -> dict[str, list[dict[str, object]]]:
+    """Group reclaimable rows by canonical category id.
+
+    `docker system df --format json` has shipped in two shapes:
+
+      * Modern NDJSON — one aggregate object per line, keyed by ``Type``
+        (e.g. ``{"Type": "Images", "Reclaimable": "20.8GB (51%)"}``). This is
+        what current Docker emits; the previous implementation parsed the
+        whole payload with a single ``json.loads`` and silently reported
+        nothing on the ``JSONDecodeError`` that multi-line input raises.
+      * Legacy single object — ``{"Images": [...], "Containers": [...], ...}``.
+
+    Both are handled; unparseable lines are skipped. Returns an empty mapping
+    (never raises) when nothing usable was found.
+    """
+    items: dict[str, list[dict[str, object]]] = {}
+
+    def absorb_object(obj: dict[str, object]) -> None:
+        type_ = obj.get("Type")
+        if isinstance(type_, str):
+            # NDJSON aggregate row: the object itself carries Reclaimable/Size.
+            id_ = _TYPE_TO_ID.get(type_)
+            if id_ is not None:
+                items.setdefault(id_, []).append(obj)
+            return
+        # Legacy shape: each known key maps to a list of per-item dicts.
+        for key, value in obj.items():
+            id_ = _TYPE_TO_ID.get(key)
+            if id_ is not None and isinstance(value, list):
+                items.setdefault(id_, []).extend(v for v in value if isinstance(v, dict))
+
+    parsed_any = False
+    for raw_line in stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            parsed_any = True
+            absorb_object(obj)
+
+    if not parsed_any:
+        # Fallback: some CLIs pretty-print a single JSON document across lines.
+        try:
+            obj = json.loads(stdout)
+        except json.JSONDecodeError:
+            return items
+        if isinstance(obj, dict):
+            absorb_object(obj)
+    return items
 
 
 def _sum_reclaimable(items: list[dict[str, object]]) -> int:

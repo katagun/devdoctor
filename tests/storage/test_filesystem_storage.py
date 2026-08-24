@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from diskdoctor.memory.types import MemoryConsumer, MemoryReport, SystemMemory
 from diskdoctor.storage.filesystem import FilesystemStorage
 from diskdoctor.types import Entry, Report, Risk, SnapshotKind
@@ -99,6 +101,31 @@ def test_filesystem_storage_memory_snapshot_round_trip(tmp_path: Path) -> None:
 
     assert storage.list_memory_snapshots()[0].name == meta.name
     assert storage.load_memory_snapshot(meta.name).note == "before"
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "../../../../etc/passwd",
+        "..",
+        "sub/dir",
+        "/etc/passwd",
+        "",
+    ],
+)
+def test_load_disk_snapshot_rejects_traversal(tmp_path: Path, name: str) -> None:
+    storage = FilesystemStorage(data_dir=tmp_path)
+    # A traversal name must be indistinguishable from a missing snapshot,
+    # never a read outside the snapshots directory.
+    with pytest.raises(FileNotFoundError):
+        storage.load_disk_snapshot(name)
+
+
+@pytest.mark.parametrize("name", ["../../../../etc/passwd", "..", "sub/dir", "/etc/passwd", ""])
+def test_load_memory_snapshot_rejects_traversal(tmp_path: Path, name: str) -> None:
+    storage = FilesystemStorage(data_dir=tmp_path)
+    with pytest.raises(FileNotFoundError):
+        storage.load_memory_snapshot(name)
 
 
 def _memory_report() -> MemoryReport:

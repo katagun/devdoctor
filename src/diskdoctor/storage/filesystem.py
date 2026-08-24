@@ -30,6 +30,21 @@ from diskdoctor.storage.base import (
 from diskdoctor.types import Report, SnapshotKind
 
 
+def _safe_component(name: str) -> str:
+    """Reject any snapshot name that isn't a single, literal path component.
+
+    Snapshot names arrive from HTTP query params (`/api/diff`,
+    `/api/memory/snapshots/diff`) and get joined onto the storage directory.
+    A name containing `/`, `..`, or an absolute path would escape that
+    directory (`Path(dir) / "/etc/x" == Path("/etc/x")`), turning the loader
+    into an arbitrary-file read. Callers treat the raised error as "not
+    found", so bad names are indistinguishable from missing snapshots.
+    """
+    if name != Path(name).name or name in ("", ".", ".."):
+        raise FileNotFoundError(name)
+    return name
+
+
 class FilesystemStorage:
     def __init__(self, *, data_dir: Path | None = None) -> None:
         self._data_dir = data_dir
@@ -79,7 +94,7 @@ class FilesystemStorage:
         return out
 
     def load_disk_snapshot(self, name: str) -> Report:
-        path = self.snapshot_dir() / name
+        path = self.snapshot_dir() / _safe_component(name)
         if not path.is_file():
             raise FileNotFoundError(name)
         return Report.from_json(path.read_text())
@@ -214,7 +229,7 @@ class FilesystemStorage:
         return snapshots[:limit] if limit is not None else snapshots
 
     def load_memory_snapshot(self, name: str) -> StoredMemorySnapshot:
-        path = self.memory_snapshots_dir() / f"{name}.json"
+        path = self.memory_snapshots_dir() / f"{_safe_component(name)}.json"
         if not path.is_file():
             raise FileNotFoundError(name)
         try:

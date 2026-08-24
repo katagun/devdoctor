@@ -82,6 +82,13 @@ class LargeFilesProvider(Provider):
                     f"If it's genuinely disposable, delete with: rm {quoted}. "
                     f"Do NOT rm -rf anything above this file."
                 )
+                # Quote the WHOLE message, not just the paths inside it. A
+                # filename with an apostrophe (e.g. "John's.iso") or a crafted
+                # name like "x'$(...)'.iso" would otherwise break out of a
+                # hand-built `echo '...'` — crashing shlex.split at cleanup
+                # time and, worse, injecting shell into the reviewable script
+                # emitted by build_script.
+                recipe_line = f"echo {shlex.quote(msg)}"
                 entries.append(
                     Entry(
                         provider=self.name,
@@ -91,7 +98,7 @@ class LargeFilesProvider(Provider):
                         size_bytes=size,
                         mtime=mtime,
                         risk=self.risk,
-                        recipe=[f"echo '{msg}'"],
+                        recipe=[recipe_line],
                         **_stat_kwargs(file_path),
                     )
                 )
