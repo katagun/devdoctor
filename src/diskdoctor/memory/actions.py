@@ -15,6 +15,30 @@ MemoryActionStatus = Literal["ok", "error", "unsupported"]
 # ambiguous to confirm two names refer to the same program.
 _MIN_NAME_TOKEN_LEN = 3
 
+# Tokens shared by many unrelated programs (macOS "... Helper", any "*.app",
+# background "* Service"/"* Agent"). A match on only these would let a recycled
+# pid running a *different* program pass the guard, so they don't count as a
+# confirming overlap.
+_GENERIC_NAME_TOKENS = frozenset(
+    {
+        "helper",
+        "app",
+        "application",
+        "service",
+        "agent",
+        "daemon",
+        "main",
+        "renderer",
+        "gpu",
+        "plugin",
+        "com",
+        "org",
+        "net",
+        "bin",
+        "exe",
+    }
+)
+
 
 @dataclass(frozen=True)
 class MemoryActionResult:
@@ -175,12 +199,15 @@ def _process_tokens(value: str) -> set[str]:
 def _names_match(expected: str, current: str) -> bool:
     """True if two process names plausibly refer to the same program.
 
-    Deliberately lenient — display names are transformed/truncated relative to
-    `ps -o comm=` — so it matches when they share any meaningful token (e.g.
-    "Chrome Helper" vs "Google Chrome Helper"). A recycled pid backing an
-    unrelated program ("bash") shares no token and is rejected.
+    Lenient about form — display names are transformed/truncated relative to
+    `ps -o comm=` — so a shared *specific* token is enough ("Chrome Helper" vs
+    "Google Chrome Helper" share "chrome"). But a shared *generic* token is
+    not: "Chrome Helper" and "Slack Helper" both tokenize to include "helper",
+    and matching on that alone would let a recycled pid running an unrelated
+    helper pass the guard. So only non-generic shared tokens confirm a match.
     """
-    return bool(_process_tokens(expected) & _process_tokens(current))
+    shared = _process_tokens(expected) & _process_tokens(current)
+    return bool(shared - _GENERIC_NAME_TOKENS)
 
 
 def _shell_result(action_id: str, returncode: int, ok_message: str) -> MemoryActionResult:

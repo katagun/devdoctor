@@ -9,8 +9,30 @@ from rich.console import Console
 from rich.prompt import Confirm as RichConfirm
 from rich.prompt import Prompt
 from rich.table import Table
+from rich.text import Text
 
 from diskdoctor.types import Choice, Confirm, DiffReport, Entry, PromptChoice, Report, Risk
+
+# Every C0 control char (incl. ESC 0x1b and newline) plus DEL. Rich's own
+# strip_control_codes intentionally keeps ESC, so we drop these ourselves.
+_CONTROL_STRIP = {c: None for c in [*range(0x20), 0x7F]}
+
+
+def _strip_controls(value: str) -> str:
+    return value.translate(_CONTROL_STRIP)
+
+
+def _safe_cell(value: str) -> Text:
+    """Render a filename-derived string as inert text.
+
+    Entry labels, provider names, and recipe hints come from attacker-nameable
+    files/dirs. Passed as a plain string, Rich would parse ``[...]`` as markup
+    (a malformed tag raises MarkupError and aborts the whole render) and would
+    pass raw ANSI/OSC escapes straight to the terminal (screen-clear, title
+    spoofing, output forgery). ``Text`` disables markup; stripping control
+    chars (ESC included) removes the escape sequences.
+    """
+    return Text(_strip_controls(value))
 
 
 def render_report_table(console: Console, report: Report) -> None:
@@ -27,12 +49,12 @@ def render_report_table(console: Console, report: Report) -> None:
 
     for e in report.entries:
         table.add_row(
-            e.provider,
-            e.label,
+            _safe_cell(e.provider),
+            _safe_cell(e.label),
             _human_bytes(e.size_bytes),
             _risk_label(e.risk),
             _staleness(e.mtime),
-            (e.recipe[0] if e.recipe else "")[:hint_max],
+            _safe_cell((e.recipe[0] if e.recipe else "")[:hint_max]),
         )
 
     if not report.entries:
@@ -71,11 +93,15 @@ def real_prompts(console: Console) -> tuple[PromptChoice, Confirm]:
     """Build the real Rich-backed prompt callables."""
 
     def prompt_choice(entry: Entry) -> Choice:
-        console.print(
-            f"[bold]{entry.provider}[/] — {entry.label}  "
+        header = Text()
+        header.append(_strip_controls(entry.provider), style="bold")
+        header.append(
+            f" — {_strip_controls(entry.label)}  "
             f"({_human_bytes(entry.size_bytes)}, risk={_risk_label(entry.risk)})"
         )
-        console.print(f"  → {entry.recipe[0] if entry.recipe else '(no recipe)'}")
+        console.print(header)
+        recipe_hint = _strip_controls(entry.recipe[0]) if entry.recipe else "(no recipe)"
+        console.print(Text(f"  → {recipe_hint}"))
         raw = Prompt.ask(
             "[y]es / [n]o / [a]ll-in-provider / [s]kip-provider / [q]uit",
             console=console,

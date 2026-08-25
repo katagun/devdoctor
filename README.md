@@ -9,7 +9,7 @@ Python package and CLI remain named `diskdoctor` during the transition.
 ## Install
 
 ```bash
-uv tool install --from git+https://github.com/<you>/diskdoctor diskdoctor
+uv tool install --from git+https://github.com/katagun/diskdoctor diskdoctor
 # or from a local clone:
 uv tool install .
 ```

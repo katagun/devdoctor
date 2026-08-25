@@ -54,7 +54,10 @@ def _open_browser_when_ready(
             try:
                 with urllib.request.urlopen(health_url, timeout=1.0):
                     break
-            except OSError:
+            except Exception:  # best effort; any startup-race error → retry
+                # urlopen can raise OSError, HTTPError, or http.client.* errors
+                # (e.g. RemoteDisconnected, which is not an OSError) while the
+                # server is still binding. Any of them just means "not ready".
                 time.sleep(poll_interval_s)
         else:
             return  # server never came up; don't open a broken page

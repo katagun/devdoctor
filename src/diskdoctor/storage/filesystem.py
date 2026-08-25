@@ -254,7 +254,11 @@ class FilesystemStorage:
         tmp = target.with_name(target.name + ".tmp")
         try:
             with tmp.open("w", encoding="utf-8") as f:
-                for stored in observations[:keep]:
+                # `observations` is newest-first; write oldest-last so the file
+                # stays in chronological append order. `latest_memory_observation`
+                # reads the final line as the newest — writing newest-first here
+                # would make it return the oldest kept observation instead.
+                for stored in reversed(observations[:keep]):
                     line = json.dumps(_stored_observation_to_payload(stored), sort_keys=True)
                     f.write(line + "\n")
             os.replace(tmp, target)

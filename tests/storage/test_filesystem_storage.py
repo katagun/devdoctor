@@ -160,6 +160,12 @@ def test_prune_memory_observations_amortizes_rewrites(tmp_path: Path, monkeypatc
     victims = storage.prune_memory_observations(keep=2)  # 6 > 2 + 2 → now prune
     assert len(victims) == 4
     assert len(storage.list_memory_observations()) == 2
+    # Pruning must not corrupt the "last line = newest" invariant that
+    # latest_memory_observation() relies on: after pruning 6 down to 2, the
+    # newest (second=5) must still be reported as latest.
+    latest = storage.latest_memory_observation()
+    assert latest is not None
+    assert latest.scanned_at == base.replace(second=5).isoformat()
 
 
 def test_same_second_snapshots_do_not_clobber(tmp_path: Path) -> None:

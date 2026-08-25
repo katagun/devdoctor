@@ -52,6 +52,35 @@ def test_render_report_table_handles_empty():
     assert "No entries" in out or "Total" in out
 
 
+def test_render_report_table_neutralizes_malicious_filenames():
+    # A filename with Rich markup used to crash the render (MarkupError); one
+    # with ANSI/OSC escapes used to reach the terminal. Both must be inert now.
+    markup = Entry(
+        provider="large-files",
+        id="a",
+        path=Path("/a"),
+        label="/tmp/report[/].txt",  # malformed markup — would raise MarkupError
+        size_bytes=1,
+        mtime=None,
+        risk=Risk.SAFE,
+        recipe=["rm -rf /a"],
+    )
+    escapes = Entry(
+        provider="large-files",
+        id="b",
+        path=Path("/b"),
+        label="/tmp/evil\x1b[2J\x1b]0;pwned\x07end",  # screen-clear + title spoof
+        size_bytes=1,
+        mtime=None,
+        risk=Risk.SAFE,
+        recipe=["rm -rf /b"],
+    )
+    out = _render(render_report_table, _rep(markup, escapes))  # must not raise
+    assert "\x1b[2J" not in out
+    assert "\x1b]0;" not in out
+    assert "report[/].txt" in out  # shown literally, not parsed
+
+
 def test_render_diff_table_shows_deltas():
     d = DiffReport(
         before_at=datetime(2026, 4, 18, 9, 0, 0, tzinfo=UTC),

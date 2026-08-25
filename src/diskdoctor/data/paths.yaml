@@ -168,12 +168,14 @@
 # --- Open-source local-LLM ecosystems ---------------------------------------
 
 - name: gpt4all-models
-  description: GPT4All downloaded models
+  description: GPT4All downloaded model weights (*.gguf)
   risk: reclaimable
   platforms: [darwin, linux]
+  # Scope to the model files only — the app-support dirs also hold chat history
+  # and the LocalDocs database, which are NOT reclaimable.
   paths:
-    - ~/Library/Application Support/nomic.ai/GPT4All
-    - ~/.local/share/nomic.ai/GPT4All
+    - ~/Library/Application Support/nomic.ai/GPT4All/*.gguf
+    - ~/.local/share/nomic.ai/GPT4All/*.gguf
     - ~/.cache/gpt4all
   recipe: "rm -rf {path}"
 
@@ -277,9 +279,11 @@
   description: InvokeAI models and checkpoints
   risk: reclaimable
   platforms: [darwin, linux]
+  # Only the models subdir — ~/.invokeai itself holds generated images, the
+  # database, and config, which are not reclaimable cache.
   paths:
     - ~/invokeai/models
-    - ~/.invokeai
+    - ~/.invokeai/models
   recipe: "rm -rf {path}"
 
 - name: fooocus-models
@@ -304,8 +308,9 @@
   description: Tabby code-completion model cache
   risk: reclaimable
   platforms: [darwin, linux]
+  # Scope to the models dir — ~/.tabby also holds config and the local database.
   paths:
-    - ~/.tabby
+    - ~/.tabby/models
   recipe: "rm -rf {path}"
 
 - name: helix-cache
@@ -402,11 +407,13 @@
 
 - name: open-webui-data
   description: Open WebUI local data (when run outside Docker; uploads + RAG vectors + chat DB)
-  risk: reclaimable
+  # NOT reclaimable — this dir holds user uploads, the chat database, and RAG
+  # vectors. Advice-only; never auto-delete.
+  risk: dangerous
   platforms: [darwin, linux]
   paths:
     - ~/.open-webui
-  recipe: "rm -rf {path}"
+  recipe: "echo 'Open WebUI stores uploads, chat history, and RAG vectors under ~/.open-webui — this is user data, not cache. Inspect it before removing anything: du -sh ~/.open-webui/* | sort -rh. Do NOT rm -rf this folder unless you have exported anything you want to keep.'"
 
 - name: ramalama-store
   description: RamaLama OCI-artifact model store
