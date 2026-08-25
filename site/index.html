@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DevDoctor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+:root{
+  /* Light palette — cool, blue-biased neutrals toward the teal accent */
+  --bg:#eaeff4;
+  --bg-deep:#e0e7ee;
+  --surface:#ffffff;
+  --surface-2:#f4f8fb;
+  --border:#d5dfe8;
+  --border-strong:#bccada;
+  --text:#0b1620;
+  --text-dim:#48596a;
+  --text-faint:#7f909f;
+  --accent:#0d9488;
+  --accent-bright:#0f766e;
+  --accent-ink:#ffffff;
+  --safe:#1a7f37;
+  --reclaim:#9a6700;
+  --danger:#cf222e;
+  --glow:rgba(13,148,136,.13);
+  --grid-line:rgba(12,22,32,.045);
+  --shadow:0 1px 2px rgba(11,22,32,.06),0 12px 32px -12px rgba(11,22,32,.18);
+  --shadow-lg:0 24px 60px -20px rgba(11,22,32,.28);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0a0e13;
+    --bg-deep:#070a0e;
+    --surface:#10171f;
+    --surface-2:#131d27;
+    --border:#21303c;
+    --border-strong:#2e4150;
+    --text:#e7eef4;
+    --text-dim:#9db0c0;
+    --text-faint:#657787;
+    --accent:#2dd4bf;
+    --accent-bright:#5eead4;
+    --accent-ink:#05201c;
+    --safe:#3fb950;
+    --reclaim:#e3b341;
+    --danger:#ff6b63;
+    --glow:rgba(45,212,191,.16);
+    --grid-line:rgba(120,160,180,.05);
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 16px 40px -16px rgba(0,0,0,.6);
+    --shadow-lg:0 30px 70px -24px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a0e13;
+  --bg-deep:#070a0e;
+  --surface:#10171f;
+  --surface-2:#131d27;
+  --border:#21303c;
+  --border-strong:#2e4150;
+  --text:#e7eef4;
+  --text-dim:#9db0c0;
+  --text-faint:#657787;
+  --accent:#2dd4bf;
+  --accent-bright:#5eead4;
+  --accent-ink:#05201c;
+  --safe:#3fb950;
+  --reclaim:#e3b341;
+  --danger:#ff6b63;
+  --glow:rgba(45,212,191,.16);
+  --grid-line:rgba(120,160,180,.05);
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 16px 40px -16px rgba(0,0,0,.6);
+  --shadow-lg:0 30px 70px -24px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  font-size:16px;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+h1,h2,h3{font-family:"Bricolage Grotesque","IBM Plex Sans",sans-serif;font-weight:700;line-height:1.05;letter-spacing:-.015em;text-wrap:balance;margin:0}
+p{margin:0}
+a{color:inherit;text-decoration:none}
+.mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+
+/* ---- layout primitives ---- */
+.wrap{width:min(1140px,100% - 3rem);margin-inline:auto}
+.section{padding:clamp(4rem,9vw,7.5rem) 0;position:relative}
+.eyebrow{
+  font-family:"JetBrains Mono",monospace;
+  font-size:.72rem;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--accent-bright);font-weight:500;
+  display:inline-flex;align-items:center;gap:.6rem;
+}
+.eyebrow::before{content:"";width:1.6rem;height:1px;background:var(--accent);opacity:.6}
+.lede{color:var(--text-dim);font-size:clamp(1rem,1.6vw,1.15rem);max-width:60ch}
+
+/* ---- risk chip: the product's real semantic system ---- */
+.chip{
+  display:inline-flex;align-items:center;gap:.42rem;
+  font-family:"JetBrains Mono",monospace;font-size:.68rem;font-weight:500;
+  letter-spacing:.04em;text-transform:uppercase;
+  padding:.2rem .5rem;border-radius:999px;line-height:1;
+  border:1px solid transparent;white-space:nowrap;
+}
+.chip::before{content:"";width:.44rem;height:.44rem;border-radius:50%;background:currentColor}
+.chip.safe{color:var(--safe);border-color:color-mix(in srgb,var(--safe) 40%,transparent);background:color-mix(in srgb,var(--safe) 12%,transparent)}
+.chip.reclaim{color:var(--reclaim);border-color:color-mix(in srgb,var(--reclaim) 42%,transparent);background:color-mix(in srgb,var(--reclaim) 13%,transparent)}
+.chip.danger{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 40%,transparent);background:color-mix(in srgb,var(--danger) 12%,transparent)}
+
+/* ---- nav ---- */
+.nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);
+  background:color-mix(in srgb,var(--bg) 82%,transparent);
+  border-bottom:1px solid var(--border)}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;height:64px}
+.brand{display:flex;align-items:center;gap:.6rem;font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:1.12rem;letter-spacing:-.02em}
+.brand .mark{width:30px;height:30px;flex:none;color:var(--accent)}
+.brand b{color:var(--accent-bright);font-weight:800}
+.nav-links{display:flex;align-items:center;gap:2rem}
+.nav-links a:not(.btn){font-size:.9rem;color:var(--text-dim);transition:color .15s}
+.nav-links a:not(.btn):hover{color:var(--text)}
+.nav-tag{font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--text-faint);border:1px solid var(--border);border-radius:999px;padding:.28rem .7rem}
+@media (max-width:820px){.nav-links a:not(.nav-cta){display:none}}
+
+.btn{
+  display:inline-flex;align-items:center;gap:.5rem;
+  font-family:"IBM Plex Sans",sans-serif;font-weight:600;font-size:.92rem;
+  padding:.7rem 1.15rem;border-radius:10px;border:1px solid transparent;cursor:pointer;
+  transition:transform .12s ease,box-shadow .2s ease,background .2s;
+}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--accent);color:var(--accent-ink);box-shadow:0 6px 20px -8px var(--glow)}
+.btn-primary:hover{background:var(--accent-bright)}
+.btn-ghost{background:transparent;color:var(--text);border-color:var(--border-strong)}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent-bright)}
+.nav-cta{padding:.5rem 1rem}
+
+/* ---- hero ---- */
+.hero{position:relative;padding-top:clamp(3rem,7vw,5.5rem);padding-bottom:clamp(4rem,8vw,6rem);overflow:hidden}
+.hero::before{content:"";position:absolute;inset:0;z-index:-1;
+  background:
+    radial-gradient(60% 55% at 82% 8%,var(--glow),transparent 70%),
+    linear-gradient(var(--grid-line) 1px,transparent 1px),
+    linear-gradient(90deg,var(--grid-line) 1px,transparent 1px);
+  background-size:auto,42px 42px,42px 42px;
+  -webkit-mask-image:radial-gradient(120% 90% at 60% 0%,#000 40%,transparent 88%);
+  mask-image:radial-gradient(120% 90% at 60% 0%,#000 40%,transparent 88%);
+}
+.hero-grid{display:grid;grid-template-columns:1.02fr 1.15fr;gap:clamp(2rem,4vw,4rem);align-items:center}
+@media (max-width:940px){.hero-grid{grid-template-columns:1fr;gap:2.5rem}}
+.hero h1{font-size:clamp(2.4rem,5.4vw,4rem);margin:1.4rem 0 0}
+.hero h1 .tint{color:var(--accent-bright)}
+.hero .lede{margin-top:1.5rem;font-size:clamp(1.05rem,1.8vw,1.22rem)}
+.hero-actions{display:flex;flex-wrap:wrap;gap:.8rem;margin-top:2rem;align-items:center}
+.hero-meta{display:flex;gap:1.5rem;margin-top:2.2rem;flex-wrap:wrap}
+.hero-meta .m{display:flex;flex-direction:column;gap:.15rem}
+.hero-meta .m b{font-family:"JetBrains Mono",monospace;font-size:1.35rem;font-weight:700;letter-spacing:-.02em}
+.hero-meta .m span{font-size:.78rem;color:var(--text-faint);letter-spacing:.02em}
+
+/* ---- terminal / scan panel ---- */
+.term{
+  background:var(--surface);border:1px solid var(--border-strong);border-radius:14px;
+  box-shadow:var(--shadow-lg);overflow:hidden;font-family:"JetBrains Mono",monospace;
+}
+.term-bar{display:flex;align-items:center;gap:.5rem;padding:.7rem .9rem;border-bottom:1px solid var(--border);background:var(--surface-2)}
+.term-bar .dot{width:11px;height:11px;border-radius:50%;background:var(--border-strong)}
+.term-bar .dot:nth-child(1){background:#ff5f57}.term-bar .dot:nth-child(2){background:#febc2e}.term-bar .dot:nth-child(3){background:#28c840}
+.term-bar .ttl{margin-left:.5rem;font-size:.74rem;color:var(--text-faint)}
+.term-body{padding:1rem 1.05rem 1.15rem;font-size:.8rem;line-height:1.5}
+.term-cmd{color:var(--text)}
+.term-cmd .pr{color:var(--accent-bright)}
+.term-cmd .fl{color:var(--text-faint)}
+.scan-row{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:.7rem;padding:.2rem 0;opacity:0}
+.scan-row .nm{color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scan-row .sz{color:var(--text);font-weight:500;text-align:right}
+.scan-row.in{animation:rowIn .34s ease forwards}
+@keyframes rowIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.scan-total{margin-top:.7rem;padding-top:.7rem;border-top:1px dashed var(--border-strong);
+  display:flex;align-items:baseline;justify-content:space-between;gap:1rem}
+.scan-total .lbl{color:var(--text-faint);font-size:.76rem}
+.scan-total .val{font-size:1.15rem;font-weight:700;color:var(--accent-bright)}
+.caret{display:inline-block;width:.55ch;height:1em;background:var(--accent);vertical-align:-.12em;margin-left:.1rem;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* ---- copy command row ---- */
+.cmd{display:inline-flex;align-items:center;gap:.75rem;background:var(--surface);border:1px solid var(--border-strong);
+  border-radius:10px;padding:.6rem .75rem .6rem 1rem;font-family:"JetBrains Mono",monospace;font-size:.85rem;box-shadow:var(--shadow);max-width:100%}
+.cmd code{color:var(--text);white-space:nowrap;overflow-x:auto}
+.cmd code .pr{color:var(--accent-bright);user-select:none}
+.copy{flex:none;display:inline-flex;align-items:center;gap:.35rem;font-family:"IBM Plex Sans",sans-serif;font-size:.74rem;color:var(--text-dim);
+  background:var(--surface-2);border:1px solid var(--border);border-radius:7px;padding:.32rem .55rem;cursor:pointer;transition:.15s}
+.copy:hover{color:var(--accent-bright);border-color:var(--accent)}
+.copy.done{color:var(--safe);border-color:color-mix(in srgb,var(--safe) 45%,transparent)}
+
+/* ---- generic section header ---- */
+.head{max-width:64ch}
+.head h2{font-size:clamp(1.8rem,3.6vw,2.6rem);margin-top:1.1rem}
+.head .lede{margin-top:1rem}
+
+/* ---- feature grid ---- */
+.features{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-top:3rem;background:var(--border);border:1px solid var(--border);border-radius:16px;overflow:hidden}
+@media (max-width:860px){.features{grid-template-columns:1fr}}
+.feat{background:var(--surface);padding:1.7rem 1.6rem;display:flex;flex-direction:column;gap:.8rem;transition:background .2s}
+.feat:hover{background:var(--surface-2)}
+.feat .ic{width:34px;height:34px;color:var(--accent);flex:none}
+.feat h3{font-size:1.12rem;font-family:"IBM Plex Sans",sans-serif;font-weight:600;letter-spacing:-.01em}
+.feat p{color:var(--text-dim);font-size:.92rem}
+
+/* ---- instrument split ---- */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:clamp(2rem,4vw,4rem);align-items:center}
+@media (max-width:900px){.split{grid-template-columns:1fr;gap:2.5rem}}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:1.6rem;box-shadow:var(--shadow)}
+
+/* disk gauge */
+.gauge{display:flex;align-items:center;gap:1.4rem}
+.gauge svg{flex:none}
+.gauge-legend{display:flex;flex-direction:column;gap:.55rem;font-size:.82rem}
+.gauge-legend .li{display:flex;align-items:center;gap:.55rem;color:var(--text-dim)}
+.gauge-legend .sw{width:.7rem;height:.7rem;border-radius:3px;flex:none}
+.gauge-legend b{color:var(--text);font-family:"JetBrains Mono",monospace;margin-left:auto}
+
+/* memory meter */
+.meter{margin-top:.4rem}
+.meter-top{display:flex;justify-content:space-between;align-items:baseline;font-size:.82rem;color:var(--text-dim);margin-bottom:.5rem}
+.meter-top b{font-family:"JetBrains Mono",monospace;color:var(--text);font-size:1.05rem}
+.bar{height:12px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);overflow:hidden;display:flex}
+.bar i{display:block;height:100%}
+.consumers{margin-top:1.2rem;display:flex;flex-direction:column;gap:.1rem}
+.consumer{display:grid;grid-template-columns:1.3rem 1fr auto;align-items:center;gap:.7rem;padding:.5rem 0;border-top:1px solid var(--border);font-size:.86rem}
+.consumer:first-child{border-top:0}
+.consumer .cd{width:.6rem;height:.6rem;border-radius:50%}
+.consumer .cn{color:var(--text-dim)}
+.consumer .cv{font-family:"JetBrains Mono",monospace;color:var(--text);font-weight:500}
+
+/* ---- providers ---- */
+.provs{display:flex;flex-wrap:wrap;gap:.7rem;margin-top:2.5rem}
+.prov{display:flex;align-items:center;gap:.7rem;background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:.7rem 1rem;transition:.18s}
+.prov:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--shadow)}
+.prov .pi{width:22px;height:22px;flex:none;color:var(--text-dim)}
+.prov:hover .pi{color:var(--accent)}
+.prov .pn{font-weight:500;font-size:.92rem}
+.prov .ps{font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--text-faint)}
+
+/* ---- safety steps ---- */
+.safety{background:var(--surface-2);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1.4rem;margin-top:3rem;counter-reset:s}
+@media (max-width:860px){.steps{grid-template-columns:1fr}}
+.step{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:1.5rem 1.4rem}
+.step .n{counter-increment:s;font-family:"JetBrains Mono",monospace;font-size:.78rem;color:var(--accent-bright);font-weight:700}
+.step .n::before{content:"0" counter(s)}
+.step h3{font-size:1.08rem;font-family:"IBM Plex Sans",sans-serif;font-weight:600;margin:.7rem 0 .5rem}
+.step p{color:var(--text-dim);font-size:.9rem}
+.step .k{color:var(--accent-bright);font-family:"JetBrains Mono",monospace;font-size:.85em}
+
+/* ---- interfaces ---- */
+.faces{display:grid;grid-template-columns:repeat(3,1fr);gap:1.4rem;margin-top:3rem}
+@media (max-width:860px){.faces{grid-template-columns:1fr}}
+.face{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:1.5rem;display:flex;flex-direction:column;gap:.7rem;box-shadow:var(--shadow)}
+.face .ft{display:flex;align-items:center;gap:.6rem}
+.face .ft .ic{width:20px;height:20px;color:var(--accent)}
+.face .ft b{font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:1.05rem}
+.face p{color:var(--text-dim);font-size:.88rem}
+.face ul{margin:.3rem 0 0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:.4rem}
+.face li{font-size:.84rem;color:var(--text-dim);display:flex;gap:.55rem;align-items:flex-start}
+.face li::before{content:"";width:.4rem;height:.4rem;border-radius:50%;background:var(--accent);margin-top:.55rem;flex:none}
+
+/* ---- use cases ---- */
+.cases{display:grid;grid-template-columns:repeat(2,1fr);gap:1.4rem;margin-top:3rem}
+@media (max-width:760px){.cases{grid-template-columns:1fr}}
+.case{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px;padding:1.4rem 1.5rem}
+.case h3{font-size:1.05rem;font-family:"IBM Plex Sans",sans-serif;font-weight:600;margin-bottom:.5rem}
+.case p{color:var(--text-dim);font-size:.9rem}
+.case .who{font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--accent-bright);letter-spacing:.04em;text-transform:uppercase;display:block;margin-bottom:.7rem}
+
+/* ---- install ---- */
+.install{background:var(--bg-deep)}
+.terminal-block{background:var(--surface);border:1px solid var(--border-strong);border-radius:14px;box-shadow:var(--shadow-lg);overflow:hidden;margin-top:2.5rem}
+.tb-body{padding:1.3rem 1.4rem;font-family:"JetBrains Mono",monospace;font-size:.85rem;line-height:1.9;overflow-x:auto}
+.tb-body .ln{white-space:nowrap}
+.tb-body .pr{color:var(--accent-bright);user-select:none}
+.tb-body .cm{color:var(--text-faint)}
+.tb-body .out{color:var(--text-dim)}
+
+/* ---- footer ---- */
+.footer{border-top:1px solid var(--border);padding:3rem 0 3.5rem}
+.footer-inner{display:flex;justify-content:space-between;gap:2rem;flex-wrap:wrap;align-items:flex-start}
+.footer .brand{margin-bottom:.9rem}
+.footer p{color:var(--text-faint);font-size:.85rem;max-width:42ch}
+.footer-cols{display:flex;gap:3.5rem;flex-wrap:wrap}
+.footer-col h4{font-size:.72rem;text-transform:uppercase;letter-spacing:.12em;color:var(--text-faint);margin:0 0 .8rem;font-weight:600}
+.footer-col a{display:block;color:var(--text-dim);font-size:.88rem;padding:.2rem 0;transition:color .15s}
+.footer-col a:hover{color:var(--accent-bright)}
+.footlicense{margin-top:2.5rem;padding-top:1.5rem;border-top:1px solid var(--border);font-family:"JetBrains Mono",monospace;font-size:.74rem;color:var(--text-faint);display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;animation-iteration-count:1!important}.scan-row{opacity:1}}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top" aria-label="DevDoctor home">
+      <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="29" height="29" rx="8" stroke="currentColor" stroke-width="1.6" opacity=".35"/>
+        <path d="M6 16h4l2.5-6 4 12 2.8-8 1.7 2h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Dev<b>Doctor</b>
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#providers">Providers</a>
+      <a href="#safety">Safety</a>
+      <a href="#interfaces">Interfaces</a>
+      <a class="btn btn-primary nav-cta" href="#install">Install</a>
+    </div>
+    <span class="nav-tag">macOS · Linux</span>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <span class="eyebrow">Local dev-machine diagnostics</span>
+      <h1>Your dev machine is hoarding caches it <span class="tint">never told you about.</span></h1>
+      <p class="lede">DevDoctor scans the caches, model weights, containers, and virtualenvs quietly eating your disk — then cleans them up on your terms. Diagnosis first. Nothing deleted until you say so.</p>
+      <div class="hero-actions">
+        <div class="cmd">
+          <code><span class="pr">$ </span>uv tool install diskdoctor</code>
+          <button class="copy" data-copy="uv tool install diskdoctor" aria-label="Copy install command">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" stroke="currentColor" stroke-width="1.5"/></svg>
+            <span class="ct">copy</span>
+          </button>
+        </div>
+        <a class="btn btn-ghost" href="#interfaces">See it work →</a>
+      </div>
+      <div class="hero-meta">
+        <div class="m"><b>2</b><span>disk &amp; memory, one tool</span></div>
+        <div class="m"><b>10+</b><span>cache providers</span></div>
+        <div class="m"><b>0</b><span>bytes leave your machine</span></div>
+      </div>
+    </div>
+
+    <div class="term" role="img" aria-label="Sample output of the diskdoctor scan command: a table of caches with sizes and risk labels, totalling 65.2 gigabytes reclaimable.">
+      <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="ttl">~/work — diskdoctor</span></div>
+      <div class="term-body">
+        <div class="term-cmd"><span class="pr">$ </span>diskdoctor scan <span class="fl">--sort size</span><span class="caret" id="caret"></span></div>
+        <div id="scan" style="margin-top:.7rem"></div>
+        <div class="scan-total" id="scanTotal" style="opacity:0">
+          <span class="lbl">reclaimable (safe + reclaimable, dangerous excluded)</span>
+          <span class="val mono" id="totalVal">0.0 GB</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- FEATURES -->
+<section class="section" id="features">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">What it does</span>
+      <h2>A checkup for the machine you actually work on.</h2>
+      <p class="lede">Two problems, one tool: the disk that keeps filling up, and the RAM that keeps running out. DevDoctor measures both, explains what it found, and only acts with your sign-off.</p>
+    </div>
+    <div class="features">
+      <div class="feat">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3" stroke="currentColor" stroke-width="1.6"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6" stroke="currentColor" stroke-width="1.6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" stroke="currentColor" stroke-width="1.6"/></svg>
+        <h3>Disk cache analysis</h3>
+        <p>One command surfaces every known cache — Docker layers, model weights, build artifacts, virtualenvs — sized accurately with symlink-safe, hard-link-deduped walks. Sorted biggest first.</p>
+      </div>
+      <div class="feat">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="7" width="18" height="10" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M7 7V5M12 7V5M17 7V5M7 19v-2M12 19v-2M17 19v-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8 11h3v3H8z" fill="currentColor" opacity=".5"/></svg>
+        <h3>Memory advisor</h3>
+        <p>See live memory pressure and the top consumers — browsers, Electron apps, Docker, local LLM runners — with one-click actions to quit the app or stop the container that's swapping your machine to a crawl.</p>
+      </div>
+      <div class="feat">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2.5 20 6v6c0 5-3.4 8.2-8 9.5C7.4 20.2 4 17 4 12V6l8-3.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8.5 12l2.5 2.5 4.5-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <h3>Preview-first by design</h3>
+        <p><code class="mono" style="font-size:.85em">clean</code> defaults to a dry run: zero prompts, zero shell commands. Every entry is labelled safe, reclaimable, or dangerous — and dangerous ones are skipped unless you opt in.</p>
+      </div>
+      <div class="feat">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3 9h18" stroke="currentColor" stroke-width="1.6"/><path d="M8 13h3M8 15.5h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="16.5" cy="14" r="1.3" fill="currentColor"/></svg>
+        <h3>Snapshots &amp; diff</h3>
+        <p>Snapshot usage before a cleanup, then diff two points in time — or against live — to see exactly what each cache reclaimed and how your disk trends over weeks.</p>
+      </div>
+      <div class="feat">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 20h8M12 17v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M6.5 9.5 9 12l-2.5 2.5M11 14.5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <h3>CLI, web &amp; desktop</h3>
+        <p>Rich terminal tables with JSON output for scripting, a local web dashboard with a live cleanup wizard, and a hardened Electron desktop app — same engine underneath.</p>
+      </div>
+      <div class="feat">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3C7 5 5 5 5 5v6c0 5 3.5 8 7 10 3.5-2 7-5 7-10V5s-2 0-7-2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="10.5" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M12 12.5V15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <h3>100% local &amp; private</h3>
+        <p>No telemetry, no accounts, no network calls. The web UI binds to loopback only, guarded against DNS-rebinding, and commands run as argv lists — never through a shell.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- INSTRUMENTS: disk + memory -->
+<section class="section" style="padding-top:0">
+  <div class="wrap split">
+    <div class="panel">
+      <div class="gauge">
+        <svg width="150" height="150" viewBox="0 0 150 150" aria-hidden="true">
+          <circle cx="75" cy="75" r="60" fill="none" stroke="var(--border)" stroke-width="14"/>
+          <circle id="ring" cx="75" cy="75" r="60" fill="none" stroke="var(--reclaim)" stroke-width="14" stroke-linecap="round"
+            stroke-dasharray="377" stroke-dashoffset="377" transform="rotate(-90 75 75)"/>
+          <text x="75" y="70" text-anchor="middle" font-family="JetBrains Mono" font-size="26" font-weight="700" fill="var(--text)">89%</text>
+          <text x="75" y="90" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="var(--text-faint)">USED</text>
+        </svg>
+        <div class="gauge-legend">
+          <div class="li"><span class="sw" style="background:var(--reclaim)"></span>Used <b>891 GB</b></div>
+          <div class="li"><span class="sw" style="background:var(--border-strong)"></span>Free <b>103 GB</b></div>
+          <div class="li"><span class="sw" style="background:var(--accent)"></span>Reclaimable <b>65 GB</b></div>
+        </div>
+      </div>
+      <p class="lede" style="margin-top:1.4rem;font-size:.92rem">A third of what's "used" is cache you'd never miss. DevDoctor finds it before your disk hits the red.</p>
+    </div>
+    <div>
+      <span class="eyebrow">Disk, measured</span>
+      <h2 class="head" style="font-size:clamp(1.6rem,3vw,2.2rem);margin-top:1rem">Accurate sizes, not apparent ones.</h2>
+      <p class="lede" style="margin-top:1rem">Sparse files like <code class="mono" style="font-size:.86em">Docker.raw</code> report 80&nbsp;GB but use megabytes. DevDoctor measures real on-disk blocks, stays on one device, and counts hard-linked model files once — so the numbers you act on are the numbers that free up.</p>
+      <div class="provs" style="margin-top:1.6rem">
+        <span class="chip safe">safe — cache, rebuilds itself</span>
+        <span class="chip reclaim">reclaimable — re-downloadable</span>
+        <span class="chip danger">dangerous — you'd feel this</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MEMORY -->
+<section class="section" style="padding-top:0">
+  <div class="wrap split">
+    <div>
+      <span class="eyebrow">Memory, watched</span>
+      <h2 class="head" style="font-size:clamp(1.6rem,3vw,2.2rem);margin-top:1rem">Find the process that's swapping your machine.</h2>
+      <p class="lede" style="margin-top:1rem">When everything slows to molasses, DevDoctor names the culprit — the browser with 200 tabs, the idle Docker daemon, the LLM runtime still holding a model in RAM — and offers the safe way to stop it. It even re-checks the process is still the one you meant before it signals anything.</p>
+      <a class="btn btn-ghost" href="#install" style="margin-top:1.6rem">Run the memory scan →</a>
+    </div>
+    <div class="panel">
+      <div class="meter">
+        <div class="meter-top"><span>Memory pressure <span class="chip reclaim" style="margin-left:.4rem">warning</span></span><b>14.2 / 16 GB</b></div>
+        <div class="bar" aria-hidden="true">
+          <i style="width:52%;background:var(--accent)"></i>
+          <i style="width:36%;background:var(--reclaim)"></i>
+          <i style="width:6%;background:var(--danger)"></i>
+        </div>
+      </div>
+      <div class="consumers">
+        <div class="consumer"><span class="cd" style="background:var(--danger)"></span><span class="cn">Google Chrome Helper</span><span class="cv">4.1 GB</span></div>
+        <div class="consumer"><span class="cd" style="background:var(--reclaim)"></span><span class="cn">com.docker.backend</span><span class="cv">3.2 GB</span></div>
+        <div class="consumer"><span class="cd" style="background:var(--reclaim)"></span><span class="cn">ollama (llama runner)</span><span class="cv">2.8 GB</span></div>
+        <div class="consumer"><span class="cd" style="background:var(--accent)"></span><span class="cn">Code Helper (Renderer)</span><span class="cv">1.9 GB</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PROVIDERS -->
+<section class="section" id="providers" style="padding-top:0">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Knows where the bloat hides</span>
+      <h2>Built for the caches modern dev work leaves behind.</h2>
+      <p class="lede">Especially AI/ML work — model weights are the new disk sink. DevDoctor ships with providers for the usual offenders, plus a YAML-driven list you can extend for anything else.</p>
+    </div>
+    <div class="provs">
+      <span class="prov"><svg class="pi" viewBox="0 0 24 24" fill="none"><rect x="3" y="10" width="4" height="4" stroke="currentColor" stroke-width="1.4"/><rect x="8" y="10" width="4" height="4" stroke="currentColor" stroke-width="1.4"/><rect x="13" y="10" width="4" height="4" stroke="currentColor" stroke-width="1.4"/><rect x="8" y="5.5" width="4" height="4" stroke="currentColor" stroke-width="1.4"/><path d="M18 12c2 0 3-1 3-1s0 4-4 5c-1.5 2-4 3-7 3-5 0-8-3-8-7h16Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span><span class="pn">Docker</span> <span class="ps">images · volumes · build cache</span></span></span>
+      <span class="prov"><svg class="pi" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.4"/><circle cx="9" cy="10" r="1.3" fill="currentColor"/><circle cx="15" cy="10" r="1.3" fill="currentColor"/><path d="M8.5 15c1 1 5 1 7 0" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span><span class="pn">Hugging Face</span> <span class="ps">~/.cache/huggingface</span></span></span>
+      <span class="prov"><svg class="pi" viewBox="0 0 24 24" fill="none"><path d="M12 3c3 0 5 2 5 5 2 1 3 3 3 5 0 4-4 8-8 8s-8-4-8-8c0-2 1-4 3-5 0-3 2-5 5-5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span><span class="pn">Ollama</span> <span class="ps">local model store</span></span></span>
+      <span class="prov"><svg class="pi" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="3" stroke="currentColor" stroke-width="1.4"/><path d="M8 15V9l4 4 4-4v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span><span class="pn">LM Studio</span> <span class="ps">hub &amp; legacy models</span></span></span>
+      <span class="prov"><svg class="pi" viewBox="0 0 24 24" fill="none"><path d="M12 3c-4 0-4 3-4 3v3H6a3 3 0 0 0-3 3c0 2 1 3 3 3M12 21c4 0 4-3 4-3v-3h2a3 3 0 0 0 3-3c0-2-1-3-3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span><span class="pn">Python venvs</span> <span class="ps">.venv · pyvenv.cfg</span></span></span>
+      <span class="prov"><svg class="pi" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M7 10v4M10 14v-4l2 3 2-3v4M17.5 10v4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span><span class="pn">npm / pnpm</span> <span class="ps">package stores</span></span></span>
+      <span class="prov"><svg class="pi" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span><span class="pn">pip cache</span> <span class="ps">wheels &amp; http</span></span></span>
+      <span class="prov"><svg class="pi" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.4"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18" stroke="currentColor" stroke-width="1.3"/></svg><span><span class="pn">Browser caches</span> <span class="ps">Chrome · Firefox · Safari</span></span></span>
+      <span class="prov"><svg class="pi" viewBox="0 0 24 24" fill="none"><path d="M4 5h16v14H4z" stroke="currentColor" stroke-width="1.4"/><path d="M4 9h16" stroke="currentColor" stroke-width="1.4"/><path d="M9 13h6M9 16h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span><span class="pn">Large files</span> <span class="ps">forgotten ISOs &amp; exports</span></span></span>
+      <span class="prov"><svg class="pi" viewBox="0 0 24 24" fill="none"><path d="M12 3v18M3 12h18" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><rect x="5" y="5" width="14" height="14" rx="3" stroke="currentColor" stroke-width="1.4"/></svg><span><span class="pn">+ your own</span> <span class="ps">YAML path providers</span></span></span>
+    </div>
+  </div>
+</section>
+
+<!-- SAFETY -->
+<section class="section safety" id="safety">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">The safety model</span>
+      <h2>A cleanup tool you can actually trust with <code class="mono" style="font-size:.72em;color:var(--danger)">rm&nbsp;-rf</code>.</h2>
+      <p class="lede">Destructive tools earn trust by refusing to be reckless. DevDoctor is built so the dangerous path is always the deliberate one.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <span class="n"></span>
+        <h3>Preview is the default</h3>
+        <p><span class="k">clean</span> shows what it <em>would</em> remove and stops. No prompts, no shell calls. You opt into action with <span class="k">--execute</span>, then confirm each entry and a final summary.</p>
+      </div>
+      <div class="step">
+        <span class="n"></span>
+        <h3>Recipes are reviewable</h3>
+        <p><span class="k">recipe</span> writes a shell script with every destructive line <em>commented out</em>. Read it, uncomment what you want, run it yourself. No surprises hidden in an abstraction.</p>
+      </div>
+      <div class="step">
+        <span class="n"></span>
+        <h3>No shell, ever</h3>
+        <p>Commands execute as argv lists — never through a shell — with every path safely quoted. A filename with a quote or <span class="k">$(…)</span> in it is inert data, not an injection.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- INTERFACES -->
+<section class="section" id="interfaces">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Three ways in</span>
+      <h2>Live in the terminal, or don't. Same engine.</h2>
+      <p class="lede">A single Python core drives all three surfaces, so a scan means the same thing whether you typed it or clicked it.</p>
+    </div>
+    <div class="faces">
+      <div class="face">
+        <div class="ft"><svg class="ic" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M7 9l3 3-3 3M12 15h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><b>CLI</b></div>
+        <p>Rich tables sorted by size, with <code class="mono" style="font-size:.82em">--json</code> for pipelines and filters for size and risk.</p>
+        <ul>
+          <li><code class="mono" style="font-size:.82em">scan</code> — see every cache at a glance</li>
+          <li><code class="mono" style="font-size:.82em">clean --execute</code> — interactive cleanup</li>
+          <li><code class="mono" style="font-size:.82em">snapshot</code> / <code class="mono" style="font-size:.82em">diff</code> — track over time</li>
+        </ul>
+      </div>
+      <div class="face">
+        <div class="ft"><svg class="ic" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3 9h18" stroke="currentColor" stroke-width="1.6"/><circle cx="6" cy="7" r=".8" fill="currentColor"/></svg><b>Web UI</b></div>
+        <p>Launch <code class="mono" style="font-size:.82em">serve</code> for a local dashboard: treemaps, a step-by-step cleanup wizard, and live progress streamed as each command runs.</p>
+        <ul>
+          <li>Disk &amp; memory dashboards</li>
+          <li>Guided cleanup with live output</li>
+          <li>History, snapshots &amp; settings</li>
+        </ul>
+      </div>
+      <div class="face">
+        <div class="ft"><svg class="ic" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><b>Desktop app</b></div>
+        <p>A hardened Electron app that bundles the backend — double-click to launch, no terminal required. Context-isolated and sandboxed.</p>
+        <ul>
+          <li>One-click launch, bundled engine</li>
+          <li>Full Disk Access guidance built in</li>
+          <li>Loopback-only, sandboxed renderer</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- USE CASES -->
+<section class="section" style="padding-top:0">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Where it earns its keep</span>
+      <h2>The recurring "why is my disk full again?"</h2>
+    </div>
+    <div class="cases">
+      <div class="case">
+        <span class="who">AI / ML developers</span>
+        <h3>Reclaim the model-weight sprawl</h3>
+        <p>Hugging Face, Ollama, and LM Studio each keep their own multi-gigabyte copies. DevDoctor sums the true cost across all three — including the HF cache LM Studio points into — so you can clear what you're not using.</p>
+      </div>
+      <div class="case">
+        <span class="who">Before a big build or update</span>
+        <h3>Free space on demand</h3>
+        <p>Out of room mid-compile or ahead of an OS update? One scan, sort by size, clean the safe and reclaimable entries, and watch the free-space number climb — with a snapshot to prove what it recovered.</p>
+      </div>
+      <div class="case">
+        <span class="who">When the fans won't stop</span>
+        <h3>Track down the memory hog</h3>
+        <p>The memory advisor ranks live consumers by real RSS and flags the pressure state, then offers to quit the app or stop the container — the safe fix, not a guessed <code class="mono" style="font-size:.82em">kill</code>.</p>
+      </div>
+      <div class="case">
+        <span class="who">Anyone who likes receipts</span>
+        <h3>Watch disk usage trend</h3>
+        <p>Auto-snapshots capture usage over time. Diff any two points — or against live — to see which caches keep growing back and decide what deserves a permanent spot on your ignore list.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- INSTALL -->
+<section class="section install" id="install">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Get started</span>
+      <h2>Installed and scanning in under a minute.</h2>
+      <p class="lede">Requires Python 3.12+ on macOS or Linux. Install with <a href="https://docs.astral.sh/uv/" style="color:var(--accent-bright)">uv</a> and you're diagnosing immediately.</p>
+    </div>
+
+    <div style="display:flex;gap:.8rem;flex-wrap:wrap;margin-top:2.2rem">
+      <div class="cmd">
+        <code><span class="pr">$ </span>uv tool install diskdoctor</code>
+        <button class="copy" data-copy="uv tool install diskdoctor" aria-label="Copy install command"><span class="ct">copy</span></button>
+      </div>
+      <div class="cmd">
+        <code><span class="pr">$ </span>uv tool install 'diskdoctor[web]'</code>
+        <button class="copy" data-copy="uv tool install 'diskdoctor[web]'" aria-label="Copy web install command"><span class="ct">copy</span></button>
+      </div>
+    </div>
+
+    <div class="terminal-block">
+      <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="ttl">first run</span></div>
+      <div class="tb-body">
+        <div class="ln"><span class="cm"># see everything, biggest first</span></div>
+        <div class="ln"><span class="pr">$ </span>diskdoctor scan</div>
+        <div class="ln">&nbsp;</div>
+        <div class="ln"><span class="cm"># preview a cleanup — nothing is deleted</span></div>
+        <div class="ln"><span class="pr">$ </span>diskdoctor clean</div>
+        <div class="ln">&nbsp;</div>
+        <div class="ln"><span class="cm"># interactive cleanup, safe entries auto-approved</span></div>
+        <div class="ln"><span class="pr">$ </span>diskdoctor clean --execute --yes-safe</div>
+        <div class="ln">&nbsp;</div>
+        <div class="ln"><span class="cm"># open the local dashboard (web extra)</span></div>
+        <div class="ln"><span class="pr">$ </span>diskdoctor serve</div>
+        <div class="ln"><span class="out">DevDoctor web UI -> http://127.0.0.1:8731</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-inner">
+      <div>
+        <a class="brand" href="#top" aria-label="DevDoctor">
+          <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+            <rect x="1.5" y="1.5" width="29" height="29" rx="8" stroke="currentColor" stroke-width="1.6" opacity=".35"/>
+            <path d="M6 16h4l2.5-6 4 12 2.8-8 1.7 2h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Dev<b>Doctor</b>
+        </a>
+        <p>A local developer-workstation resource manager for macOS and Linux. Nothing leaves your machine.</p>
+      </div>
+      <div class="footer-cols">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="#features">Features</a>
+          <a href="#providers">Providers</a>
+          <a href="#safety">Safety model</a>
+          <a href="#interfaces">Interfaces</a>
+        </div>
+        <div class="footer-col">
+          <h4>Commands</h4>
+          <a href="#install">scan</a>
+          <a href="#install">clean</a>
+          <a href="#install">snapshot / diff</a>
+          <a href="#install">serve</a>
+        </div>
+        <div class="footer-col">
+          <h4>Trust</h4>
+          <a href="#safety">Preview-first</a>
+          <a href="#features">100% local</a>
+          <a href="#features">No telemetry</a>
+        </div>
+      </div>
+    </div>
+    <div class="footlicense">
+      <span>MIT licensed · Python 3.12+ · macOS &amp; Linux</span>
+      <span>Diagnosis before treatment.</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  var rows = [
+    {n:"huggingface  ~/.cache/huggingface/hub", s:"26.1 GB", r:"reclaim"},
+    {n:"docker       images", s:"18.4 GB", r:"reclaim"},
+    {n:"ollama       models", s:"12.7 GB", r:"danger"},
+    {n:"lm-studio    hub models", s:"8.3 GB", r:"reclaim"},
+    {n:"python-venvs 14 environments", s:"6.9 GB", r:"reclaim"},
+    {n:"large-files  ~/Desktop", s:"4.2 GB", r:"danger"},
+    {n:"npm-store    pnpm + npm", s:"3.4 GB", r:"safe"},
+    {n:"pip-cache    wheels", s:"2.1 GB", r:"safe"}
+  ];
+  var chipClass = {safe:"safe", reclaim:"reclaim", danger:"danger"};
+  var chipText = {safe:"safe", reclaim:"reclaim", danger:"danger"};
+  var container = document.getElementById("scan");
+  var totalEl = document.getElementById("scanTotal");
+  var totalVal = document.getElementById("totalVal");
+  var caret = document.getElementById("caret");
+  var TARGET = 65.2;
+
+  function makeRow(row){
+    var el = document.createElement("div");
+    el.className = "scan-row";
+    el.innerHTML =
+      '<span class="nm">'+row.n+'</span>'+
+      '<span class="chip '+chipClass[row.r]+'">'+chipText[row.r]+'</span>'+
+      '<span class="sz">'+row.s+'</span>';
+    return el;
+  }
+
+  function countUp(){
+    var start = performance.now(), dur = 900;
+    function tick(now){
+      var p = Math.min(1,(now-start)/dur);
+      var eased = 1-Math.pow(1-p,3);
+      totalVal.textContent = (TARGET*eased).toFixed(1)+" GB";
+      if(p<1) requestAnimationFrame(tick);
+      else totalVal.textContent = TARGET.toFixed(1)+" GB";
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function finish(){
+    totalEl.style.opacity = "1";
+    totalEl.style.transition = "opacity .4s ease";
+    if(caret) caret.style.display = "none";
+    if(reduce){ totalVal.textContent = TARGET.toFixed(1)+" GB"; }
+    else countUp();
+  }
+
+  if(reduce){
+    rows.forEach(function(r){ var el = makeRow(r); el.classList.add("in"); container.appendChild(el); });
+    finish();
+  } else {
+    var started = false;
+    function run(){
+      if(started) return; started = true;
+      rows.forEach(function(row, i){
+        setTimeout(function(){
+          var el = makeRow(row);
+          container.appendChild(el);
+          requestAnimationFrame(function(){ el.classList.add("in"); });
+          if(i === rows.length-1) setTimeout(finish, 320);
+        }, 260 + i*220);
+      });
+    }
+    if("IntersectionObserver" in window){
+      var io = new IntersectionObserver(function(entries){
+        entries.forEach(function(e){ if(e.isIntersecting){ run(); io.disconnect(); } });
+      }, {threshold:.4});
+      io.observe(container);
+    } else { run(); }
+  }
+
+  // copy buttons
+  document.querySelectorAll(".copy").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var text = btn.getAttribute("data-copy") ||
+        (btn.closest(".cmd") && btn.closest(".cmd").querySelector("code") &&
+         btn.closest(".cmd").querySelector("code").textContent.replace(/^\$\s*/,""));
+      var label = btn.querySelector(".ct");
+      function ok(){
+        btn.classList.add("done");
+        if(label){ var old = label.textContent; label.textContent = "copied"; setTimeout(function(){ label.textContent = old; btn.classList.remove("done"); }, 1600); }
+      }
+      try{
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(text).then(ok, function(){});
+        }
+      }catch(e){}
+    });
+  });
+})();
+</script>
+</body>
+</html>
