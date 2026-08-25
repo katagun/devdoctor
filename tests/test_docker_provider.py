@@ -71,3 +71,42 @@ def test_discover_handles_df_failure(monkeypatch):
         },
     )
     assert DockerProvider(sh).discover() == []
+
+
+# Modern Docker emits NDJSON — one aggregate object per line, keyed by "Type",
+# with "Local Volumes" / "Build Cache" as the volume/cache type names.
+_DOCKER_DF_NDJSON = "\n".join(
+    [
+        '{"Type":"Images","TotalCount":"12","Active":"3","Size":"8GB","Reclaimable":"5GB (62%)"}',
+        '{"Type":"Containers","TotalCount":"2","Active":"1","Size":"1GB","Reclaimable":"0B (0%)"}',
+        '{"Type":"Local Volumes","TotalCount":"4","Active":"1","Size":"6GB","Reclaimable":"6GB (100%)"}',
+        '{"Type":"Build Cache","TotalCount":"30","Active":"0","Size":"3GB","Reclaimable":"3GB"}',
+    ]
+)
+
+
+def test_discover_parses_ndjson_output(monkeypatch):
+    monkeypatch.setattr("sys.platform", "darwin")
+    sh = FakeShell(
+        which_table={"docker": "/usr/local/bin/docker"},
+        responses={
+            ("docker", "system", "df", "--format", "json"): ShellResult(0, _DOCKER_DF_NDJSON, "")
+        },
+    )
+    entries = {e.id: e for e in DockerProvider(sh).discover()}
+    assert set(entries) == {"images", "volumes", "build-cache"}  # containers: 0 reclaimable
+    assert entries["images"].size_bytes == 5_000_000_000
+    assert entries["volumes"].size_bytes == 6_000_000_000
+    assert entries["build-cache"].size_bytes == 3_000_000_000
+    assert entries["volumes"].recipe == ["docker volume prune -f"]
+
+
+def test_discover_handles_unparseable_output(monkeypatch):
+    monkeypatch.setattr("sys.platform", "darwin")
+    sh = FakeShell(
+        which_table={"docker": "/usr/local/bin/docker"},
+        responses={
+            ("docker", "system", "df", "--format", "json"): ShellResult(0, "not json at all", "")
+        },
+    )
+    assert DockerProvider(sh).discover() == []

@@ -34,7 +34,7 @@ class FakeEventSource {
   }
 }
 
-import { useCleanupWizard } from "@/hooks/useCleanupWizard";
+import { useCleanupWizard, reducer, initial } from "@/hooks/useCleanupWizard";
 
 beforeEach(() => {
   postJson.mockReset();
@@ -119,5 +119,17 @@ describe("useCleanupWizard", () => {
     expect(result.current.state.results).toEqual([
       { entry_id: "1", status: "ok", freed_bytes: 100 },
     ]);
+  });
+
+  it("caps console output so a chatty command can't grow state without bound", () => {
+    let state = initial([]);
+    state = reducer(state, { type: "EXECUTE_START", entry_id: "1", cmd: "docker prune" });
+    for (let i = 0; i < 5000; i++) {
+      state = reducer(state, { type: "EXECUTE_PROGRESS", entry_id: "1", chunk: `line ${i}` });
+    }
+    const lines = state.progress["1"].consoleLines;
+    expect(lines.length).toBeLessThanOrEqual(200);
+    // The tail (what the UI actually renders) is preserved.
+    expect(lines[lines.length - 1]).toBe("line 4999");
   });
 });

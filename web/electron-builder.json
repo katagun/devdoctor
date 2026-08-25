@@ -6,7 +6,6 @@
   },
   "files": [
     "electron/**/*",
-    "../src/diskdoctor/web/_static/dist/**/*",
     "package.json"
   ],
   "extraResources": [

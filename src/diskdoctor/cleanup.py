@@ -20,6 +20,9 @@ from diskdoctor.types import (
     ShellResult,
 )
 
+_ASCII_SPACE = 0x20  # first printable char; anything below is a C0 control
+_ASCII_DEL = 0x7F
+
 SelectionState = Literal[
     "approved",
     "skipped:user",
@@ -290,6 +293,32 @@ def _to_result(entry: Entry, state: str) -> CleanResult:
     return CleanResult(entry_id=entry.id, status="skipped", freed_bytes=0, message=msg)
 
 
+def _comment_safe(value: str) -> str:
+    r"""Neutralize a value so it can't break out of a single-line ``# ...`` comment.
+
+    File and directory names may legally contain newlines (and other control
+    characters) on macOS/Linux. Left raw, a name like ``foo\nrm -rf ~`` would
+    split ``"\n".join(...)`` into multiple physical lines, leaving the tail as
+    an *uncommented*, executable line in the "everything is commented out"
+    script. Escape every C0 control char (and DEL) to a visible backslash form
+    so the reviewer sees one line and nothing runs unexpectedly.
+    """
+    out: list[str] = []
+    for ch in value:
+        code = ord(ch)
+        if ch == "\n":
+            out.append("\\n")
+        elif ch == "\r":
+            out.append("\\r")
+        elif ch == "\t":
+            out.append("\\t")
+        elif code < _ASCII_SPACE or code == _ASCII_DEL:
+            out.append(f"\\x{code:02x}")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
 def build_script(report: Report) -> str:
     """Emit a reviewable shell script with every destructive line commented out."""
     lines: list[str] = [
@@ -304,11 +333,11 @@ def build_script(report: Report) -> str:
         total = sum(e.size_bytes for e in entries)
         risks = {e.risk.value for e in entries}
         risk = risks.pop() if len(risks) == 1 else "mixed"
-        lines.append(f"# --- {provider}: {total} bytes freed, risk={risk} ---")
+        lines.append(f"# --- {_comment_safe(provider)}: {total} bytes freed, risk={risk} ---")
         lines.append(f"# {len(entries)} entr{'y' if len(entries) == 1 else 'ies'}")
         for e in entries:
-            lines.append(f"#   [{e.size_bytes} B] {e.label}")
+            lines.append(f"#   [{e.size_bytes} B] {_comment_safe(e.label)}")
             for cmd in e.recipe:
-                lines.append(f"#   {cmd}")
+                lines.append(f"#   {_comment_safe(cmd)}")
         lines.append("")
     return "\n".join(lines)

@@ -36,7 +36,9 @@ class ProviderInfo(BaseModel):
 
 
 class CleanJobCreate(BaseModel):
-    entry_ids: list[str] = Field(min_length=1)
+    # Upper bound guards against a pathological request; a real scan never
+    # produces anywhere near this many entries.
+    entry_ids: list[str] = Field(min_length=1, max_length=10_000)
     yes_safe: bool = False
     allow_dangerous: bool = False
 

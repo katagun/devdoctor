@@ -9,7 +9,7 @@ Python package and CLI remain named `diskdoctor` during the transition.
 ## Install
 
 ```bash
-uv tool install --from git+https://github.com/<you>/diskdoctor diskdoctor
+uv tool install --from git+https://github.com/katagun/diskdoctor diskdoctor
 # or from a local clone:
 uv tool install .
 ```
@@ -42,10 +42,6 @@ diskdoctor providers                  # show registered providers and their avai
 - `clean` defaults to **preview only** — zero prompts, zero shell commands.
 - `recipe` always emits a **commented-out** script. You review and uncomment what you want.
 - Entries are labelled **safe / reclaimable / dangerous**. DANGEROUS entries are *skipped* unless you pass `--allow-dangerous`.
-
-## Design
-
-See [docs/superpowers/specs/2026-04-18-diskdoctor-design.md](docs/superpowers/specs/2026-04-18-diskdoctor-design.md).
 
 ## Web UI
 

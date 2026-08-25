@@ -28,3 +28,7 @@ web/dist-backend/*
 src/diskdoctor/web/_static/dist/*
 !src/diskdoctor/web/_static/dist/.keep
 !src/diskdoctor/web/_static/dist/index.html
+docs/archive/
+
+# Local Claude Code settings (per-machine; never commit)
+.claude/settings.local.json

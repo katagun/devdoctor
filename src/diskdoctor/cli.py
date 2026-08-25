@@ -28,6 +28,45 @@ _SIZE_MULT = {"": 1, "K": 1_000, "M": 1_000_000, "G": 1_000_000_000, "T": 1_000_
 _MIN_SNAPSHOTS_FOR_DIFF = 2
 
 
+def _open_browser_when_ready(
+    health_url: str,
+    open_url: str,
+    *,
+    timeout_s: float = 15.0,
+    poll_interval_s: float = 0.1,
+) -> None:
+    """Open the default browser once the server responds, from a daemon thread.
+
+    Polls `health_url` until it answers (or `timeout_s` elapses, in which case
+    it gives up silently). This avoids racing uvicorn's socket bind: opening
+    the browser before the server is listening paints a "can't connect" page.
+    """
+    # Lazy stdlib imports: only the `serve` path needs any of this.
+    import contextlib  # noqa: PLC0415
+    import threading  # noqa: PLC0415
+    import time  # noqa: PLC0415
+    import urllib.request  # noqa: PLC0415
+    import webbrowser  # noqa: PLC0415
+
+    def _poll_then_open() -> None:
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            try:
+                with urllib.request.urlopen(health_url, timeout=1.0):
+                    break
+            except Exception:  # best effort; any startup-race error → retry
+                # urlopen can raise OSError, HTTPError, or http.client.* errors
+                # (e.g. RemoteDisconnected, which is not an OSError) while the
+                # server is still binding. Any of them just means "not ready".
+                time.sleep(poll_interval_s)
+        else:
+            return  # server never came up; don't open a broken page
+        with contextlib.suppress(Exception):
+            webbrowser.open(open_url)
+
+    threading.Thread(target=_poll_then_open, name="devdoctor-open-browser", daemon=True).start()
+
+
 def _pick_free_port() -> int:
     """Ask the kernel for an unused TCP port on 127.0.0.1.
 
@@ -273,9 +312,6 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
             ctx.exit(1)
             return
 
-        import contextlib  # noqa: PLC0415 - lazy; only needed in this path
-        import webbrowser  # noqa: PLC0415 - lazy; only needed in this path
-
         bind_port = port or _pick_free_port()
         allowed_hosts = {f"127.0.0.1:{bind_port}", f"localhost:{bind_port}"}
         app = build_app(ctx.obj["shell"], allowed_hosts=allowed_hosts)
@@ -284,11 +320,13 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         click.echo(f"DevDoctor web UI -> {url}\nCtrl-C to stop.")
 
         if not no_browser:
-            # Swallow every error: headless CI, missing DISPLAY, broken
-            # BROWSER env var, Safari AppleScript hiccups — none of these
-            # should stop the server from starting.
-            with contextlib.suppress(Exception):
-                webbrowser.open(url)
+            # Open the browser only once the server actually answers — opening
+            # before the bind races uvicorn's startup and paints a "can't
+            # connect" page. A daemon thread polls /api/health briefly, then
+            # opens (or gives up silently). Swallow every error: headless CI,
+            # missing DISPLAY, broken BROWSER env var, Safari AppleScript
+            # hiccups — none of these should stop the server from starting.
+            _open_browser_when_ready(f"{url}/api/health", url)
 
         try:
             uvicorn.run(app, host="127.0.0.1", port=bind_port, log_level="info")

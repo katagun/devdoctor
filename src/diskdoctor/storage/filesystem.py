@@ -29,6 +29,69 @@ from diskdoctor.storage.base import (
 )
 from diskdoctor.types import Report, SnapshotKind
 
+# Extra observations tolerated above `keep` before a prune rewrites the file.
+# Batches the O(file) rewrite across this many appends instead of every write.
+_PRUNE_SLACK = 256
+
+# Enough to hold the last JSONL record even for a busy machine (dozens of
+# consumers). If a single record ever exceeds this, the tail read simply
+# reports "no latest" and the caller records again — a safe over-count.
+_TAIL_READ_BYTES = 256 * 1024
+
+
+def _count_lines(path: Path) -> int:
+    """Count newlines in a file cheaply (binary, no decode/parse)."""
+    total = 0
+    try:
+        with path.open("rb") as f:
+            while True:
+                block = f.read(1 << 20)
+                if not block:
+                    break
+                total += block.count(b"\n")
+    except OSError:
+        return 0
+    return total
+
+
+def _read_last_json_line(path: Path) -> dict[str, Any] | None:
+    """Parse the last non-empty JSON object in an append-only JSONL file.
+
+    Reads only a bounded tail rather than the whole file. Returns None if the
+    file is missing/empty or the final record can't be parsed.
+    """
+    try:
+        with path.open("rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - _TAIL_READ_BYTES))
+            data = f.read()
+    except OSError:
+        return None
+    lines = [ln for ln in data.split(b"\n") if ln.strip()]
+    if not lines:
+        return None
+    try:
+        payload = json.loads(lines[-1])
+    except json.JSONDecodeError:
+        return None
+    return cast(dict[str, Any], payload) if isinstance(payload, dict) else None
+
+
+def _safe_component(name: str) -> str:
+    """Reject any snapshot name that isn't a single, literal path component.
+
+    Snapshot names arrive from HTTP query params (`/api/diff`,
+    `/api/memory/snapshots/diff`) and get joined onto the storage directory.
+    A name containing `/`, `..`, or an absolute path would escape that
+    directory (`Path(dir) / "/etc/x" == Path("/etc/x")`), turning the loader
+    into an arbitrary-file read. Callers treat the raised error as "not
+    found", so bad names are indistinguishable from missing snapshots.
+    """
+    if name != Path(name).name or name in ("", ".", ".."):
+        raise FileNotFoundError(name)
+    return name
+
 
 class FilesystemStorage:
     def __init__(self, *, data_dir: Path | None = None) -> None:
@@ -79,7 +142,7 @@ class FilesystemStorage:
         return out
 
     def load_disk_snapshot(self, name: str) -> Report:
-        path = self.snapshot_dir() / name
+        path = self.snapshot_dir() / _safe_component(name)
         if not path.is_file():
             raise FileNotFoundError(name)
         return Report.from_json(path.read_text())
@@ -159,7 +222,27 @@ class FilesystemStorage:
                 return stored
         raise FileNotFoundError(observation_id)
 
+    def latest_memory_observation(self) -> MemoryObservationMeta | None:
+        """Return the newest observation's metadata without parsing the file.
+
+        Observations are appended chronologically, so the last line is the
+        newest. Reading just that line keeps the dashboard's per-poll
+        "should I record?" check O(1) instead of deserializing every stored
+        observation on every poll.
+        """
+        payload = _read_last_json_line(self.memory_observations_path())
+        if payload is None:
+            return None
+        return _memory_observation_meta(_stored_observation_from_payload(payload))
+
     def prune_memory_observations(self, *, keep: int) -> list[str]:
+        # Cheap gate: only pay the full read + rewrite once we're meaningfully
+        # over the cap. A per-write rewrite of the whole JSONL (the dashboard
+        # writes on every recorded poll) is the dominant cost otherwise; the
+        # slack amortizes it across many appends.
+        target = self.memory_observations_path()
+        if not target.is_file() or _count_lines(target) <= keep + _PRUNE_SLACK:
+            return []
         observations = sorted(
             self._read_memory_observations(),
             key=lambda row: row.report.scanned_at,
@@ -168,11 +251,14 @@ class FilesystemStorage:
         victims = observations[keep:]
         if not victims:
             return []
-        target = self.memory_observations_path()
         tmp = target.with_name(target.name + ".tmp")
         try:
             with tmp.open("w", encoding="utf-8") as f:
-                for stored in observations[:keep]:
+                # `observations` is newest-first; write oldest-last so the file
+                # stays in chronological append order. `latest_memory_observation`
+                # reads the final line as the newest — writing newest-first here
+                # would make it return the oldest kept observation instead.
+                for stored in reversed(observations[:keep]):
                     line = json.dumps(_stored_observation_to_payload(stored), sort_keys=True)
                     f.write(line + "\n")
             os.replace(tmp, target)
@@ -214,7 +300,7 @@ class FilesystemStorage:
         return snapshots[:limit] if limit is not None else snapshots
 
     def load_memory_snapshot(self, name: str) -> StoredMemorySnapshot:
-        path = self.memory_snapshots_dir() / f"{name}.json"
+        path = self.memory_snapshots_dir() / f"{_safe_component(name)}.json"
         if not path.is_file():
             raise FileNotFoundError(name)
         try:

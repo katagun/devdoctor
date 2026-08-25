@@ -27,6 +27,11 @@ type Action =
   | { type: "TOGGLE_ENABLED"; id: string; next: boolean }
   | { type: "CLOSE" };
 
+// Only the tail of the console is ever rendered (ExecuteStep shows the last
+// line), but a verbose command can stream thousands of chunks. Cap the buffer
+// so a long-running cleanup doesn't grow state without bound.
+const MAX_CONSOLE_LINES = 200;
+
 export function reducer(state: WizardState, action: Action): WizardState {
   switch (action.type) {
     case "START":
@@ -71,7 +76,7 @@ export function reducer(state: WizardState, action: Action): WizardState {
           ...state.progress,
           [action.entry_id]: {
             ...prev,
-            consoleLines: [...prev.consoleLines, action.chunk],
+            consoleLines: [...prev.consoleLines, action.chunk].slice(-MAX_CONSOLE_LINES),
           },
         },
       };

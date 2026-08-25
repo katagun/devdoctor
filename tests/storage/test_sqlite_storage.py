@@ -49,7 +49,7 @@ def test_sqlite_storage_snapshot_round_trip(tmp_path: Path) -> None:
 
     stored = storage.write_disk_snapshot(_report(ts))
 
-    assert stored.name == "2026-05-04T12-00-00--manual.json"
+    assert stored.name == "2026-05-04T12-00-00-000000--manual.json"
     assert stored.path.startswith("sqlite://")
     assert storage.load_disk_snapshot(stored.name).scanned_at == ts
     listed = storage.list_disk_snapshots()

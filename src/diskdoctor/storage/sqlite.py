@@ -391,6 +391,11 @@ class SQLiteStorage:
             ).fetchall()
         return [_memory_observation_meta_from_row(row) for row in rows]
 
+    def latest_memory_observation(self) -> MemoryObservationMeta | None:
+        # Indexed ORDER BY scanned_at DESC LIMIT 1 — no full scan.
+        rows = self.list_memory_observations(limit=1)
+        return rows[0] if rows else None
+
     def load_memory_observation(self, observation_id: str) -> StoredMemoryObservation:
         with self._connect() as conn:
             row = conn.execute(
@@ -522,11 +527,19 @@ class SQLiteStorage:
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
         conn.row_factory = sqlite3.Row
+        # The CLI and web server can write this DB concurrently. WAL lets a
+        # reader proceed during a write, and busy_timeout makes a contending
+        # writer wait instead of failing immediately with "database is locked".
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         return conn
 
 
 def _snapshot_name(report: Report) -> str:
-    stamp = report.scanned_at.strftime("%Y-%m-%dT%H-%M-%S")
+    # Microsecond precision so two same-second scans don't collide on the
+    # primary key and clobber each other via INSERT OR REPLACE. Matches the
+    # filesystem backend's naming so import_filesystem dedupes correctly.
+    stamp = report.scanned_at.strftime("%Y-%m-%dT%H-%M-%S-%f")
     return f"{stamp}--{report.kind.value}.json"
 
 

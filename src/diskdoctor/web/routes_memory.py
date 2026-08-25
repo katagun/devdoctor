@@ -188,6 +188,7 @@ def memory_action(
         kind=body.kind,
         target_id=body.target_id,
         confirmed=body.confirmed,
+        expected_name=body.label,
     )
     if body.confirmed:
         with contextlib.suppress(OSError):
@@ -307,10 +308,9 @@ def _should_record_memory(
     report: MemoryReport,
     min_interval_ms: int | None,
 ) -> bool:
-    latest = storage.list_memory_observations(limit=1)
-    if not latest:
+    previous = storage.latest_memory_observation()
+    if previous is None:
         return True
-    previous = latest[0]
     if previous.pressure != report.system.pressure:
         return True
     if min_interval_ms is None or min_interval_ms <= 0:
