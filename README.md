@@ -43,10 +43,6 @@ diskdoctor providers                  # show registered providers and their avai
 - `recipe` always emits a **commented-out** script. You review and uncomment what you want.
 - Entries are labelled **safe / reclaimable / dangerous**. DANGEROUS entries are *skipped* unless you pass `--allow-dangerous`.
 
-## Design
-
-See [docs/superpowers/specs/2026-04-18-diskdoctor-design.md](docs/superpowers/specs/2026-04-18-diskdoctor-design.md).
-
 ## Web UI
 
 ```bash
