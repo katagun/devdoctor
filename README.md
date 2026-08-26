@@ -112,6 +112,11 @@ uv run ruff check src tests
 uv run mypy src
 ```
 
+## Roadmap
+
+The CLI and web UI ship today; the desktop app and more are on the way. See
+[ROADMAP.md](ROADMAP.md) and the [issue tracker](https://github.com/katagun/devdoctor/issues).
+
 ## Contributing
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup,
