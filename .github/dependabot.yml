@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # Keep pinned GitHub Actions SHAs current (security-critical for a public repo).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    labels: ["tech-debt"]
+
+  # Web UI dependencies (package-lock.json is committed).
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    groups:
+      dev-dependencies:
+        dependency-type: development
+      production-dependencies:
+        dependency-type: production
+    labels: ["tech-debt"]
