@@ -1,15 +1,20 @@
 # DevDoctor
 
+[![CI](https://github.com/katagun/devdoctor/actions/workflows/ci.yml/badge.svg)](https://github.com/katagun/devdoctor/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 DevDoctor is a local developer workstation resource manager.
 
 Today it includes the original diskdoctor workflow: repeatable disk-cache
 analysis and interactive cleanup for macOS and Linux. The current installable
 Python package and CLI remain named `diskdoctor` during the transition.
 
+**[See what it does → katagun.github.io/devdoctor](https://katagun.github.io/devdoctor/)**
+
 ## Install
 
 ```bash
-uv tool install --from git+https://github.com/katagun/diskdoctor diskdoctor
+uv tool install --from git+https://github.com/katagun/devdoctor diskdoctor
 # or from a local clone:
 uv tool install .
 ```
@@ -106,3 +111,18 @@ uv run pytest
 uv run ruff check src tests
 uv run mypy src
 ```
+
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup,
+the checks CI runs, and the safety conventions to preserve. Bug reports and
+feature requests go through **Issues → New issue**.
+
+## Security
+
+DevDoctor runs destructive commands, so please report vulnerabilities privately
+rather than in a public issue. See [SECURITY.md](SECURITY.md).
+
+## License
+
+[MIT](LICENSE)
