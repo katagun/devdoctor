@@ -4,6 +4,18 @@ DevDoctor is pre-1.0. The **CLI and local web UI ship today**; this roadmap
 tracks what's next. It's a snapshot of intent, not a commitment to dates — the
 living backlog lives in [GitHub Issues](https://github.com/katagun/devdoctor/issues).
 
+## Recently shipped
+
+- **Public launch** — renamed to `devdoctor`, MIT-licensed, a public
+  [landing page](https://katagun.github.io/devdoctor/), and community docs
+  (CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, issue/PR templates).
+- **Security & architecture review** — fixed a snapshot path traversal,
+  command injection into the generated cleanup script, terminal-escape
+  injection via filenames, a stale-PID kill, and several data-loss mislabels;
+  hardened the cleanup and memory paths.
+- **CI & repo hardening** — GitHub Actions CI (Python + web), CodeQL,
+  Dependabot, web ESLint, CODEOWNERS, and SHA-pinned actions.
+
 ## Now — in progress / up next
 
 - **Desktop app** — a hardened Electron app so you can double-click to launch,
@@ -26,7 +38,8 @@ living backlog lives in [GitHub Issues](https://github.com/katagun/devdoctor/iss
 - **Structured logging & diagnostics** — surface "permission denied" vs
   "nothing to clean" instead of silently swallowing errors.
   ([#10](https://github.com/katagun/devdoctor/issues/10))
-- **Supply-chain automation** — Dependabot, a changelog, and a release process.
+- **Release process** — a `CHANGELOG.md` and a lightweight, repeatable release
+  flow. (Dependabot, CodeQL, and CI have already landed.)
   ([#15](https://github.com/katagun/devdoctor/issues/15))
 
 ## Later — on the radar
