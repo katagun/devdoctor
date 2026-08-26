@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "DevDoctor desktop shell and web UI",
-  "author": "Shamil",
+  "author": "embark-delve",
   "type": "module",
   "main": "electron/main.mjs",
   "scripts": {
