@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a new capability or improvement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the situation, not just the solution you have in mind.
+      placeholder: When my disk fills up with …, I want to …
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like DevDoctor to do?
+    validations:
+      required: false
+  - type: input
+    id: provider
+    attributes:
+      label: Related tool / cache (if this is a new provider)
+      description: e.g. a cache directory or CLI DevDoctor should learn about.
+      placeholder: ~/.cache/<tool>
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+    validations:
+      required: false
