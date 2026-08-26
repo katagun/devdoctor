@@ -274,6 +274,9 @@ a{color:inherit;text-decoration:none}
 .face .ft{display:flex;align-items:center;gap:.6rem}
 .face .ft .ic{width:20px;height:20px;color:var(--accent)}
 .face .ft b{font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:1.05rem}
+.face .soon-tag{margin-left:auto;font-family:"JetBrains Mono",monospace;font-size:.6rem;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-bright);border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);background:color-mix(in srgb,var(--accent) 12%,transparent);border-radius:999px;padding:.22rem .5rem;white-space:nowrap}
+.face.soon{border-style:dashed}
+.face.soon > p,.face.soon > ul{opacity:.72}
 .face p{color:var(--text-dim);font-size:.88rem}
 .face ul{margin:.3rem 0 0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:.4rem}
 .face li{font-size:.84rem;color:var(--text-dim);display:flex;gap:.55rem;align-items:flex-start}
@@ -410,8 +413,8 @@ a{color:inherit;text-decoration:none}
       </div>
       <div class="feat">
         <svg class="ic" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 20h8M12 17v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M6.5 9.5 9 12l-2.5 2.5M11 14.5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <h3>CLI, web &amp; desktop</h3>
-        <p>Rich terminal tables with JSON output for scripting, a local web dashboard with a live cleanup wizard, and a hardened Electron desktop app — same engine underneath.</p>
+        <h3>CLI &amp; web today, desktop soon</h3>
+        <p>Rich terminal tables with JSON output for scripting and a local web dashboard with a live cleanup wizard — both shipping now, with a hardened desktop app on the way. Same engine underneath.</p>
       </div>
       <div class="feat">
         <svg class="ic" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3C7 5 5 5 5 5v6c0 5 3.5 8 7 10 3.5-2 7-5 7-10V5s-2 0-7-2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="10.5" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M12 12.5V15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -538,9 +541,9 @@ a{color:inherit;text-decoration:none}
 <section class="section" id="interfaces">
   <div class="wrap">
     <div class="head">
-      <span class="eyebrow">Three ways in</span>
+      <span class="eyebrow">Two ways in today, a third on the way</span>
       <h2>Live in the terminal, or don't. Same engine.</h2>
-      <p class="lede">A single Python core drives all three surfaces, so a scan means the same thing whether you typed it or clicked it.</p>
+      <p class="lede">A single Python core drives every surface, so a scan means the same thing whether you typed it or clicked it. The CLI and web UI ship today; the desktop app is in progress.</p>
     </div>
     <div class="faces">
       <div class="face">
@@ -561,13 +564,13 @@ a{color:inherit;text-decoration:none}
           <li>History, snapshots &amp; settings</li>
         </ul>
       </div>
-      <div class="face">
-        <div class="ft"><svg class="ic" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><b>Desktop app</b></div>
-        <p>A hardened Electron app that bundles the backend — double-click to launch, no terminal required. Context-isolated and sandboxed.</p>
+      <div class="face soon">
+        <div class="ft"><svg class="ic" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><b>Desktop app</b><span class="soon-tag">Coming soon</span></div>
+        <p>A hardened Electron desktop app is in the works — double-click to launch, no terminal required. It's not released yet; for now, use the CLI or the web UI.</p>
         <ul>
-          <li>One-click launch, bundled engine</li>
-          <li>Full Disk Access guidance built in</li>
-          <li>Loopback-only, sandboxed renderer</li>
+          <li>Planned: one-click launch, bundled engine</li>
+          <li>Planned: Full Disk Access guidance built in</li>
+          <li>Context-isolated, sandboxed, loopback-only</li>
         </ul>
       </div>
     </div>
