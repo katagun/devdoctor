@@ -18,16 +18,11 @@ function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 export default function AppShell() {
+  // All hooks are called unconditionally, before any early return, so the hook
+  // call order is identical on every render (rules-of-hooks). The blocked gate
+  // below only changes what's rendered, not which hooks run.
   useApplyTheme();
   const support = useDeviceSupport();
-
-  // Early return gate. A given browser session is either always blocked or
-  // always supported — navigator.userAgent doesn't change within a mount —
-  // so this never violates rules-of-hooks about consistent hook call order.
-  if (support.kind === "blocked") {
-    return <UnsupportedDevice detected={support.detected} />;
-  }
-
   const { width, toggle, forceCollapsedByViewport } = useSidebarWidth();
 
   useEffect(() => {
@@ -44,6 +39,10 @@ export default function AppShell() {
     window.addEventListener("keydown", onKeydown);
     return () => window.removeEventListener("keydown", onKeydown);
   }, [toggle, forceCollapsedByViewport]);
+
+  if (support.kind === "blocked") {
+    return <UnsupportedDevice detected={support.detected} />;
+  }
 
   return (
     <div
