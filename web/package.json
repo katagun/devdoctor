@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "electron:dev": "electron electron/main.mjs",
-    "backend:build": "cd .. && uv run python scripts/build_backend.py",
+    "backend:build": "cd .. && uv run --extra dev --extra web python scripts/build_backend.py",
     "electron:pack": "npm run build && npm run backend:build && node electron/check-backend-bundle.mjs && electron-builder --config electron-builder.json --dir",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
