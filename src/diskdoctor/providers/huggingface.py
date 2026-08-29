@@ -37,7 +37,8 @@ class HuggingFaceProvider(Provider):
                 continue
             kind = m.group(1)
             repo_id = m.group(2).replace("--", "/")
-            size, _ = size_path(repo)
+            size, skipped = size_path(repo)
+            self._note_skipped(skipped)
             label = f"{kind}:{repo_id}"
             try:
                 mtime: float | None = repo.lstat().st_mtime

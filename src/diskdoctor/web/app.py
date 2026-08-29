@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from importlib import resources
 from pathlib import Path
@@ -13,6 +14,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.types import Scope
 
 from diskdoctor.config import load_app_settings
+from diskdoctor.logging_config import configure_logging
 from diskdoctor.ports import Shell
 from diskdoctor.storage import build_storage
 from diskdoctor.web.middleware import HostHeaderMiddleware
@@ -82,6 +84,11 @@ def build_app(
     build_app returns is automatically re-inserted before the mount, so
     explicit /api routes win over the StaticFiles catch-all.
     """
+    # Make backend logs visible when the web UI runs. This attaches our handler
+    # to the `diskdoctor` logger once; it's idempotent and does not touch
+    # uvicorn's own logging config. DISKDOCTOR_VERBOSE=1 raises us to DEBUG.
+    configure_logging(_env_flag("DISKDOCTOR_VERBOSE"))
+
     app = FastAPI(title="DevDoctor", version="0.1.0")
     app.add_middleware(HostHeaderMiddleware, allowed_hosts=allowed_hosts)
     app.state.shell = shell
@@ -147,6 +154,10 @@ def _install_spa_last_hook(app: FastAPI, spa_mount: Mount) -> None:
 
     for name in ("add_api_route", "add_route", "add_websocket_route", "add_api_websocket_route"):
         _wrap(name)
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _resolve_static(override: Path | None) -> Path:

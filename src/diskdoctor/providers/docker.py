@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 
 from diskdoctor.providers.base import Provider
 from diskdoctor.types import Entry, Risk
+
+logger = logging.getLogger(__name__)
 
 _SIZE_UNITS = {"B": 1, "KB": 1_000, "MB": 1_000_000, "GB": 1_000_000_000, "TB": 1_000_000_000_000}
 _SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(B|KB|MB|GB|TB)")
@@ -47,8 +50,20 @@ class DockerProvider(Provider):
     def discover(self) -> list[Entry]:
         result = self._shell.run(["docker", "system", "df", "--format", "json"], check=False)
         if result.returncode != 0 or not result.stdout.strip():
+            # `available()` already confirmed the docker binary exists, so a
+            # non-zero exit here means docker is installed but not usable right
+            # now (daemon down, permission denied). Worth a warning rather than
+            # a silent empty scan.
+            msg = (
+                f"docker: `docker system df` failed (exit {result.returncode}); "
+                "reporting no reclaimable docker space"
+            )
+            logger.warning("%s: %s", msg, result.stderr.strip() or "no stderr")
+            self.diagnostics.append(msg)
             return []
         items_by_id = _parse_df(result.stdout)
+        if not items_by_id:
+            logger.debug("docker: `docker system df` output had no parseable rows")
 
         entries: list[Entry] = []
         for id_, cmd in _CATEGORIES:

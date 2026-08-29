@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import uuid
 from collections.abc import Mapping
@@ -28,6 +29,8 @@ from diskdoctor.storage.base import (
     StoredSnapshotMeta,
 )
 from diskdoctor.types import Report, SnapshotKind
+
+logger = logging.getLogger(__name__)
 
 # Extra observations tolerated above `keep` before a prune rewrites the file.
 # Batches the O(file) rewrite across this many appends instead of every write.
@@ -133,6 +136,7 @@ class FilesystemStorage:
             try:
                 report = Report.from_json(path.read_text())
             except Exception:
+                logger.warning("storage: skipping unreadable snapshot %s", path, exc_info=True)
                 continue
             if kind is not None and report.kind != kind:
                 continue
@@ -171,12 +175,17 @@ class FilesystemStorage:
         try:
             payload = json.loads(target.read_text())
         except json.JSONDecodeError:
+            logger.warning("storage: dashboard summary %s is not valid JSON; ignoring", target)
             return None
         if not isinstance(payload, dict):
+            logger.warning("storage: dashboard summary %s is not a JSON object; ignoring", target)
             return None
         try:
             return disk_dashboard_summary_from_dict(cast(dict[str, object], payload))
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.warning(
+                "storage: dashboard summary %s has bad shape (%s); ignoring", target, exc
+            )
             return None
 
     def append_audit_event(self, event: Mapping[str, object]) -> None:
@@ -319,6 +328,7 @@ class FilesystemStorage:
                 try:
                     payload = json.loads(raw)
                 except json.JSONDecodeError:
+                    logger.warning("storage: skipping unparseable line in %s", target)
                     continue
                 if isinstance(payload, dict):
                     out.append(_stored_observation_from_payload(cast(dict[str, Any], payload)))
@@ -333,6 +343,7 @@ class FilesystemStorage:
             try:
                 payload = json.loads(path.read_text())
             except json.JSONDecodeError:
+                logger.warning("storage: skipping unreadable memory snapshot %s", path)
                 continue
             if isinstance(payload, dict):
                 out.append(_stored_snapshot_from_payload(cast(dict[str, Any], payload)))

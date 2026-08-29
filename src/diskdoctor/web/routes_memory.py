@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import contextlib
+import logging
 from collections.abc import Iterable
 from datetime import datetime
 from typing import Literal, cast
@@ -59,6 +59,9 @@ from diskdoctor.web.models import (
 )
 
 router = APIRouter(prefix="/api")
+
+logger = logging.getLogger(__name__)
+
 _MEMORY_OBSERVATION_RETENTION = 2_000
 
 
@@ -78,8 +81,8 @@ def memory(
             try:
                 storage.write_memory_observation(report, suggestions)
                 storage.prune_memory_observations(keep=_MEMORY_OBSERVATION_RETENTION)
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.warning("memory: failed to persist observation: %s", exc)
     return _report_to_info(report, suggestions, provider_ids=provider_ids)
 
 
@@ -191,7 +194,7 @@ def memory_action(
         expected_name=body.label,
     )
     if body.confirmed:
-        with contextlib.suppress(OSError):
+        try:
             _storage(request).append_audit_event(
                 {
                     "type": "memory_action",
@@ -205,6 +208,8 @@ def memory_action(
                     "message": result.message,
                 }
             )
+        except OSError as exc:
+            logger.warning("memory: failed to append audit event for action %s: %s", body.id, exc)
     return _action_result_to_info(result)
 
 

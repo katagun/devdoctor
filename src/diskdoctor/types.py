@@ -109,6 +109,12 @@ class Report:
     platform: str
     note: str | None = None
     skipped_paths: list[str] = field(default_factory=list)
+    # Human-readable notes about anything that went wrong during the scan but
+    # did not abort it — e.g. "N path(s) skipped (permission denied)" from the
+    # sizer, or a provider whose discovery command failed. Purely additive and
+    # capped by producers; old snapshots without the key default to []. Surfaced
+    # in the CLI table and the /api/scan JSON so failures aren't silent.
+    diagnostics: list[str] = field(default_factory=list)
     # Telemetry — defaults preserve the pre-v2 semantics so ad-hoc callers
     # (tests, CLI) that construct Report by hand keep working unchanged.
     kind: SnapshotKind = SnapshotKind.MANUAL
@@ -153,6 +159,7 @@ class Report:
             platform=self.platform,
             note=self.note,
             skipped_paths=list(self.skipped_paths),
+            diagnostics=list(self.diagnostics),
             kind=self.kind,
             started_at=self.started_at,
             duration_ms=self.duration_ms,
@@ -208,6 +215,7 @@ class Report:
             "per_provider": per_provider_payload,
             "entries": entries_payload,
             "skipped_paths": list(self.skipped_paths),
+            "diagnostics": list(self.diagnostics),
         }
         return json.dumps(payload, indent=2, sort_keys=True)
 
@@ -267,6 +275,9 @@ class Report:
             platform=payload["platform"],
             note=payload.get("note"),
             skipped_paths=list(payload.get("skipped_paths", [])),
+            # Additive field: snapshots written before diagnostics existed have
+            # no key, so default to [] to keep old snapshots loadable.
+            diagnostics=list(payload.get("diagnostics", [])),
             kind=kind,
             started_at=started_at,
             duration_ms=payload.get("duration_ms"),

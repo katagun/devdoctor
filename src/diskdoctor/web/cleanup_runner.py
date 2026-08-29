@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -18,6 +19,8 @@ from diskdoctor.types import (
     ShellResult,
 )
 from diskdoctor.web.subprocess_stream import OnChunk
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -139,8 +142,15 @@ class CleanupRunner:
             else:
                 history_log.append_event(payload)
         except Exception:
-            # Never let audit logging break the job outcome.
-            pass
+            # Never let audit logging break the job outcome — but a silently
+            # dropped AUDIT record is exactly the kind of failure that must not
+            # vanish, so log it (with traceback) before swallowing.
+            logger.warning(
+                "cleanup audit write failed for job %s (outcome=%s); event not persisted",
+                self.id,
+                outcome,
+                exc_info=True,
+            )
 
     async def _run_execute_step(self, entry: Entry, line: str) -> ShellResult:
         """Emit execute_start, stream progress, return the final ShellResult."""
