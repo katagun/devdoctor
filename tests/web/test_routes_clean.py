@@ -39,54 +39,54 @@ def _build_for_port(tmp_path: Path, monkeypatch, port: int):
     return _build(tmp_path, monkeypatch, extra_hosts={f"127.0.0.1:{port}"})
 
 
-def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 @contextlib.contextmanager
-def _run_server(app, port: int):
-    """Run uvicorn in a background thread bound to 127.0.0.1:port.
+def _run_server(app, sock: socket.socket):
+    """Run uvicorn in a background thread on a pre-bound loopback socket.
 
-    httpx.ASGITransport buffers responses to completion (it collects all
-    ``http.response.body`` chunks before returning), so it cannot drive the
-    infinite SSE stream. A real uvicorn server gives us proper chunked
-    streaming end-to-end.
+    Two deliberate choices keep this deterministic and off deprecated APIs:
+
+    - We bind the socket ourselves and hand it to uvicorn (``sockets=[sock]``),
+      so there's no free-port TOCTOU — the port can't be grabbed by another
+      process in the window between "find a free port" and "uvicorn binds it".
+    - ``ws="none"`` stops uvicorn from importing the deprecated ``websockets``
+      legacy server classes. This is an SSE test with no websockets involved,
+      so we skip that machinery entirely (and its DeprecationWarnings).
+
+    A real server (rather than httpx.ASGITransport) is still required: the
+    transport buffers the whole response before returning, which can't drive
+    the interactive SSE stream where the client POSTs answers between events.
     """
-    config = uvicorn.Config(
-        app,
-        host="127.0.0.1",
-        port=port,
-        log_level="warning",
-        lifespan="off",
-    )
+    config = uvicorn.Config(app, log_level="warning", lifespan="off", ws="none")
     server = uvicorn.Server(config)
 
-    thread = threading.Thread(target=server.run, daemon=True)
+    thread = threading.Thread(target=lambda: server.run(sockets=[sock]), daemon=True)
     thread.start()
     try:
-        # Wait for server to be ready
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
             if server.started:
                 break
-            time.sleep(0.05)
+            time.sleep(0.02)
         else:
             raise RuntimeError("uvicorn did not start in time")
         yield
     finally:
         server.should_exit = True
         thread.join(timeout=5)
+        with contextlib.suppress(OSError):
+            sock.close()
 
 
 @pytest.mark.asyncio
 async def test_full_clean_job_lifecycle_via_sse(tmp_path, monkeypatch):
-    port = _free_port()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
     app = _build_for_port(tmp_path, monkeypatch, port)
     base_url = f"http://127.0.0.1:{port}"
 
-    with _run_server(app, port):
+    with _run_server(app, sock):
         async with AsyncClient(base_url=base_url) as client:
             # Learn the one entry's id via /api/scan
             r = await client.get("/api/scan")
