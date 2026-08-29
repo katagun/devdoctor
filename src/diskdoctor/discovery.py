@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import socket
 import sys
 import time
@@ -7,6 +8,8 @@ from datetime import UTC, datetime
 
 from diskdoctor.providers.base import Provider
 from diskdoctor.types import ProviderTiming, Report, ScanFilters, SnapshotKind
+
+logger = logging.getLogger(__name__)
 
 
 def scan(
@@ -24,6 +27,7 @@ def scan(
     started_at = datetime.now(UTC)
     entries = []
     per_provider: list[ProviderTiming] = []
+    diagnostics: list[str] = []
     for p in providers:
         if not p.available():
             continue
@@ -36,6 +40,9 @@ def scan(
         provider_entries = [e for e in p.discover() if e.size_bytes > 0]
         dt_ms = int((time.monotonic() - t0) * 1000)
         entries.extend(provider_entries)
+        # Drain anything the provider flagged during discover() (skipped paths,
+        # failed commands) so it surfaces in the Report instead of vanishing.
+        diagnostics.extend(p.diagnostics)
         per_provider.append(
             ProviderTiming(
                 name=p.name,
@@ -49,6 +56,9 @@ def scan(
 
     entries.sort(key=lambda e: e.size_bytes, reverse=True)
 
+    if diagnostics:
+        logger.info("scan completed with %d diagnostic note(s)", len(diagnostics))
+
     report = Report(
         entries=entries,
         scanned_at=scanned_at,
@@ -58,6 +68,7 @@ def scan(
         started_at=started_at,
         duration_ms=duration_ms,
         per_provider=per_provider,
+        diagnostics=diagnostics,
     )
 
     if filters.min_size_bytes or filters.risks is not None or filters.providers is not None:

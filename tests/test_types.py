@@ -357,6 +357,39 @@ def test_v1_snapshot_deserializes_as_manual_without_timings() -> None:
     assert restored.per_provider == []
 
 
+def test_report_round_trip_preserves_diagnostics() -> None:
+    r = _report(diagnostics=["docker: skipped 3 path(s)", "some-provider: command failed"])
+    restored = Report.from_json(r.to_json())
+    assert restored.diagnostics == [
+        "docker: skipped 3 path(s)",
+        "some-provider: command failed",
+    ]
+
+
+def test_report_diagnostics_defaults_to_empty() -> None:
+    assert _report().diagnostics == []
+
+
+def test_old_snapshot_without_diagnostics_key_defaults_empty() -> None:
+    # A snapshot written before the diagnostics field existed has no key.
+    payload = {
+        "schema_version": 2,
+        "entries": [],
+        "scanned_at": "2026-04-24T12:00:00+00:00",
+        "hostname": "h",
+        "platform": "darwin",
+        "note": None,
+        "skipped_paths": [],
+    }
+    restored = Report.from_json(json.dumps(payload))
+    assert restored.diagnostics == []
+
+
+def test_filter_preserves_diagnostics() -> None:
+    r = _report(diagnostics=["one", "two"])
+    assert r.filter(min_size=0).diagnostics == ["one", "two"]
+
+
 def test_filter_preserves_kind_and_timings() -> None:
     started = datetime(2026, 4, 24, 11, 59, 58, tzinfo=UTC)
     r = _report(

@@ -98,7 +98,7 @@ class _FakeProvider(Provider):
     required_binary = None
 
     def __init__(self, shell=None, entries=None, name: str = "fake") -> None:
-        self._shell = shell
+        super().__init__(shell)
         self._entries = entries or []
         self.name = name  # type: ignore[misc]
 

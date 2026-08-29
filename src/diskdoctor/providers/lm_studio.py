@@ -47,11 +47,11 @@ class LMStudioProvider(Provider):
 
         legacy_root = home / "models"
         if legacy_root.exists():
-            entries.extend(_scan_legacy(legacy_root, self.name, self.risk))
+            entries.extend(_scan_legacy(legacy_root, self))
 
         hub_root = home / "hub" / "models"
         if hub_root.exists():
-            entries.extend(_scan_hub(hub_root, self.name, self.risk))
+            entries.extend(_scan_hub(hub_root, self))
 
         return entries
 
@@ -68,11 +68,14 @@ def _resolve_home() -> Path:
     return Path("~/.cache/lm-studio").expanduser()
 
 
-def _scan_legacy(root: Path, provider_name: str, risk: Risk) -> list[Entry]:
+def _scan_legacy(root: Path, provider: LMStudioProvider) -> list[Entry]:
+    provider_name = provider.name
+    risk = provider.risk
     entries: list[Entry] = []
     for pub_dir in sorted(p for p in root.iterdir() if p.is_dir()):
         for model_dir in sorted(m for m in pub_dir.iterdir() if m.is_dir()):
-            size, _ = size_path(model_dir)
+            size, skipped = size_path(model_dir)
+            provider._note_skipped(skipped)
             if size == 0:
                 # Empty publisher/model dirs left behind by uninstalls — skip.
                 continue
@@ -97,7 +100,9 @@ def _scan_legacy(root: Path, provider_name: str, risk: Risk) -> list[Entry]:
     return entries
 
 
-def _scan_hub(root: Path, provider_name: str, risk: Risk) -> list[Entry]:
+def _scan_hub(root: Path, provider: LMStudioProvider) -> list[Entry]:
+    provider_name = provider.name
+    risk = provider.risk
     entries: list[Entry] = []
     hf_hub = Path("~/.cache/huggingface/hub").expanduser()
     for pub_dir in sorted(p for p in root.iterdir() if p.is_dir()):
@@ -112,11 +117,13 @@ def _scan_hub(root: Path, provider_name: str, risk: Risk) -> list[Entry]:
             for user, repo in hf_repos:
                 candidate = hf_hub / f"models--{user}--{repo}"
                 if candidate.exists():
-                    s, _ = size_path(candidate)
+                    s, skipped = size_path(candidate)
+                    provider._note_skipped(skipped)
                     hf_size += s
                     hf_paths.append(candidate)
 
-            manifest_size, _ = size_path(model_dir)
+            manifest_size, manifest_skipped = size_path(model_dir)
+            provider._note_skipped(manifest_skipped)
             total = manifest_size + hf_size
             if total == 0:
                 continue

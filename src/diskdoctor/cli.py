@@ -13,6 +13,7 @@ from diskdoctor import discovery, history, registry
 from diskdoctor.cleanup import build_script
 from diskdoctor.cleanup import run as cleanup_run
 from diskdoctor.config import load_app_settings
+from diskdoctor.logging_config import configure_logging
 from diskdoctor.ports import RealShell, Shell
 from diskdoctor.rendering import (
     real_prompts,
@@ -108,10 +109,17 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
     sh = shell or RealShell()
 
     @click.group()
+    @click.option(
+        "-v",
+        "--verbose",
+        is_flag=True,
+        help="Enable debug logging to stderr (INFO otherwise).",
+    )
     @click.pass_context
-    def cli(ctx: click.Context) -> None:
+    def cli(ctx: click.Context, verbose: bool) -> None:
         ctx.ensure_object(dict)
         ctx.obj["shell"] = sh
+        configure_logging(verbose)
 
     @cli.command()
     @click.option("--json", "json_out", is_flag=True, help="Emit Report JSON to stdout.")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import glob
+import logging
 import os
 import shlex
 import sys
@@ -12,6 +13,13 @@ from typing import Any, ClassVar, TypedDict
 from diskdoctor.ports import Shell
 from diskdoctor.sizer import size_path, stat_fields
 from diskdoctor.types import Entry, Risk
+
+logger = logging.getLogger(__name__)
+
+# Cap the number of paths we quote back in a diagnostic so a directory with
+# thousands of unreadable entries can't bloat the message (or the snapshot the
+# Report is serialized into).
+_DIAGNOSTIC_SAMPLE = 3
 
 
 class Provider(ABC):
@@ -29,6 +37,29 @@ class Provider(ABC):
 
     def __init__(self, shell: Shell) -> None:
         self._shell = shell
+        # Human-readable notes accumulated during discover(): paths the sizer
+        # skipped, discovery commands that failed, etc. discovery.scan drains
+        # these into Report.diagnostics after calling discover(). A fresh
+        # provider instance is built per scan, so this never leaks across scans.
+        self.diagnostics: list[str] = []
+
+    def _note_skipped(self, paths: list[Path]) -> None:
+        """Log and record paths the sizer could not read during a walk.
+
+        Same control flow as before (the bytes were already silently omitted);
+        this only surfaces the omission so a wrong-looking total is explained
+        rather than mysterious.
+        """
+        if not paths:
+            return
+        sample = ", ".join(str(p) for p in paths[:_DIAGNOSTIC_SAMPLE])
+        suffix = ", ..." if len(paths) > _DIAGNOSTIC_SAMPLE else ""
+        msg = (
+            f"{self.name}: skipped {len(paths)} path(s) while sizing "
+            f"(permission denied or vanished): {sample}{suffix}"
+        )
+        logger.warning("%s", msg)
+        self.diagnostics.append(msg)
 
     def available(self) -> bool:
         current = _normalize_platform(sys.platform)
@@ -184,7 +215,8 @@ class PathProvider(Provider):
     def discover(self) -> list[Entry]:
         entries: list[Entry] = []
         for p in self.resolve_paths():
-            size, _skipped = size_path(p)
+            size, skipped = size_path(p)
+            self._note_skipped(skipped)
             quoted = shlex.quote(str(p))
             recipe = [line.format(path=quoted) for line in self.recipe_template]
             try:

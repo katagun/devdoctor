@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, cast
 
 from diskdoctor._storage import default_data_dir
+
+logger = logging.getLogger(__name__)
 
 StorageBackendName = Literal["filesystem", "sqlite"]
 _BACKENDS: set[str] = {"filesystem", "sqlite"}
@@ -45,9 +48,13 @@ def load_app_settings(path: Path | None = None) -> AppSettings:
         return defaults
     try:
         parsed = json.loads(target.read_text())
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning(
+            "config: could not read/parse %s (%s); falling back to defaults", target, exc
+        )
         return defaults
     if not isinstance(parsed, dict):
+        logger.warning("config: %s is not a JSON object; falling back to defaults", target)
         return defaults
 
     backend = parsed.get("storage_backend")

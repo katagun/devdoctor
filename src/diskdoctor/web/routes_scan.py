@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import contextlib
 import dataclasses
 import json
+import logging
 import re
 from datetime import UTC, datetime
 from typing import Literal
@@ -18,6 +18,8 @@ from diskdoctor.types import Report, Risk, ScanFilters, SnapshotKind
 from diskdoctor.web.models import ProviderInfo, RecipeRequest, RecipeResponse
 
 router = APIRouter(prefix="/api")
+
+logger = logging.getLogger(__name__)
 
 
 _SIZE_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([KMGT]?)$", re.IGNORECASE)
@@ -59,18 +61,20 @@ def scan(
     report = discovery.scan(providers_list, filters, datetime.now(UTC))
     storage: StorageBackend = request.app.state.storage
     if filters.min_size_bytes == 0 and filters.risks is None and filters.providers is None:
-        with contextlib.suppress(OSError):
+        try:
             storage.write_disk_dashboard_summary(report)
+        except OSError as exc:
+            logger.warning("scan: failed to write dashboard summary: %s", exc)
     if snapshot and _should_write_auto_snapshot(storage, snapshot_min_interval_ms):
         auto_report = dataclasses.replace(report, kind=SnapshotKind.AUTO)
         try:
             storage.write_disk_snapshot(auto_report)
             storage.prune_auto_disk_snapshots(keep=history.AUTO_SNAPSHOT_RETENTION)
-        except OSError:
+        except OSError as exc:
             # Disk full / permission denied / whatever — don't fail the
             # scan response because the auto-snapshot write choked. Client
             # still gets the scan; next scan will try again.
-            pass
+            logger.warning("scan: auto-snapshot write failed: %s", exc)
     return JSONResponse(content=_report_to_dict(report))
 
 

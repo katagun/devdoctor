@@ -62,6 +62,34 @@ def render_report_table(console: Console, report: Report) -> None:
 
     table.caption = f"Total: {_human_bytes(report.total_bytes())}"
     console.print(table)
+    _render_diagnostics(console, report)
+
+
+# Show at most this many diagnostic lines under the table; the rest collapse
+# into a "+N more" note so a pathological scan can't flood the terminal.
+_MAX_DIAGNOSTIC_LINES = 5
+
+
+def _render_diagnostics(console: Console, report: Report) -> None:
+    """Print a short, inert note about anything the scan couldn't fully read.
+
+    Diagnostic strings are provider-formatted and can embed attacker-nameable
+    paths, so they go through the same control-stripping as table cells.
+    """
+    if not report.diagnostics:
+        return
+    console.print(
+        Text(
+            f"⚠ {len(report.diagnostics)} diagnostic(s) during scan "
+            "(some paths skipped, e.g. permission denied):",
+            style="yellow",
+        )
+    )
+    for msg in report.diagnostics[:_MAX_DIAGNOSTIC_LINES]:
+        console.print(Text(f"  • {_strip_controls(msg)}", style="dim"))
+    remaining = len(report.diagnostics) - _MAX_DIAGNOSTIC_LINES
+    if remaining > 0:
+        console.print(Text(f"  • (+{remaining} more)", style="dim"))
 
 
 def render_diff_table(console: Console, diff: DiffReport) -> None:
