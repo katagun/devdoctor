@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+import re
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from diskdoctor.memory.providers import consumer_kinds_for_provider_ids
@@ -39,6 +40,24 @@ _ELECTRON_MARKERS = (
     "linear.app",
     "electron",
 )
+
+
+def _compile_markers(markers: Sequence[str]) -> re.Pattern[str]:
+    """Compile markers into a single word-boundary regex.
+
+    Markers only match as whole words/phrases, so short generic markers such as
+    ``arc`` or ``code`` no longer match when embedded in unrelated words (e.g.
+    "se*arc*h", "x*code*build"). Multi-word and dotted markers (e.g.
+    "google chrome", "com.docker") are matched literally via ``re.escape``.
+    """
+    alternation = "|".join(re.escape(marker) for marker in markers)
+    return re.compile(rf"\b(?:{alternation})\b")
+
+
+_BROWSER_PATTERN = _compile_markers(_BROWSER_MARKERS)
+_DOCKER_PATTERN = _compile_markers(_DOCKER_MARKERS)
+_LLM_PATTERN = _compile_markers(_LLM_MARKERS)
+_ELECTRON_PATTERN = _compile_markers(_ELECTRON_MARKERS)
 
 
 def collect_process_memory(
@@ -113,13 +132,13 @@ def _display_name(command: str) -> str:
 
 def classify_process(command: str) -> MemoryConsumerKind:
     lowered = command.lower()
-    if any(marker in lowered for marker in _BROWSER_MARKERS):
+    if _BROWSER_PATTERN.search(lowered):
         return "browser"
-    if any(marker in lowered for marker in _DOCKER_MARKERS):
+    if _DOCKER_PATTERN.search(lowered):
         return "docker"
-    if any(marker in lowered for marker in _LLM_MARKERS):
+    if _LLM_PATTERN.search(lowered):
         return "llm"
-    if any(marker in lowered for marker in _ELECTRON_MARKERS):
+    if _ELECTRON_PATTERN.search(lowered):
         return "electron"
     if "/applications/" in lowered or lowered.endswith(".app/contents/macos/"):
         return "app"
