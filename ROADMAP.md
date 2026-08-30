@@ -15,6 +15,13 @@ living backlog lives in [GitHub Issues](https://github.com/katagun/devdoctor/iss
   hardened the cleanup and memory paths.
 - **CI & repo hardening** — GitHub Actions CI (Python + web), CodeQL,
   Dependabot, web ESLint, CODEOWNERS, and SHA-pinned actions.
+- **Reliable CI** — the SSE lifecycle test is now deterministic (runs on a
+  pre-bound socket, no port race) and off the deprecated websockets stack.
+  ([#14](https://github.com/katagun/devdoctor/issues/14))
+- **Structured logging & diagnostics** — a `-v/--verbose` flag, no more
+  silently-swallowed errors, and scans surface skipped paths (e.g. permission
+  denied) instead of looking empty.
+  ([#10](https://github.com/katagun/devdoctor/issues/10))
 
 ## Now — in progress / up next
 
@@ -25,8 +32,6 @@ living backlog lives in [GitHub Issues](https://github.com/katagun/devdoctor/iss
   cleanly past Gatekeeper. ([#6](https://github.com/katagun/devdoctor/issues/6))
 - **Claim the package name on PyPI** so the install path can't be hijacked.
   ([#7](https://github.com/katagun/devdoctor/issues/7))
-- **De-flake CI** — make the SSE lifecycle test deterministic and move it off
-  deprecated APIs. ([#14](https://github.com/katagun/devdoctor/issues/14))
 
 ## Next — planned
 
@@ -35,9 +40,6 @@ living backlog lives in [GitHub Issues](https://github.com/katagun/devdoctor/iss
   ([#9](https://github.com/katagun/devdoctor/issues/9))
 - **Virtualized tables** — windowed rendering for scans with thousands of
   entries. ([#8](https://github.com/katagun/devdoctor/issues/8))
-- **Structured logging & diagnostics** — surface "permission denied" vs
-  "nothing to clean" instead of silently swallowing errors.
-  ([#10](https://github.com/katagun/devdoctor/issues/10))
 - **Release process** — a `CHANGELOG.md` and a lightweight, repeatable release
   flow. (Dependabot, CodeQL, and CI have already landed.)
   ([#15](https://github.com/katagun/devdoctor/issues/15))
