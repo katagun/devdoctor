@@ -11,6 +11,11 @@ import {
   fullDiskAccessDialogOptions,
 } from "./full-disk-access.mjs";
 
+// Set the app name before any app.getPath()/whenReady call so userData and logs
+// land in a "DevDoctor" folder instead of one derived from package.json `name`
+// ("diskdoctor-web"). Must run before the first app.getPath() below.
+app.setName("DevDoctor");
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
 const bundledBackendPath = path.join(process.resourcesPath, "backend", backendExecutableName());
@@ -44,6 +49,7 @@ if (!gotLock) {
       const url = `http://127.0.0.1:${port}`;
       await waitForHealth(`${url}/api/health`, START_TIMEOUT_MS);
       createWindow(url);
+      await maybeShowFirstRunFullDiskAccess();
     } catch (error) {
       await dialog.showMessageBox({
         type: "error",
@@ -283,6 +289,22 @@ function installAppMenu() {
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// On the first successful launch (per userData profile), surface the Full Disk
+// Access guidance once so a fresh install knows why some folders may be skipped.
+// A marker file keeps it to a single prompt; any failure here is non-fatal.
+async function maybeShowFirstRunFullDiskAccess() {
+  if (process.platform !== "darwin") return;
+  const marker = path.join(app.getPath("userData"), ".first-run-complete");
+  try {
+    if (fs.existsSync(marker)) return;
+    fs.writeFileSync(marker, `${new Date().toISOString()}${os.EOL}`);
+  } catch (error) {
+    writeLog("electron", `First-run marker check failed: ${error.message}\n`);
+    return;
+  }
+  await showFullDiskAccessHelp();
 }
 
 async function showFullDiskAccessHelp() {
