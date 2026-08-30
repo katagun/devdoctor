@@ -32,88 +32,135 @@ from diskdoctor.storage.filesystem import (
 )
 from diskdoctor.types import Report, SnapshotKind
 
-_SCHEMA_VERSION = 2
-
-_SCHEMA = """
+# Bookkeeping table for the migration runner. Created before any migration so
+# that _current_schema_version can read the recorded version. It is intentionally
+# NOT part of a numbered migration.
+_SCHEMA_MIGRATIONS_DDL = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY,
   applied_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS disk_snapshots (
-  name TEXT PRIMARY KEY,
-  kind TEXT NOT NULL,
-  scanned_at TEXT NOT NULL,
-  hostname TEXT NOT NULL,
-  platform TEXT NOT NULL,
-  note TEXT,
-  total_bytes INTEGER NOT NULL,
-  duration_ms INTEGER,
-  entry_count INTEGER,
-  per_provider_json TEXT,
-  report_json TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_disk_snapshots_kind_scanned_at
-  ON disk_snapshots(kind, scanned_at DESC);
-
-CREATE TABLE IF NOT EXISTS audit_events (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  at TEXT NOT NULL,
-  type TEXT NOT NULL,
-  payload_json TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_audit_events_at ON audit_events(at DESC);
-
-CREATE TABLE IF NOT EXISTS dashboard_cache (
-  key TEXT PRIMARY KEY,
-  updated_at TEXT NOT NULL,
-  payload_json TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS memory_observations (
-  id TEXT PRIMARY KEY,
-  scanned_at TEXT NOT NULL,
-  pressure TEXT NOT NULL,
-  total_bytes INTEGER NOT NULL,
-  available_bytes INTEGER NOT NULL,
-  used_bytes INTEGER NOT NULL,
-  swap_used_bytes INTEGER,
-  compressed_bytes INTEGER,
-  top_consumer_name TEXT,
-  top_consumer_kind TEXT,
-  top_consumer_rss_bytes INTEGER,
-  suggestion_count INTEGER NOT NULL,
-  report_json TEXT NOT NULL,
-  suggestions_json TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_memory_observations_scanned_at
-  ON memory_observations(scanned_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_memory_observations_pressure_scanned_at
-  ON memory_observations(pressure, scanned_at DESC);
-
-CREATE TABLE IF NOT EXISTS memory_snapshots (
-  name TEXT PRIMARY KEY,
-  created_at TEXT NOT NULL,
-  scanned_at TEXT NOT NULL,
-  note TEXT,
-  pressure TEXT NOT NULL,
-  total_bytes INTEGER NOT NULL,
-  available_bytes INTEGER NOT NULL,
-  used_bytes INTEGER NOT NULL,
-  top_consumer_name TEXT,
-  top_consumer_kind TEXT,
-  top_consumer_rss_bytes INTEGER,
-  report_json TEXT NOT NULL,
-  suggestions_json TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_memory_snapshots_created_at
-  ON memory_snapshots(created_at DESC);
+)
 """
+
+# Each migration is (target_version, statements) where the statements bring the
+# database from target_version - 1 to target_version. Every statement uses
+# IF NOT EXISTS semantics so a migration is safe to (re)run against a database
+# that already holds the objects it creates — an existing production DB whose
+# tables are present but whose schema_migrations rows are missing/behind
+# converges without touching or dropping any data. To add a schema change later,
+# append a new (N, statements) tuple; _SCHEMA_VERSION picks it up automatically.
+
+# Migration 1 (baseline): the original disk-side schema.
+_MIGRATION_1_DISK = (
+    """
+    CREATE TABLE IF NOT EXISTS disk_snapshots (
+      name TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      scanned_at TEXT NOT NULL,
+      hostname TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      note TEXT,
+      total_bytes INTEGER NOT NULL,
+      duration_ms INTEGER,
+      entry_count INTEGER,
+      per_provider_json TEXT,
+      report_json TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_disk_snapshots_kind_scanned_at
+      ON disk_snapshots(kind, scanned_at DESC)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS audit_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      at TEXT NOT NULL,
+      type TEXT NOT NULL,
+      payload_json TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_audit_events_at ON audit_events(at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS dashboard_cache (
+      key TEXT PRIMARY KEY,
+      updated_at TEXT NOT NULL,
+      payload_json TEXT NOT NULL
+    )
+    """,
+)
+
+# Migration 2: the memory-side tables added after the disk baseline.
+_MIGRATION_2_MEMORY = (
+    """
+    CREATE TABLE IF NOT EXISTS memory_observations (
+      id TEXT PRIMARY KEY,
+      scanned_at TEXT NOT NULL,
+      pressure TEXT NOT NULL,
+      total_bytes INTEGER NOT NULL,
+      available_bytes INTEGER NOT NULL,
+      used_bytes INTEGER NOT NULL,
+      swap_used_bytes INTEGER,
+      compressed_bytes INTEGER,
+      top_consumer_name TEXT,
+      top_consumer_kind TEXT,
+      top_consumer_rss_bytes INTEGER,
+      suggestion_count INTEGER NOT NULL,
+      report_json TEXT NOT NULL,
+      suggestions_json TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_memory_observations_scanned_at
+      ON memory_observations(scanned_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_memory_observations_pressure_scanned_at
+      ON memory_observations(pressure, scanned_at DESC)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS memory_snapshots (
+      name TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      scanned_at TEXT NOT NULL,
+      note TEXT,
+      pressure TEXT NOT NULL,
+      total_bytes INTEGER NOT NULL,
+      available_bytes INTEGER NOT NULL,
+      used_bytes INTEGER NOT NULL,
+      top_consumer_name TEXT,
+      top_consumer_kind TEXT,
+      top_consumer_rss_bytes INTEGER,
+      report_json TEXT NOT NULL,
+      suggestions_json TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_memory_snapshots_created_at
+      ON memory_snapshots(created_at DESC)
+    """,
+)
+
+_MIGRATIONS: list[tuple[int, tuple[str, ...]]] = [
+    (1, _MIGRATION_1_DISK),
+    (2, _MIGRATION_2_MEMORY),
+]
+
+# The current schema version is, by construction, the highest migration target.
+_SCHEMA_VERSION = _MIGRATIONS[-1][0]
+
+
+def _current_schema_version(conn: sqlite3.Connection) -> int:
+    """Return the highest recorded migration version, treating a fresh or
+    un-stamped database (no schema_migrations table, or no rows) as version 0."""
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'"
+    ).fetchone()
+    if exists is None:
+        return 0
+    row = conn.execute("SELECT MAX(version) AS version FROM schema_migrations").fetchone()
+    if row is None or row["version"] is None:
+        return 0
+    return int(row["version"])
 
 
 class SQLiteStorage:
@@ -517,12 +564,46 @@ class SQLiteStorage:
         )
 
     def _ensure_schema(self) -> None:
-        with self._connect() as conn:
-            conn.executescript(_SCHEMA)
-            conn.execute(
-                "INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)",
-                (_SCHEMA_VERSION, datetime.now(UTC).isoformat()),
-            )
+        """Bring the database up to _SCHEMA_VERSION by applying, in order, every
+        migration whose target version exceeds the recorded version.
+
+        States handled:
+          * brand-new DB (version 0)  -> migrations 1..N run to build the schema;
+          * DB already at latest       -> the loop applies nothing (no-op);
+          * DB at an older version     -> only the gap is applied.
+
+        Each migration runs in its own explicit transaction and stamps its
+        version on success, so an interrupted upgrade leaves the DB at a clean
+        intermediate version and re-running simply resumes. Because every
+        statement is IF NOT EXISTS, applying a migration to a DB that already
+        holds those objects is harmless and preserves existing rows.
+        """
+        conn = self._connect()
+        # Take manual control of transactions so DDL is grouped atomically with
+        # its version stamp (SQLite supports transactional DDL); the default
+        # driver isolation would auto-commit each statement on its own.
+        conn.isolation_level = None
+        try:
+            conn.executescript(_SCHEMA_MIGRATIONS_DDL)
+            current = _current_schema_version(conn)
+            for version, statements in _MIGRATIONS:
+                if version <= current:
+                    continue
+                conn.execute("BEGIN")
+                try:
+                    for statement in statements:
+                        conn.execute(statement)
+                    conn.execute(
+                        "INSERT OR IGNORE INTO schema_migrations (version, applied_at) "
+                        "VALUES (?, ?)",
+                        (version, datetime.now(UTC).isoformat()),
+                    )
+                    conn.execute("COMMIT")
+                except Exception:
+                    conn.execute("ROLLBACK")
+                    raise
+        finally:
+            conn.close()
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
