@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 import socket
 import sys
@@ -18,6 +19,29 @@ logger = logging.getLogger(__name__)
 # oversubscribing. The actual pool size is min(this, number of available
 # providers), so scans with few providers spin up correspondingly few threads.
 _MAX_WORKERS = 8
+
+
+def _globally_unique(entry: Entry) -> Entry:
+    """Namespace a provider-local id into a globally-unique one.
+
+    ``Entry.id`` is only guaranteed unique *within* the provider that produced
+    it (docker uses "images", PathProviders use the path, ollama uses the model
+    name), so two providers can legitimately emit the same bare id. The web
+    clean flow keys selection and interactive prompt/confirm routing on the bare
+    id (``routes_clean`` selection, ``CleanupRunner._pending_prompts``), so a
+    cross-provider id clash would cross-route between entries — selecting or
+    answering one would silently hit the other, and the prompt-future dict would
+    collide (second future overwrites first).
+
+    Prefixing the id with the provider (``"{provider}:{id}"``) makes it globally
+    unique, since the bare id is already unique within a provider. The id is an
+    opaque routing/React key — never surfaced in the UI, which displays
+    ``label``/``provider``/``path`` — so namespacing changes no human-facing
+    output. Old snapshots keep their bare ids and still load (the field is
+    opaque and derivable); the clean flow always re-scans, so every id it
+    routes on is freshly namespaced and internally consistent.
+    """
+    return dataclasses.replace(entry, id=f"{entry.provider}:{entry.id}")
 
 
 @dataclass
@@ -115,7 +139,11 @@ def scan(
             # (inside map) never raises here.
             results = list(executor.map(_discover_one, available))
         for result in results:
-            entries.extend(result.entries)
+            # Namespace each entry's provider-local id into a globally-unique
+            # one so web selection and prompt/confirm routing can never cross
+            # providers. Per-provider timings were computed pre-namespacing from
+            # the same entries, so byte/count totals are unaffected.
+            entries.extend(_globally_unique(e) for e in result.entries)
             diagnostics.extend(result.diagnostics)
             per_provider.append(result.timing)
 
