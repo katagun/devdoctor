@@ -22,6 +22,8 @@ router = APIRouter(prefix="/api/clean")
 async def start_job(body: CleanJobCreate, request: Request) -> Response:
     providers_list = registry.load_providers(request.app.state.shell)
     report = discovery.scan(providers_list, ScanFilters(), datetime.now(UTC))
+    # Entry ids are globally unique (namespaced "{provider}:{id}" in
+    # discovery.scan), so selecting by bare id can never cross providers.
     known_ids = {e.id for e in report.entries}
     unknown = [eid for eid in body.entry_ids if eid not in known_ids]
     if unknown:

@@ -72,6 +72,65 @@ async def test_runner_cancel_marks_remaining_skipped():
     await asyncio.wait_for(task, timeout=1)
 
 
+@pytest.mark.asyncio
+async def test_shared_provider_local_id_does_not_cross_route():
+    """Roadmap #12 regression: two entries from DIFFERENT providers that share
+    the same *provider-local* id must be independently selectable/answerable.
+
+    discovery.scan namespaces ids to "{provider}:{id}", so a docker "images"
+    entry and an ollama "images" entry become "docker:images" / "ollama:images".
+    We reproduce that here and assert:
+
+    1. Selection isolation — mirroring routes_clean's ``e.id in selected``
+       filter with only the docker id selected picks the docker entry ONLY.
+       Pre-fix both entries carried the bare id "images", so ``"images" in
+       {"images"}`` matched both and swept ollama into the job too.
+    2. Execution isolation — running the selected report cleans docker only;
+       ollama's recipe never runs and never appears in the results.
+    """
+    # As scan produces them: globally-unique ids, same bare "images" underneath.
+    docker = _e("docker", "docker:images", 100, recipe=["docker-clean"])
+    ollama = _e("ollama", "ollama:images", 200, recipe=["ollama-clean"])
+    rep = _report(docker, ollama)
+
+    # routes_clean selection: user picks only the docker entry.
+    selected = {"docker:images"}
+    rep.entries = [e for e in rep.entries if e.id in selected]
+    assert [e.provider for e in rep.entries] == ["docker"]  # ollama not swept in
+
+    executed: list[str] = []
+
+    async def fake_run_line(line: str) -> ShellResult:
+        executed.append(line)
+        return ShellResult(0, "", "")
+
+    runner = CleanupRunner(report=rep, opts=CleanupOpts(execute=True), run_line=fake_run_line)
+    task = asyncio.create_task(runner.run())
+
+    ev = await runner.events.get()
+    assert ev["event"] == "prompt"
+    assert ev["data"]["entry_id"] == "docker:images"
+
+    # Answering with the stale *bare* id must NOT resolve the prompt: routing
+    # keys are namespaced, so a bare/foreign id can never cross-route.
+    await runner.answer_prompt(entry_id="images", choice="y")
+    await runner.answer_prompt(entry_id="ollama:images", choice="y")
+    assert not runner._pending_prompts["docker:images"].done()
+
+    # The correct namespaced id resolves it.
+    await runner.answer_prompt(entry_id="docker:images", choice="y")
+
+    ev = await runner.events.get()
+    assert ev["event"] == "awaiting_confirm"
+    await runner.answer_confirm(True)
+
+    results = await asyncio.wait_for(task, timeout=1)
+
+    # Only docker's recipe ran; ollama was never touched.
+    assert executed == ["docker-clean"]
+    assert [r.entry_id for r in results] == ["docker:images"]
+
+
 def test_registry_single_active_job():
     reg: RunnerRegistry[object] = RunnerRegistry()
     runner = reg.create(object)  # factory returns a stand-in

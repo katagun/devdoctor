@@ -39,6 +39,26 @@ def test_scan_iterates_providers_and_collects_entries():
     assert r.total_bytes() == 300
 
 
+def test_scan_namespaces_ids_to_avoid_cross_provider_collision():
+    """Roadmap #12: two providers may emit the same provider-local id (docker
+    uses "images", ollama a model name, PathProviders a path). scan namespaces
+    each id into a globally-unique "{provider}:{id}" so web selection and
+    prompt/confirm routing — which key on the bare id — can never cross-route
+    between providers. The pre-fix behaviour would have produced two entries
+    with the identical id "images"."""
+    docker = _Stub(FakeShell(), "docker", [_e("docker", "images", 100)])
+    ollama = _Stub(FakeShell(), "ollama", [_e("ollama", "images", 200)])
+    r = scan([docker, ollama], ScanFilters(), datetime(2026, 4, 18, tzinfo=UTC))
+
+    ids = {e.id for e in r.entries}
+    assert ids == {"docker:images", "ollama:images"}  # globally unique
+    assert len(ids) == len(r.entries)  # no collision
+    # Provider-local id is recoverable and the human-facing label is untouched.
+    by_provider = {e.provider: e for e in r.entries}
+    assert by_provider["docker"].label == "docker/images"
+    assert by_provider["ollama"].label == "ollama/images"
+
+
 def test_scan_skips_unavailable_providers():
     p1 = _Stub(FakeShell(), "a", [_e("a", "1", 100)])
     p2 = _Stub(FakeShell(), "b", [_e("b", "1", 200)], available=False)
@@ -63,7 +83,8 @@ def test_scan_applies_filters():
         ScanFilters(risks=frozenset({Risk.SAFE})),
         datetime(2026, 4, 18, tzinfo=UTC),
     )
-    assert [e.id for e in r.entries] == ["1"]
+    # scan namespaces provider-local ids into globally-unique "{provider}:{id}".
+    assert [e.id for e in r.entries] == ["a:1"]
 
 
 def test_scan_populates_metadata():
@@ -243,8 +264,14 @@ def test_scan_ordering_is_deterministic_across_providers() -> None:
 
     # Run several times; a correct implementation is identical every time.
     first = discovery.scan(providers, ScanFilters(), datetime.now(UTC))
+    # ids are namespaced "{provider}:{id}" by scan; ordering is unaffected.
     baseline = [(e.provider, e.id, e.size_bytes) for e in first.entries]
-    assert baseline == [("b", "1", 500), ("a", "1", 200), ("c", "1", 200), ("a", "2", 100)]
+    assert baseline == [
+        ("b", "b:1", 500),
+        ("a", "a:1", 200),
+        ("c", "c:1", 200),
+        ("a", "a:2", 100),
+    ]
     assert [pt.name for pt in first.per_provider] == ["a", "b", "c"]
     for _ in range(20):
         r = discovery.scan(providers, ScanFilters(), datetime.now(UTC))
@@ -261,14 +288,15 @@ def test_scan_parallel_matches_serial_reference() -> None:
     ]
     report = discovery.scan(providers, ScanFilters(), datetime.now(UTC))
 
-    # Serial reference: same collect-then-stable-sort, no threads.
+    # Serial reference: same collect-then-stable-sort, no threads. Mirror the
+    # provider-namespacing scan applies so the two are compared like-for-like.
     ref: list[Entry] = []
     for p in providers:
         ref.extend(e for e in p.discover() if e.size_bytes > 0)
     ref.sort(key=lambda e: e.size_bytes, reverse=True)
 
     assert [(e.provider, e.id, e.size_bytes) for e in report.entries] == [
-        (e.provider, e.id, e.size_bytes) for e in ref
+        (e.provider, f"{e.provider}:{e.id}", e.size_bytes) for e in ref
     ]
 
 
