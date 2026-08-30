@@ -125,9 +125,31 @@ launch DevDoctor spawns that backend, waits for `/api/health`, and loads the UI;
 it also points you at **Full Disk Access** (System Settings › Privacy &
 Security) so scans can reach protected folders.
 
+### Run it, or install it locally
+
+The build output is `web/release/mac-arm64/DevDoctor.app` (Apple Silicon;
+`web/release/mac/` on Intel). Launch it in place:
+
+```bash
+open web/release/mac-arm64/DevDoctor.app
+```
+
+To install it into `/Applications` (so it appears in Launchpad and Spotlight):
+
+```bash
+cp -R web/release/mac-arm64/DevDoctor.app /Applications/
+open -a DevDoctor
+```
+
+This is an **unsigned dev install**: a locally-built bundle is ad-hoc signed and
+unquarantined, so it launches directly — but it is *not* the distributable
+build, and copying an unsigned app into `/Applications` is a developer
+convenience, not the intended install path for end users.
+
 The unpacked `.app` is unsigned. A **signed and notarized** distributable
-(`.dmg` / `.zip`) is deferred to [issue #6](https://github.com/katagun/devdoctor/issues/6),
-which is blocked on an Apple Developer certificate.
+(`.dmg` / `.zip`) — the real install path — is deferred to
+[issue #6](https://github.com/katagun/devdoctor/issues/6), which is blocked on
+an Apple Developer certificate.
 
 ## Development
 
