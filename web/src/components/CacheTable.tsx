@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { NavIcon } from "@/components/NavIcon";
 import { Checkbox } from "./Checkbox";
@@ -70,6 +71,15 @@ function makeComparator(
 
 export type CacheTableDensity = "sparse" | "dense";
 
+// Estimated row heights (px) fed to the virtualizer before a real row is
+// measured. Rows self-correct via measureElement in the browser (ResizeObserver);
+// these only need to be close enough to size the initial window and the scroll
+// track. Dense rows are a single line, sparse rows stack provider + label.
+const ROW_HEIGHT: Record<CacheTableDensity, number> = {
+  sparse: 40,
+  dense: 24,
+};
+
 export function CacheTable({
   rows,
   selected,
@@ -86,6 +96,7 @@ export function CacheTable({
     key: "size",
     dir: "desc",
   });
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const visibleColumns: ColumnDef[] = useMemo(
     () => COLUMNS.filter((c) => isVisible(c.id)),
@@ -101,6 +112,14 @@ export function CacheTable({
     const nowSecs = Date.now() / 1000;
     return [...rows].sort(makeComparator(sort.key, sort.dir, nowSecs));
   }, [rows, sort]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: sortedRows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT[density],
+    getItemKey: (index) => sortedRows[index].id,
+    overscan: 8,
+  });
 
   function headerClick(key: SortKey) {
     setSort((prev) =>
@@ -118,10 +137,21 @@ export function CacheTable({
     );
   }
 
+  const virtualItems = rowVirtualizer.getVirtualItems();
+
   return (
-    <div className="font-mono text-[11px]">
+    // The scroll container owns a real height (h-full inside the flex parent)
+    // and overflow-auto, so only the visible window of rows is mounted and any
+    // wide content scrolls horizontally in here rather than at the page level.
+    // data-virtual-scroll lets the jsdom test shim give this element a viewport
+    // height (jsdom reports every element as 0px), so a window renders in tests.
+    <div
+      ref={scrollRef}
+      data-virtual-scroll
+      className="font-mono text-[11px] h-full overflow-auto"
+    >
       <div
-        className="grid gap-3 px-4 py-2 border-b border-border"
+        className="grid gap-3 px-4 py-2 border-b border-border sticky top-0 z-10 bg-bg"
         style={{ gridTemplateColumns: gridTemplate }}
       >
         <div />
@@ -147,29 +177,83 @@ export function CacheTable({
           ),
         )}
       </div>
-      {sortedRows.map((r) => {
-        const isSelected = selected.has(r.id);
-        const rowPad = density === "dense" ? "py-[3px]" : "py-[7px]";
-        return (
-          <div
-            key={r.id}
-            className={`grid gap-3 px-4 ${rowPad} items-center border-b border-border-subtle hover:bg-bg-elev-1`}
-            style={{ gridTemplateColumns: gridTemplate }}
-          >
-            <Checkbox
-              checked={isSelected}
-              onChange={(next) => onToggle(r.id, next)}
-              label={`select ${r.provider} ${r.label}`}
+      <div
+        style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}
+      >
+        {virtualItems.map((virtualRow) => {
+          const r = sortedRows[virtualRow.index];
+          return (
+            <CacheRow
+              key={virtualRow.key}
+              index={virtualRow.index}
+              start={virtualRow.start}
+              row={r}
+              isSelected={selected.has(r.id)}
+              density={density}
+              visibleColumns={visibleColumns}
+              gridTemplate={gridTemplate}
+              onToggle={onToggle}
+              measureRef={rowVirtualizer.measureElement}
             />
-            {visibleColumns.map((col) => (
-              <Cell key={col.id} col={col} row={r} density={density} />
-            ))}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
+
+// Memoised so a selection or filter change only re-renders the row whose
+// props actually changed, not the whole window. Props are kept referentially
+// stable by the parent (visibleColumns/gridTemplate via useMemo, onToggle via
+// useCallback), and `start` is a primitive so a pure selection toggle doesn't
+// look like a moved row.
+const CacheRow = memo(function CacheRow({
+  index,
+  start,
+  row,
+  isSelected,
+  density,
+  visibleColumns,
+  gridTemplate,
+  onToggle,
+  measureRef,
+}: {
+  index: number;
+  start: number;
+  row: CacheTableRow;
+  isSelected: boolean;
+  density: CacheTableDensity;
+  visibleColumns: ColumnDef[];
+  gridTemplate: string;
+  onToggle: (id: string, next: boolean) => void;
+  measureRef: (node: Element | null) => void;
+}) {
+  const rowPad = density === "dense" ? "py-[3px]" : "py-[7px]";
+  return (
+    <div
+      ref={measureRef}
+      data-index={index}
+      className={`grid gap-3 px-4 ${rowPad} items-center border-b border-border-subtle hover:bg-bg-elev-1`}
+      style={{
+        gridTemplateColumns: gridTemplate,
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        transform: `translateY(${start}px)`,
+      }}
+    >
+      <Checkbox
+        checked={isSelected}
+        onChange={(next) => onToggle(row.id, next)}
+        label={`select ${row.provider} ${row.label}`}
+      />
+      {visibleColumns.map((col) => (
+        <Cell key={col.id} col={col} row={row} density={density} />
+      ))}
+    </div>
+  );
+});
 
 function Cell({
   col,

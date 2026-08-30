@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { ChevronDown, ChevronRight, LoaderCircle, Play, RefreshCw } from "lucide-react";
@@ -83,14 +83,17 @@ export default function Scan() {
     [selectedRows],
   );
 
-  function toggle(id: string, next: boolean) {
+  // Stable identity so the memoised CacheTable rows don't all re-render when an
+  // unrelated bit of Scan state changes; pairs with virtualization to keep large
+  // scans responsive.
+  const toggle = useCallback((id: string, next: boolean) => {
     setSelected((prev) => {
       const copy = new Set(prev);
       if (next) copy.add(id);
       else copy.delete(id);
       return copy;
     });
-  }
+  }, []);
 
   return (
     <div className="flex flex-col h-screen">
