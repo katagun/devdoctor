@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -27,6 +28,10 @@ class FakeShell:
     responses: dict[tuple[str, ...], ShellResult] = field(default_factory=dict)
     which_table: dict[str, str | None] = field(default_factory=dict)
     calls: list[tuple[str, ...]] = field(default_factory=list)
+    # Discovery runs providers concurrently (diskdoctor.discovery.scan), and a
+    # single shell instance can be shared across those providers, so record
+    # calls under a lock to keep `calls` consistent under concurrent run().
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def run(
         self,
@@ -39,7 +44,8 @@ class FakeShell:
         # not enforced by the fake — tests configure their responses explicitly.
         del check, timeout
         key = tuple(argv)
-        self.calls.append(key)
+        with self._lock:
+            self.calls.append(key)
         if key not in self.responses:
             raise AssertionError(f"FakeShell: unexpected call: {argv}")
         return self.responses[key]

@@ -173,3 +173,121 @@ def test_scan_skips_unavailable_providers_in_timings() -> None:
     report = discovery.scan([avail, unavail], ScanFilters(), datetime.now(UTC))
     names = [pt.name for pt in report.per_provider]
     assert names == ["a"]
+
+
+# Parallelization (roadmap issue #9): providers now discover concurrently in a
+# thread pool. These tests pin the invariants that make the parallel scan
+# byte-for-byte identical to the old serial one, plus the error isolation.
+
+
+class _Raising(Provider):
+    """Provider whose discover() raises, to exercise per-provider isolation."""
+
+    def __init__(self, shell, name: str, exc: Exception) -> None:
+        super().__init__(shell)
+        self.name = name  # type: ignore[misc]
+        self.description = ""  # type: ignore[misc]
+        self.platforms = ("darwin", "linux")  # type: ignore[misc]
+        self.risk = Risk.SAFE  # type: ignore[misc]
+        self._exc = exc
+
+    def available(self) -> bool:
+        return True
+
+    def discover(self) -> list[Entry]:
+        raise self._exc
+
+
+def test_scan_isolates_provider_that_raises() -> None:
+    """A provider raising in discover() must not abort the scan: the healthy
+    providers still contribute their entries and a diagnostic surfaces the
+    failure."""
+    good_a = _Stub(FakeShell(), "a", [_e("a", "1", 100)])
+    boom = _Raising(FakeShell(), "boom", RuntimeError("disk gremlins"))
+    good_b = _Stub(FakeShell(), "b", [_e("b", "1", 200)])
+
+    report = discovery.scan([good_a, boom, good_b], ScanFilters(), datetime.now(UTC))
+
+    assert {e.provider for e in report.entries} == {"a", "b"}
+    assert report.total_bytes() == 300
+    # The failing provider is surfaced as a diagnostic, not swallowed.
+    assert any("boom" in d and "disk gremlins" in d for d in report.diagnostics)
+    # It still gets a (zero) timing row and contributes no entries.
+    boom_timing = {pt.name: pt for pt in report.per_provider}["boom"]
+    assert boom_timing.entries == 0
+    assert boom_timing.bytes == 0
+
+
+def test_scan_preserves_diagnostics_recorded_before_a_raise() -> None:
+    """Notes the provider accumulated before it blew up are not lost."""
+
+    class _NotesThenRaises(_Raising):
+        def discover(self) -> list[Entry]:
+            self.diagnostics.append("boom: skipped 1 path(s)")
+            raise self._exc
+
+    p = _NotesThenRaises(FakeShell(), "boom", RuntimeError("kaboom"))
+    report = discovery.scan([p], ScanFilters(), datetime.now(UTC))
+    assert "boom: skipped 1 path(s)" in report.diagnostics
+    assert any("kaboom" in d for d in report.diagnostics)
+
+
+def test_scan_ordering_is_deterministic_across_providers() -> None:
+    """Entries, per_provider, and diagnostics keep a stable, provider-then-
+    discover order regardless of which worker thread finishes first. Ties in
+    size (200 appears twice) must keep provider order (a before c)."""
+    pa = _Stub(FakeShell(), "a", [_e("a", "1", 200), _e("a", "2", 100)])
+    pb = _Stub(FakeShell(), "b", [_e("b", "1", 500)])
+    pc = _Stub(FakeShell(), "c", [_e("c", "1", 200)])
+    providers = [pa, pb, pc]
+
+    # Run several times; a correct implementation is identical every time.
+    first = discovery.scan(providers, ScanFilters(), datetime.now(UTC))
+    baseline = [(e.provider, e.id, e.size_bytes) for e in first.entries]
+    assert baseline == [("b", "1", 500), ("a", "1", 200), ("c", "1", 200), ("a", "2", 100)]
+    assert [pt.name for pt in first.per_provider] == ["a", "b", "c"]
+    for _ in range(20):
+        r = discovery.scan(providers, ScanFilters(), datetime.now(UTC))
+        assert [(e.provider, e.id, e.size_bytes) for e in r.entries] == baseline
+        assert [pt.name for pt in r.per_provider] == ["a", "b", "c"]
+
+
+def test_scan_parallel_matches_serial_reference() -> None:
+    """The parallel scan reproduces exactly what an equivalent serial pass over
+    the same available providers would produce."""
+    providers = [
+        _Stub(FakeShell(), name, [_e(name, str(i), (i + 1) * 111) for i in range(3)])
+        for name in ("p0", "p1", "p2", "p3", "p4")
+    ]
+    report = discovery.scan(providers, ScanFilters(), datetime.now(UTC))
+
+    # Serial reference: same collect-then-stable-sort, no threads.
+    ref: list[Entry] = []
+    for p in providers:
+        ref.extend(e for e in p.discover() if e.size_bytes > 0)
+    ref.sort(key=lambda e: e.size_bytes, reverse=True)
+
+    assert [(e.provider, e.id, e.size_bytes) for e in report.entries] == [
+        (e.provider, e.id, e.size_bytes) for e in ref
+    ]
+
+
+def test_scan_shares_shell_safely_across_concurrent_providers() -> None:
+    """A single shell instance shared by many providers is exercised
+    concurrently; the FakeShell lock keeps its call log consistent and every
+    provider's entries come through."""
+    shell = FakeShell()
+
+    class _ShellCaller(_FakeProvider):
+        def discover(self) -> list[Entry]:
+            for _ in range(50):
+                shell.which("git")  # touch shared shell state under threads
+            return list(self._entries)
+
+    providers = [
+        _ShellCaller(shell=shell, name=f"s{i}", entries=[_fe(provider=f"s{i}", size=100 + i)])
+        for i in range(12)
+    ]
+    report = discovery.scan(providers, ScanFilters(), datetime.now(UTC))
+    assert {e.provider for e in report.entries} == {f"s{i}" for i in range(12)}
+    assert len(report.per_provider) == 12
