@@ -103,6 +103,32 @@ uv tool install '.[web]' --force
 > "assets are not built yet" placeholder. `scripts/deploy.sh` handles this
 > for you.
 
+## Building the desktop app
+
+DevDoctor ships an Electron desktop shell that bundles the web UI and a
+standalone (PyInstaller) copy of the `diskdoctor` backend, so the app runs with
+no separate Python install. Packaging currently targets **macOS** and must be
+run on a Mac.
+
+```bash
+cd web
+npm ci
+npm run electron:pack
+```
+
+`electron:pack` runs the full pipeline — build the SPA, build the backend
+executable (`npm run backend:build`), verify the bundle
+(`node electron/check-backend-bundle.mjs`), then `electron-builder --dir`. It
+produces an unpacked, launchable `DevDoctor.app` under `web/release/` with the
+backend binary embedded at `Contents/Resources/backend/diskdoctor`. On first
+launch DevDoctor spawns that backend, waits for `/api/health`, and loads the UI;
+it also points you at **Full Disk Access** (System Settings › Privacy &
+Security) so scans can reach protected folders.
+
+The unpacked `.app` is unsigned. A **signed and notarized** distributable
+(`.dmg` / `.zip`) is deferred to [issue #6](https://github.com/katagun/devdoctor/issues/6),
+which is blocked on an Apple Developer certificate.
+
 ## Development
 
 ```bash

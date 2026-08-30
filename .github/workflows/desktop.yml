@@ -1,0 +1,106 @@
+name: Desktop packaging
+
+# Guards the Electron desktop packaging pipeline against silent regressions.
+# This is a SEPARATE, non-required workflow: it is path-filtered to the desktop
+# packaging inputs so it does NOT run on every PR, and it is intentionally slow
+# (it builds the PyInstaller backend and runs electron-builder). Code signing and
+# notarization are out of scope here and deferred to issue #6, so signing is
+# disabled via CSC_IDENTITY_AUTO_DISCOVERY=false.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "web/electron/**"
+      - "web/electron-builder.json"
+      - "web/package.json"
+      - "scripts/build_backend.py"
+      - ".github/workflows/desktop.yml"
+  push:
+    branches: [main]
+    paths:
+      - "web/electron/**"
+      - "web/electron-builder.json"
+      - "web/package.json"
+      - "scripts/build_backend.py"
+      - ".github/workflows/desktop.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Package macOS app (--dir, unsigned)
+    runs-on: macos-latest
+    env:
+      # Signing/notarization are deferred to #6; keep electron-builder from
+      # trying to auto-discover a signing identity in CI.
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # Cache the Electron and electron-builder downloads (framework zips, etc.)
+      # so repeated runs don't re-download the full Electron distribution.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: electron-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+          restore-keys: |
+            electron-${{ runner.os }}-
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build web UI
+        working-directory: web
+        run: npm run build
+
+      - name: Build backend executable
+        working-directory: web
+        run: npm run backend:build
+
+      - name: Verify bundled backend
+        working-directory: web
+        run: node electron/check-backend-bundle.mjs
+
+      - name: Package unsigned .app (electron-builder --dir)
+        working-directory: web
+        run: npx electron-builder --config electron-builder.json --dir
+
+      - name: Assert DevDoctor.app was produced
+        working-directory: web
+        run: |
+          app_path="release/mac-arm64/DevDoctor.app"
+          if [ ! -d "$app_path" ]; then
+            app_path="$(find release -maxdepth 2 -name 'DevDoctor.app' -type d | head -n1)"
+          fi
+          if [ -z "$app_path" ] || [ ! -d "$app_path" ]; then
+            echo "DevDoctor.app was not produced under web/release/" >&2
+            find release -maxdepth 2 -type d >&2 || true
+            exit 1
+          fi
+          echo "Found packaged app: $app_path"
+          backend="$app_path/Contents/Resources/backend/diskdoctor"
+          if [ ! -f "$backend" ]; then
+            echo "Bundled backend missing at $backend" >&2
+            exit 1
+          fi
+          echo "Bundled backend present: $backend"
