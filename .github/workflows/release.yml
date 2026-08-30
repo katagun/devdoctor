@@ -1,0 +1,58 @@
+name: Release
+
+# Builds the Python sdist + wheel and publishes a GitHub Release when a version
+# tag (vX.Y.Z) is pushed. See RELEASING.md for the full, manual process.
+#
+# Deliberately credential-free: it does NOT publish to PyPI (deferred to #7) and
+# does NOT sign the desktop app (deferred to #6). The only privileged step is
+# creating the GitHub Release, which uses the built-in GITHUB_TOKEN.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # required to create the GitHub Release
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build artifacts and publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # Build the web bundle first so the wheel force-includes the real UI
+      # instead of the "assets are not built yet" placeholder.
+      - name: Build web UI
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            dist/*

@@ -143,6 +143,13 @@ uv run mypy src
 The CLI and web UI ship today; the desktop app and more are on the way. See
 [ROADMAP.md](ROADMAP.md) and the [issue tracker](https://github.com/katagun/devdoctor/issues).
 
+## Changelog and releases
+
+Notable changes are recorded in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog
+format, SemVer). DevDoctor is pre-1.0 and not yet published to PyPI; the
+repeatable steps for cutting a release are documented in
+[RELEASING.md](RELEASING.md).
+
 ## Contributing
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup,
