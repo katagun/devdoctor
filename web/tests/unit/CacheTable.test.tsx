@@ -154,6 +154,48 @@ describe("CacheTable", () => {
     expect(screen.queryByText("drwxr-xr-x")).not.toBeInTheDocument();
   });
 
+  it("virtualizes a large scan: only a windowed subset of rows is in the DOM", () => {
+    const many: CacheTableRow[] = Array.from({ length: 1000 }, (_, i) => ({
+      ...rows[1],
+      id: `row-${i}`,
+      label: `entry-${i}`,
+      // Descending sizes so the default size-desc sort keeps row-0 at the top.
+      size_bytes: 1_000_000_000 - i,
+    }));
+    render(<CacheTable rows={many} selected={new Set()} onToggle={() => {}} />);
+
+    // A 1000-row scan must not build 1000 checkboxes/rows — only the visible
+    // window (viewport height / row height + overscan) is mounted.
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes.length).toBeGreaterThan(0);
+    expect(checkboxes.length).toBeLessThan(100);
+    // The topmost row of the size-desc sort is in the window; a deep row is not.
+    expect(screen.getByText("entry-0")).toBeInTheDocument();
+    expect(screen.queryByText("entry-900")).not.toBeInTheDocument();
+  });
+
+  it("selection and sorting keep working across the virtualized window", () => {
+    const spy = vi.fn();
+    const many: CacheTableRow[] = Array.from({ length: 1000 }, (_, i) => ({
+      ...rows[1],
+      id: `row-${i}`,
+      provider: `prov-${String(i).padStart(4, "0")}`,
+      label: `entry-${i}`,
+      size_bytes: 1_000_000_000 - i,
+    }));
+    render(<CacheTable rows={many} selected={new Set()} onToggle={spy} />);
+
+    // Selection: clicking a rendered checkbox reports the right row id, proving
+    // per-row select still maps to the underlying (not just visual) row.
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    expect(spy).toHaveBeenCalledWith("row-0", true);
+
+    // Sorting: provider-asc should surface prov-0000 at the top of the window.
+    fireEvent.click(screen.getByRole("button", { name: /provider/i }));
+    const providerCells = screen.getAllByText(/^prov-\d{4}$/);
+    expect(providerCells[0].textContent).toBe("prov-0000");
+  });
+
   it("renders blank (not —) for owner/perms on logical entries with no path (ollama-style)", () => {
     localStorage.setItem(
       "diskdoctor.settings.v1",
