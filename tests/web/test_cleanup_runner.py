@@ -2,9 +2,9 @@ import asyncio
 
 import pytest
 
-from diskdoctor.types import CleanupOpts, ShellResult
-from diskdoctor.web.cleanup_runner import CleanupRunner
-from diskdoctor.web.runner_registry import RunnerRegistry
+from devdoctor.types import CleanupOpts, ShellResult
+from devdoctor.web.cleanup_runner import CleanupRunner
+from devdoctor.web.runner_registry import RunnerRegistry
 from tests.test_cleanup_async import _e, _report
 
 

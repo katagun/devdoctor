@@ -13,7 +13,7 @@ body:
     attributes:
       label: What happened?
       description: What did you do, what did you expect, and what happened instead?
-      placeholder: I ran `diskdoctor scan` and …
+      placeholder: I ran `devdoctor scan` and …
     validations:
       required: true
   - type: textarea
@@ -22,7 +22,7 @@ body:
       label: Steps to reproduce
       description: The exact commands or clicks, ideally minimal.
       placeholder: |
-        1. Run `diskdoctor …`
+        1. Run `devdoctor …`
         2. …
     validations:
       required: true
@@ -32,7 +32,7 @@ body:
       label: Where did it happen?
       options:
         - CLI
-        - Web UI (diskdoctor serve)
+        - Web UI (devdoctor serve)
         - Desktop app (Electron)
         - Not sure
     validations:
@@ -48,7 +48,7 @@ body:
     id: version
     attributes:
       label: DevDoctor version / commit
-      description: Output of `diskdoctor --version` or the git commit you're on.
+      description: Output of `devdoctor --version` or the git commit you're on.
     validations:
       required: false
   - type: textarea

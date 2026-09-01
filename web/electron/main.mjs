@@ -13,7 +13,7 @@ import {
 
 // Set the app name before any app.getPath()/whenReady call so userData and logs
 // land in a "DevDoctor" folder instead of one derived from package.json `name`
-// ("diskdoctor-web"). Must run before the first app.getPath() below.
+// ("devdoctor-web"). Must run before the first app.getPath() below.
 app.setName("DevDoctor");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -329,7 +329,7 @@ function startupHint() {
   if (app.isPackaged) {
     return ` Expected bundled backend at ${bundledBackendPath}. Build the backend executable before packaging.`;
   }
-  return " Make sure `uv` is installed and available on PATH, then run `uv run diskdoctor serve --port 0 --no-browser` from the repository to inspect backend startup errors.";
+  return " Make sure `uv` is installed and available on PATH, then run `uv run devdoctor serve --port 0 --no-browser` from the repository to inspect backend startup errors.";
 }
 
 function backendCommand(port) {
@@ -346,11 +346,11 @@ function backendCommand(port) {
   }
   return {
     command: "uv",
-    args: ["run", "diskdoctor", ...commonArgs],
+    args: ["run", "devdoctor", ...commonArgs],
     cwd: repoRoot,
   };
 }
 
 function backendExecutableName() {
-  return process.platform === "win32" ? "diskdoctor.exe" : "diskdoctor";
+  return process.platform === "win32" ? "devdoctor.exe" : "devdoctor";
 }

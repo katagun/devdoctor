@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Rebuild the SPA bundle and reinstall `diskdoctor` as a uv tool so
-# `diskdoctor serve` picks up the fresh frontend assets.
+# Rebuild the SPA bundle and reinstall `devdoctor` as a uv tool so
+# `devdoctor serve` picks up the fresh frontend assets.
 #
 # Why these three steps are all needed:
 #   1. `npm run build` writes a new JS/CSS bundle under
-#      src/diskdoctor/web/_static/dist/. hatchling force-includes that path
+#      src/devdoctor/web/_static/dist/. hatchling force-includes that path
 #      when building the wheel, so the bundle ships inside the installed tool.
-#   2. `uv cache clean diskdoctor` drops any wheel uv already cached for this
+#   2. `uv cache clean devdoctor` drops any wheel uv already cached for this
 #      source. Without this, `uv tool install --force` happily reuses the
 #      stale wheel and you'll keep seeing "assets are not built yet".
 #   3. `uv tool install '.[web]' --force` rebuilds the wheel against the
 #      updated source tree and swaps the installed tool atomically.
 #
-# After install, this script also restarts any `diskdoctor serve` running
+# After install, this script also restarts any `devdoctor serve` running
 # on the configured port (default 8731) so the new code is actually loaded.
 # A running Python process keeps its imports in memory; just reinstalling
 # the wheel does not refresh them. Skip with --skip-restart.
@@ -71,10 +71,10 @@ fi
 echo "→ Building SPA bundle"
 (cd web && npm run build)
 
-echo "→ Clearing cached diskdoctor wheel"
-uv cache clean diskdoctor
+echo "→ Clearing cached devdoctor wheel"
+uv cache clean devdoctor
 
-echo "→ Installing diskdoctor with web extra"
+echo "→ Installing devdoctor with web extra"
 uv tool install '.[web]' --force
 
 restart_server() {
@@ -98,8 +98,8 @@ restart_server() {
   fi
 
   # Refuse to touch unrelated processes that happen to own the port.
-  if [[ "$cmdline" != *diskdoctor* ]]; then
-    echo "⚠ Port $port used by non-diskdoctor process (PID $pid): $cmdline"
+  if [[ "$cmdline" != *devdoctor* ]]; then
+    echo "⚠ Port $port used by non-devdoctor process (PID $pid): $cmdline"
     echo "  leaving it alone"
     return 0
   fi
@@ -133,7 +133,7 @@ restart_server() {
     waited=$((waited + 1))
   done
 
-  local log_dir="$HOME/.cache/diskdoctor"
+  local log_dir="$HOME/.cache/devdoctor"
   local log="$log_dir/serve.log"
   mkdir -p "$log_dir"
 

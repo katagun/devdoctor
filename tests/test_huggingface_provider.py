@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from diskdoctor.providers.huggingface import HuggingFaceProvider
-from diskdoctor.types import Risk
+from devdoctor.providers.huggingface import HuggingFaceProvider
+from devdoctor.types import Risk
 from tests.conftest import FakeShell
 
 

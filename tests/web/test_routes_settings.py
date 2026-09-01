@@ -4,8 +4,8 @@ from pathlib import Path
 
 from starlette.testclient import TestClient
 
-from diskdoctor.config import load_app_settings
-from diskdoctor.web.app import build_app
+from devdoctor.config import load_app_settings
+from devdoctor.web.app import build_app
 from tests.conftest import FakeShell
 
 
@@ -13,7 +13,7 @@ def _client(tmp_path: Path, monkeypatch) -> TestClient:
     (tmp_path / "index.html").write_text("<!doctype html><title>t</title>")
     yaml = tmp_path / "paths.yaml"
     yaml.write_text("[]\n")
-    monkeypatch.setenv("DISKDOCTOR_PATHS_YAML", str(yaml))
+    monkeypatch.setenv("DEVDOCTOR_PATHS_YAML", str(yaml))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     shell = FakeShell(which_table={"ollama": None, "docker": None})

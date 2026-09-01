@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from diskdoctor.providers.base import PathProvider
-from diskdoctor.types import Risk
+from devdoctor.providers.base import PathProvider
+from devdoctor.types import Risk
 from tests.conftest import FakeShell
 
 
@@ -153,7 +153,7 @@ def test_path_provider_entry_includes_stat_fields(tmp_path):
     import pwd
     import sys
 
-    from diskdoctor.types import Risk
+    from devdoctor.types import Risk
 
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()

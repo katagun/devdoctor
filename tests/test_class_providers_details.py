@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from diskdoctor.providers.docker import DockerProvider
-from diskdoctor.providers.huggingface import HuggingFaceProvider
-from diskdoctor.providers.large_files import LargeFilesProvider
-from diskdoctor.providers.lm_studio import LMStudioProvider
-from diskdoctor.providers.ollama import OllamaProvider
-from diskdoctor.providers.venv import VenvProvider
+from devdoctor.providers.docker import DockerProvider
+from devdoctor.providers.huggingface import HuggingFaceProvider
+from devdoctor.providers.large_files import LargeFilesProvider
+from devdoctor.providers.lm_studio import LMStudioProvider
+from devdoctor.providers.ollama import OllamaProvider
+from devdoctor.providers.venv import VenvProvider
 
 CLASS_PROVIDERS = [
     DockerProvider,

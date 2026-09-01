@@ -4,7 +4,7 @@ from pathlib import Path
 
 from starlette.testclient import TestClient
 
-from diskdoctor.web.app import build_app
+from devdoctor.web.app import build_app
 from tests.conftest import FakeShell
 
 
@@ -23,7 +23,7 @@ def _client(tmp_path: Path, monkeypatch) -> TestClient:
   recipe: "rm -rf {{path}}"
 """
     )
-    monkeypatch.setenv("DISKDOCTOR_PATHS_YAML", str(yaml))
+    monkeypatch.setenv("DEVDOCTOR_PATHS_YAML", str(yaml))
     shell = FakeShell(which_table={"ollama": None, "docker": None})
     app = build_app(shell, allowed_hosts={"testserver"}, static_dir=tmp_path)
     return TestClient(app)

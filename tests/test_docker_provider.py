@@ -1,7 +1,7 @@
 import json
 
-from diskdoctor.providers.docker import DockerProvider
-from diskdoctor.types import Risk, ShellResult
+from devdoctor.providers.docker import DockerProvider
+from devdoctor.types import Risk, ShellResult
 from tests.conftest import FakeShell
 
 _DOCKER_DF_JSON = json.dumps(

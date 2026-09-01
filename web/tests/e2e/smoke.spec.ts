@@ -13,7 +13,7 @@ let fixtureDir: string | null = null;
 
 test.beforeAll(async () => {
   const repoRoot = path.resolve(__dirname, "../../..");
-  fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "diskdoctor-e2e-"));
+  fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "devdoctor-e2e-"));
   const yaml = path.join(fixtureDir, "paths.yaml");
   fs.writeFileSync(
     yaml,
@@ -25,13 +25,13 @@ test.beforeAll(async () => {
   recipe: "echo noop"
 `,
   );
-  server = spawn("uv", ["run", "diskdoctor", "serve", "--port", "8731", "--no-browser"], {
+  server = spawn("uv", ["run", "devdoctor", "serve", "--port", "8731", "--no-browser"], {
     cwd: repoRoot,
-    env: { ...process.env, DISKDOCTOR_PATHS_YAML: yaml },
+    env: { ...process.env, DEVDOCTOR_PATHS_YAML: yaml },
     stdio: "inherit",
   });
   server.on("error", (err) => {
-    throw new Error(`Failed to spawn diskdoctor serve (is 'uv' on PATH?): ${err.message}`);
+    throw new Error(`Failed to spawn devdoctor serve (is 'uv' on PATH?): ${err.message}`);
   });
   for (let i = 0; i < 20; i++) {
     try {

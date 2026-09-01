@@ -4,7 +4,7 @@ import { COLUMNS, DEFAULT_HIDDEN_COLUMNS } from "@/components/CacheTable/columns
 import type { LandingPage, ToolNavigation } from "@/lib/navigation";
 import { DISK_TITLE } from "@/lib/resourceLabels";
 
-const KEY = "diskdoctor.settings.v1";
+const KEY = "devdoctor.settings.v1";
 
 // Sidebar width clamps. Min = icons-only state (matches the currently-shipped
 // 48px collapsed width). Max = min(20% of viewport, 320px); recomputed from the

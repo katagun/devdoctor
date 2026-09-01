@@ -1,22 +1,22 @@
 ---
 name: devdoctor
-description: Use when someone wants to run DevDoctor (the `diskdoctor` CLI) to scan this machine for reclaimable disk space (or memory) and produce a report, or to clean up caches. Covers generating a scan report, the safety model, and the cleanup flow.
+description: Use when someone wants to run DevDoctor (the `devdoctor` CLI) to scan this machine for reclaimable disk space (or memory) and produce a report, or to clean up caches. Covers generating a scan report, the safety model, and the cleanup flow.
 ---
 
 # DevDoctor — scan & report procedure
 
 DevDoctor is a local disk/memory cleanup tool for macOS and Linux. The product
-is **DevDoctor**; the installable package and CLI are named **`diskdoctor`**.
+is **DevDoctor**; the installable package and CLI are named **`devdoctor`**.
 `scan` is **read-only** (preview) — it never deletes anything.
 
-Run from the repo root with `uv run`, or use an installed `diskdoctor` on PATH.
+Run from the repo root with `uv run`, or use an installed `devdoctor` on PATH.
 
 ## Generate a report (the main procedure)
 
 1. Get the structured scan (don't parse the Rich table — it truncates when captured):
 
    ```bash
-   uv run diskdoctor scan --json > /tmp/dd_report.json
+   uv run devdoctor scan --json > /tmp/dd_report.json
    ```
 
 2. Summarize it — total, per-provider breakdown, and the top entries:
@@ -53,21 +53,21 @@ Run from the repo root with `uv run`, or use an installed `diskdoctor` on PATH.
    biggest wins, and note that nothing was deleted (scan is preview-only).
    `diagnostics` lists paths that couldn't be read (e.g. permission denied).
 
-For a human-readable one-off, `uv run diskdoctor scan` prints a Rich table
+For a human-readable one-off, `uv run devdoctor scan` prints a Rich table
 (sorted by size) — fine in a real terminal, but prefer `--json` when capturing.
 
 ## Command reference
 
 ```bash
-diskdoctor scan                       # Rich table of all caches, sorted by size
-diskdoctor scan --json                # structured JSON (use this for reports)
-diskdoctor scan --min-size 100M --risk safe,reclaimable   # filters
-diskdoctor providers                  # registered providers + availability
-diskdoctor recipe [-o file.sh]        # reviewable, fully-commented-out cleanup script
-diskdoctor snapshot --note "before"   # save a point-in-time scan
-diskdoctor diff [--to live]           # compare snapshots (or latest vs. now)
-diskdoctor serve [--port N] [--no-browser]   # local web UI (needs the `web` extra)
-diskdoctor -v ...                     # verbose logging (surfaces swallowed errors)
+devdoctor scan                       # Rich table of all caches, sorted by size
+devdoctor scan --json                # structured JSON (use this for reports)
+devdoctor scan --min-size 100M --risk safe,reclaimable   # filters
+devdoctor providers                  # registered providers + availability
+devdoctor recipe [-o file.sh]        # reviewable, fully-commented-out cleanup script
+devdoctor snapshot --note "before"   # save a point-in-time scan
+devdoctor diff [--to live]           # compare snapshots (or latest vs. now)
+devdoctor serve [--port N] [--no-browser]   # local web UI (needs the `web` extra)
+devdoctor -v ...                     # verbose logging (surfaces swallowed errors)
 ```
 
 Memory side (RAM pressure + top consumers): the web UI has a Memory page; the
@@ -86,10 +86,10 @@ CLI focus is disk.
 ## Cleanup flow (only when the user asks to actually reclaim space)
 
 ```bash
-diskdoctor clean                      # preview what would happen
-diskdoctor clean --execute            # interactive: per-entry prompt + final confirm
-diskdoctor clean --execute --yes-safe # auto-approve SAFE entries, still confirm
-diskdoctor clean --execute --allow-dangerous   # include dangerous (rarely wanted)
+devdoctor clean                      # preview what would happen
+devdoctor clean --execute            # interactive: per-entry prompt + final confirm
+devdoctor clean --execute --yes-safe # auto-approve SAFE entries, still confirm
+devdoctor clean --execute --allow-dangerous   # include dangerous (rarely wanted)
 ```
 
 Cleanup is destructive — confirm intent, prefer previewing / the `recipe` script

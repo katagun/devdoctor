@@ -25,9 +25,9 @@ web/dist-backend/*
 !web/dist-backend/.gitkeep
 
 # Built SPA bundle is a build artefact; the .keep + placeholder index.html stay tracked
-src/diskdoctor/web/_static/dist/*
-!src/diskdoctor/web/_static/dist/.keep
-!src/diskdoctor/web/_static/dist/index.html
+src/devdoctor/web/_static/dist/*
+!src/devdoctor/web/_static/dist/.keep
+!src/devdoctor/web/_static/dist/index.html
 docs/archive/
 
 # Local Claude Code settings (per-machine; never commit)

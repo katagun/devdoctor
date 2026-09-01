@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 // We persist the DISABLED set (not enabled) so newly-added providers default
 // to on — matches the "all selected by default" contract.
-const KEY = "diskdoctor.providers.disabled";
+const KEY = "devdoctor.providers.disabled";
 
 function read(): Set<string> {
   try {

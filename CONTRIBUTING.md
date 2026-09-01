@@ -5,7 +5,7 @@ manager for macOS and Linux. This guide covers how to get set up, the checks
 your change needs to pass, and the conventions the project follows.
 
 > **Note on names:** the product is **DevDoctor**; the installable Python
-> package and CLI are still named `diskdoctor` during the transition. You'll see
+> package and CLI are still named `devdoctor` during the transition. You'll see
 > both in the tree — that's expected.
 
 ## Getting set up
@@ -24,8 +24,8 @@ cd web && npm ci
 Run the tool from the source tree:
 
 ```bash
-uv run diskdoctor scan
-uv run diskdoctor serve          # local web UI
+uv run devdoctor scan
+uv run devdoctor serve          # local web UI
 ```
 
 ## Before you open a pull request

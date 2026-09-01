@@ -1,14 +1,14 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from diskdoctor.cleanup import (
+from devdoctor.cleanup import (
     ConfirmRequired,
     EntryResolved,
     ExecuteStep,
     PromptRequired,
     iter_cleanup_events,
 )
-from diskdoctor.types import CleanupOpts, Entry, Report, Risk, ShellResult
+from devdoctor.types import CleanupOpts, Entry, Report, Risk, ShellResult
 
 
 def _report(*entries: Entry) -> Report:

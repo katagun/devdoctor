@@ -4,14 +4,14 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
-from diskdoctor.memory.types import MemoryConsumer, MemoryReport, SystemMemory
-from diskdoctor.storage.filesystem import FilesystemStorage
-from diskdoctor.storage.sqlite import (
+from devdoctor.memory.types import MemoryConsumer, MemoryReport, SystemMemory
+from devdoctor.storage.filesystem import FilesystemStorage
+from devdoctor.storage.sqlite import (
     _MIGRATIONS,
     _SCHEMA_VERSION,
     SQLiteStorage,
 )
-from diskdoctor.types import Entry, Report, Risk, SnapshotKind
+from devdoctor.types import Entry, Report, Risk, SnapshotKind
 
 _EXPECTED_TABLES = {
     "schema_migrations",

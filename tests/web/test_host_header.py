@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from starlette.testclient import TestClient
 
-from diskdoctor.web.middleware import HostHeaderMiddleware
+from devdoctor.web.middleware import HostHeaderMiddleware
 
 
 def _app(allowed_hosts: set[str]) -> FastAPI:

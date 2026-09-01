@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from diskdoctor.memory.collectors.system import (
+from devdoctor.memory.collectors.system import (
     classify_pressure,
     parse_proc_meminfo,
     parse_swapusage,

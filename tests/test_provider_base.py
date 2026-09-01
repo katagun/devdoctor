@@ -1,5 +1,5 @@
-from diskdoctor.providers.base import Provider
-from diskdoctor.types import Entry, Risk
+from devdoctor.providers.base import Provider
+from devdoctor.types import Entry, Risk
 from tests.conftest import FakeShell
 
 

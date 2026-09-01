@@ -7,12 +7,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-WEB_DIST = ROOT / "src" / "diskdoctor" / "web" / "_static" / "dist"
-DATA_FILE = ROOT / "src" / "diskdoctor" / "data" / "paths.yaml"
+WEB_DIST = ROOT / "src" / "devdoctor" / "web" / "_static" / "dist"
+DATA_FILE = ROOT / "src" / "devdoctor" / "data" / "paths.yaml"
 BUILD_DIR = ROOT / ".build" / "pyinstaller"
-ENTRY_FILE = BUILD_DIR / "diskdoctor_entry.py"
+ENTRY_FILE = BUILD_DIR / "devdoctor_entry.py"
 DIST_BACKEND = ROOT / "web" / "dist-backend"
-BACKEND_BINARY = DIST_BACKEND / "diskdoctor"
+BACKEND_BINARY = DIST_BACKEND / "devdoctor"
 
 
 def _data_arg(source: Path, target: str) -> str:
@@ -28,7 +28,7 @@ def build_pyinstaller_command() -> list[str]:
         "--clean",
         "--onefile",
         "--name",
-        "diskdoctor",
+        "devdoctor",
         "--distpath",
         str(DIST_BACKEND),
         "--workpath",
@@ -38,9 +38,9 @@ def build_pyinstaller_command() -> list[str]:
         "--paths",
         str(ROOT / "src"),
         "--add-data",
-        _data_arg(DATA_FILE, "diskdoctor/data"),
+        _data_arg(DATA_FILE, "devdoctor/data"),
         "--add-data",
-        _data_arg(WEB_DIST, "diskdoctor/web/_static/dist"),
+        _data_arg(WEB_DIST, "devdoctor/web/_static/dist"),
         "--collect-submodules",
         "uvicorn",
         str(ENTRY_FILE),
@@ -55,7 +55,7 @@ def main() -> None:
 
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
     ENTRY_FILE.write_text(
-        "from diskdoctor.cli import main\n\nif __name__ == '__main__':\n    main()\n",
+        "from devdoctor.cli import main\n\nif __name__ == '__main__':\n    main()\n",
         encoding="utf-8",
     )
     if BACKEND_BINARY.exists():

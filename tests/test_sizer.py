@@ -3,7 +3,7 @@ import pwd
 import stat as stat_mod
 from pathlib import Path
 
-from diskdoctor.sizer import StatFields, size_path, stat_fields
+from devdoctor.sizer import StatFields, size_path, stat_fields
 
 
 def _write(p: Path, data: bytes) -> None:
@@ -180,7 +180,7 @@ def test_stat_fields_uses_lstat_not_stat(tmp_path: Path) -> None:
 
 def test_stat_fields_owner_falls_back_to_numeric_for_unknown_uid(tmp_path: Path) -> None:
     # Pick a uid extremely unlikely to resolve on the host.
-    from diskdoctor.sizer import _group_name, _owner_name
+    from devdoctor.sizer import _group_name, _owner_name
 
     _owner_name.cache_clear()
     _group_name.cache_clear()

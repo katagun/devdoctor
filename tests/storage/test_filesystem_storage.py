@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from diskdoctor.memory.types import MemoryConsumer, MemoryReport, SystemMemory
-from diskdoctor.storage.filesystem import FilesystemStorage
-from diskdoctor.types import Entry, Report, Risk, SnapshotKind
+from devdoctor.memory.types import MemoryConsumer, MemoryReport, SystemMemory
+from devdoctor.storage.filesystem import FilesystemStorage
+from devdoctor.types import Entry, Report, Risk, SnapshotKind
 
 
 def _report(ts: datetime, *, kind: SnapshotKind = SnapshotKind.MANUAL) -> Report:
@@ -146,7 +146,7 @@ def test_latest_memory_observation_returns_newest(tmp_path: Path) -> None:
 
 def test_prune_memory_observations_amortizes_rewrites(tmp_path: Path, monkeypatch) -> None:
     # Shrink the slack so the test doesn't need hundreds of writes to trip it.
-    monkeypatch.setattr("diskdoctor.storage.filesystem._PRUNE_SLACK", 2)
+    monkeypatch.setattr("devdoctor.storage.filesystem._PRUNE_SLACK", 2)
     storage = FilesystemStorage(data_dir=tmp_path)
     base = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
 

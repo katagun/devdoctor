@@ -34,7 +34,7 @@ describe("LandingRedirect", () => {
 
   it("can open disk from local settings", async () => {
     localStorage.setItem(
-      "diskdoctor.settings.v1",
+      "devdoctor.settings.v1",
       JSON.stringify({ landingPage: "disk" }),
     );
     __testReloadSettings();
@@ -46,7 +46,7 @@ describe("LandingRedirect", () => {
 
   it("can open memory from local settings", async () => {
     localStorage.setItem(
-      "diskdoctor.settings.v1",
+      "devdoctor.settings.v1",
       JSON.stringify({ landingPage: "memory" }),
     );
     __testReloadSettings();

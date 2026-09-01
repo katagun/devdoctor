@@ -67,7 +67,7 @@ describe("useSidebarWidth", () => {
     act(() => result.current.setWidth(240));
     expect(result.current.width).toBe(240);
     expect(result.current.collapsed).toBe(false);
-    const stored = JSON.parse(localStorage.getItem("diskdoctor.settings.v1") ?? "{}");
+    const stored = JSON.parse(localStorage.getItem("devdoctor.settings.v1") ?? "{}");
     expect(stored.sidebarWidth).toBe(240);
     expect(stored.sidebarExpandedWidth).toBe(240);
   });
@@ -81,7 +81,7 @@ describe("useSidebarWidth", () => {
     act(() => result.current.setWidth(40));
     expect(result.current.width).toBe(48);
     expect(result.current.collapsed).toBe(true);
-    const stored = JSON.parse(localStorage.getItem("diskdoctor.settings.v1") ?? "{}");
+    const stored = JSON.parse(localStorage.getItem("devdoctor.settings.v1") ?? "{}");
     expect(stored.sidebarWidth).toBe(48);
     expect(stored.sidebarExpandedWidth).toBe(240); // unchanged
   });
@@ -102,7 +102,7 @@ describe("useSidebarWidth", () => {
     act(() => result.current.toggle());
     expect(result.current.width).toBe(48);
     expect(result.current.collapsed).toBe(true);
-    const stored = JSON.parse(localStorage.getItem("diskdoctor.settings.v1") ?? "{}");
+    const stored = JSON.parse(localStorage.getItem("devdoctor.settings.v1") ?? "{}");
     expect(stored.sidebarExpandedWidth).toBe(220);
   });
 
@@ -118,7 +118,7 @@ describe("useSidebarWidth", () => {
 
   it("migrates old sidebarCollapsed=true to width=48 and expandedWidth=180", async () => {
     localStorage.setItem(
-      "diskdoctor.settings.v1",
+      "devdoctor.settings.v1",
       JSON.stringify({ sidebarCollapsed: true }),
     );
     const { useSidebarWidth } = await import("@/hooks/useSidebarWidth");
@@ -127,14 +127,14 @@ describe("useSidebarWidth", () => {
     expect(result.current.collapsed).toBe(true);
     // A subsequent setWidth call flushes the migrated expanded width to storage.
     act(() => result.current.toggle()); // collapse→expand
-    const stored = JSON.parse(localStorage.getItem("diskdoctor.settings.v1") ?? "{}");
+    const stored = JSON.parse(localStorage.getItem("devdoctor.settings.v1") ?? "{}");
     expect(stored.sidebarExpandedWidth).toBe(180);
     expect(stored.sidebarWidth).toBe(180);
   });
 
   it("migrates old sidebarCollapsed=false to width=180 and expandedWidth=180", async () => {
     localStorage.setItem(
-      "diskdoctor.settings.v1",
+      "devdoctor.settings.v1",
       JSON.stringify({ sidebarCollapsed: false }),
     );
     const { useSidebarWidth } = await import("@/hooks/useSidebarWidth");
@@ -151,7 +151,7 @@ describe("useSidebarWidth", () => {
     expect(result.current.width).toBe(48);
     act(() => result.current.setWidth(240));
     expect(result.current.width).toBe(48);
-    const stored = JSON.parse(localStorage.getItem("diskdoctor.settings.v1") ?? "{}");
+    const stored = JSON.parse(localStorage.getItem("devdoctor.settings.v1") ?? "{}");
     expect(stored.sidebarWidth ?? 180).toBe(180); // untouched
   });
 

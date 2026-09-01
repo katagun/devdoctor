@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from diskdoctor.providers.lm_studio import LMStudioProvider
-from diskdoctor.types import Risk
+from devdoctor.providers.lm_studio import LMStudioProvider
+from devdoctor.types import Risk
 from tests.conftest import FakeShell
 
 

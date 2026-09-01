@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from diskdoctor.memory.advisor import advise
-from diskdoctor.memory.types import MemoryConsumer, MemoryReport, SystemMemory
+from devdoctor.memory.advisor import advise
+from devdoctor.memory.types import MemoryConsumer, MemoryReport, SystemMemory
 
 
 def _report(*consumers: MemoryConsumer, pressure: str = "ok") -> MemoryReport:

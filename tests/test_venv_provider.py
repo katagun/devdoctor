@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from diskdoctor.providers.venv import VenvProvider
-from diskdoctor.types import Risk
+from devdoctor.providers.venv import VenvProvider
+from devdoctor.types import Risk
 from tests.conftest import FakeShell
 
 

@@ -96,7 +96,7 @@ describe("CacheTable", () => {
 
   it("hides the stale column when it's in hiddenColumns", () => {
     localStorage.setItem(
-      "diskdoctor.settings.v1",
+      "devdoctor.settings.v1",
       JSON.stringify({
         scanTableHiddenColumns: ["stale"],
         scanTableColumnsCustomized: true,
@@ -117,7 +117,7 @@ describe("CacheTable", () => {
   it("renders owner and perms cells when fields are populated and those columns are enabled", () => {
     // Owner and perms are hidden by default — opt them back in for this test.
     localStorage.setItem(
-      "diskdoctor.settings.v1",
+      "devdoctor.settings.v1",
       JSON.stringify({
         scanTableHiddenColumns: [],
         scanTableColumnsCustomized: true,
@@ -131,7 +131,7 @@ describe("CacheTable", () => {
 
   it("renders — for owner/perms when those fields are null and the columns are enabled", () => {
     localStorage.setItem(
-      "diskdoctor.settings.v1",
+      "devdoctor.settings.v1",
       JSON.stringify({
         scanTableHiddenColumns: [],
         scanTableColumnsCustomized: true,
@@ -198,7 +198,7 @@ describe("CacheTable", () => {
 
   it("renders blank (not —) for owner/perms on logical entries with no path (ollama-style)", () => {
     localStorage.setItem(
-      "diskdoctor.settings.v1",
+      "devdoctor.settings.v1",
       JSON.stringify({
         scanTableHiddenColumns: [],
         scanTableColumnsCustomized: true,

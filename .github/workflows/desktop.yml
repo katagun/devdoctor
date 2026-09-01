@@ -98,7 +98,7 @@ jobs:
             exit 1
           fi
           echo "Found packaged app: $app_path"
-          backend="$app_path/Contents/Resources/backend/diskdoctor"
+          backend="$app_path/Contents/Resources/backend/devdoctor"
           if [ ! -f "$backend" ]; then
             echo "Bundled backend missing at $backend" >&2
             exit 1

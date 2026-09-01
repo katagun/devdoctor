@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from diskdoctor.config import (
+from devdoctor.config import (
     AppSettings,
     default_app_settings,
     default_config_path,
@@ -18,8 +18,8 @@ def test_default_app_settings_use_isolated_xdg_dirs(tmp_path, monkeypatch) -> No
     settings = default_app_settings()
 
     assert settings.storage_backend == "filesystem"
-    assert settings.data_dir == tmp_path / "data" / "diskdoctor"
-    assert settings.sqlite_path == tmp_path / "data" / "diskdoctor" / "devdoctor.sqlite3"
+    assert settings.data_dir == tmp_path / "data" / "devdoctor"
+    assert settings.sqlite_path == tmp_path / "data" / "devdoctor" / "devdoctor.sqlite3"
     assert default_config_path() == tmp_path / "config" / "devdoctor" / "config.json"
 
 
