@@ -10,7 +10,7 @@
       // hardcoded default.
       (function () {
         try {
-          var raw = localStorage.getItem("diskdoctor.settings.v1");
+          var raw = localStorage.getItem("devdoctor.settings.v1");
           var t = raw ? (JSON.parse(raw).theme || "system") : "system";
           var dark =
             t === "dark" ||

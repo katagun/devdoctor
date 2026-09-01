@@ -2,9 +2,9 @@ import contextlib
 from datetime import UTC, datetime
 from pathlib import Path
 
-from diskdoctor import history
-from diskdoctor.history import diff, load_snapshot, write_snapshot
-from diskdoctor.types import Entry, ProviderTiming, Report, Risk, SnapshotKind
+from devdoctor import history
+from devdoctor.history import diff, load_snapshot, write_snapshot
+from devdoctor.types import Entry, ProviderTiming, Report, Risk, SnapshotKind
 
 
 def _rep(ts, entries=()) -> Report:
@@ -48,7 +48,7 @@ def test_write_snapshot_cleans_up_tmp_on_serialization_failure(tmp_path: Path, m
         raise RuntimeError("boom")
 
     # Force to_json() to fail mid-write so the finalize step never runs.
-    monkeypatch.setattr("diskdoctor.types.Report.to_json", boom)
+    monkeypatch.setattr("devdoctor.types.Report.to_json", boom)
     with contextlib.suppress(RuntimeError):
         write_snapshot(_rep(ts), tmp_path)
     # Neither the real file nor the tmp should exist; the target dir is clean.

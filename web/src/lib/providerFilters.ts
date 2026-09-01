@@ -1,4 +1,4 @@
-export const NOTHING_ENABLED_PROVIDER = "__diskdoctor_nothing_enabled__";
+export const NOTHING_ENABLED_PROVIDER = "__devdoctor_nothing_enabled__";
 
 export function diskProviderParam(
   providers: Array<{ name: string }> | undefined,

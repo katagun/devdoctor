@@ -1,4 +1,4 @@
-import { APP_NAME, LEGACY_APP_NAME } from "@/lib/brand";
+import { APP_NAME, CLI_NAME } from "@/lib/brand";
 
 export function UnsupportedDevice({ detected }: { detected: string }) {
   return (
@@ -34,7 +34,7 @@ export function UnsupportedDevice({ detected }: { detected: string }) {
         </p>
         <p className="text-text-muted text-[11px] leading-relaxed">
           If you're connecting remotely to a macOS or Linux host that's running{" "}
-          <code className="text-text-dim">{LEGACY_APP_NAME} serve</code>, open
+          <code className="text-text-dim">{CLI_NAME} serve</code>, open
           this URL from a supported client instead.
         </p>
       </div>

@@ -2,14 +2,14 @@ from pathlib import Path
 
 from starlette.testclient import TestClient
 
-from diskdoctor.types import ShellResult
-from diskdoctor.web.app import build_app
+from devdoctor.types import ShellResult
+from devdoctor.web.app import build_app
 from tests.conftest import FakeShell
 
 
 def test_memory_route_returns_live_memory_report(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr("diskdoctor.memory.collectors.system.sys.platform", "darwin")
-    monkeypatch.setattr("diskdoctor.memory.discovery.sys.platform", "darwin")
+    monkeypatch.setattr("devdoctor.memory.collectors.system.sys.platform", "darwin")
+    monkeypatch.setattr("devdoctor.memory.discovery.sys.platform", "darwin")
     (tmp_path / "index.html").write_text("<!doctype html><title>t</title>")
     shell = FakeShell(
         responses={
@@ -210,7 +210,7 @@ def test_memory_action_requires_confirmation(tmp_path: Path, monkeypatch) -> Non
 
 
 def test_memory_action_can_quit_docker_on_macos(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr("diskdoctor.memory.actions.sys.platform", "darwin")
+    monkeypatch.setattr("devdoctor.memory.actions.sys.platform", "darwin")
     (tmp_path / "index.html").write_text("<!doctype html><title>t</title>")
     shell = FakeShell(
         responses={
@@ -251,8 +251,8 @@ def test_memory_action_can_quit_docker_on_macos(tmp_path: Path, monkeypatch) -> 
 
 
 def _memory_client(tmp_path: Path, monkeypatch) -> TestClient:
-    monkeypatch.setattr("diskdoctor.memory.collectors.system.sys.platform", "darwin")
-    monkeypatch.setattr("diskdoctor.memory.discovery.sys.platform", "darwin")
+    monkeypatch.setattr("devdoctor.memory.collectors.system.sys.platform", "darwin")
+    monkeypatch.setattr("devdoctor.memory.discovery.sys.platform", "darwin")
     (tmp_path / "index.html").write_text("<!doctype html><title>t</title>")
     shell = FakeShell(
         responses={

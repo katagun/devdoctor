@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(__dirname, "..");
-const backendName = process.platform === "win32" ? "diskdoctor.exe" : "diskdoctor";
+const backendName = process.platform === "win32" ? "devdoctor.exe" : "devdoctor";
 const backendPath = path.join(webRoot, "dist-backend", backendName);
 
 if (!fs.existsSync(backendPath)) {

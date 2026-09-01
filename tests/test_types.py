@@ -2,7 +2,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from diskdoctor.types import (
+from devdoctor.types import (
     SNAPSHOT_SCHEMA_VERSION,
     CleanResult,
     CleanupOpts,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from diskdoctor.providers.base import Provider
+from devdoctor.providers.base import Provider
 
 
 def test_provider_details_defaults_to_none():

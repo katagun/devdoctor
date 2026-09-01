@@ -1,7 +1,7 @@
 import pytest
 
-from diskdoctor.types import ShellResult
-from diskdoctor.web.subprocess_stream import run_line_streaming
+from devdoctor.types import ShellResult
+from devdoctor.web.subprocess_stream import run_line_streaming
 
 
 @pytest.mark.asyncio

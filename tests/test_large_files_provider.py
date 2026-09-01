@@ -1,8 +1,8 @@
 import shlex
 from pathlib import Path
 
-from diskdoctor.providers.large_files import LargeFilesProvider
-from diskdoctor.types import Risk
+from devdoctor.providers.large_files import LargeFilesProvider
+from devdoctor.types import Risk
 from tests.conftest import FakeShell
 
 _TEST_THRESHOLD = 1024 * 1024  # 1 MB — keeps file writes fast
@@ -18,7 +18,7 @@ def test_surfaces_files_over_threshold(tmp_path, monkeypatch):
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setattr("sys.platform", "darwin")
-    monkeypatch.setattr("diskdoctor.providers.large_files._MIN_BYTES", _TEST_THRESHOLD)
+    monkeypatch.setattr("devdoctor.providers.large_files._MIN_BYTES", _TEST_THRESHOLD)
 
     big = home / "Desktop" / "huge.iso"
     _mk_file(big, 2 * _TEST_THRESHOLD)  # above threshold
@@ -42,7 +42,7 @@ def test_prunes_library_and_hidden_dirs(tmp_path, monkeypatch):
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setattr("sys.platform", "darwin")
-    monkeypatch.setattr("diskdoctor.providers.large_files._MIN_BYTES", _TEST_THRESHOLD)
+    monkeypatch.setattr("devdoctor.providers.large_files._MIN_BYTES", _TEST_THRESHOLD)
 
     _mk_file(home / "Library" / "Caches" / "big.bin", 2 * _TEST_THRESHOLD)
     _mk_file(home / "Documents" / ".hidden" / "big.bin", 2 * _TEST_THRESHOLD)
@@ -63,7 +63,7 @@ def test_recipe_survives_adversarial_filename(tmp_path, monkeypatch):
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setattr("sys.platform", "darwin")
-    monkeypatch.setattr("diskdoctor.providers.large_files._MIN_BYTES", _TEST_THRESHOLD)
+    monkeypatch.setattr("devdoctor.providers.large_files._MIN_BYTES", _TEST_THRESHOLD)
 
     evil = home / "Desktop" / "x'$(touch pwned)'.iso"
     _mk_file(evil, 2 * _TEST_THRESHOLD)

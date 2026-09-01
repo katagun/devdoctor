@@ -18,9 +18,9 @@ export default defineConfig({
     },
   },
   build: {
-    // Built output lives at ../src/diskdoctor/web/_static/dist so hatchling
+    // Built output lives at ../src/devdoctor/web/_static/dist so hatchling
     // picks it up via force-include.
-    outDir: path.resolve(import.meta.dirname, "../src/diskdoctor/web/_static/dist"),
+    outDir: path.resolve(import.meta.dirname, "../src/devdoctor/web/_static/dist"),
     emptyOutDir: true,
   },
   test: {

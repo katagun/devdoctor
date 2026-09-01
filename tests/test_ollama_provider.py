@@ -1,5 +1,5 @@
-from diskdoctor.providers.ollama import OllamaProvider
-from diskdoctor.types import Risk, ShellResult
+from devdoctor.providers.ollama import OllamaProvider
+from devdoctor.types import Risk, ShellResult
 from tests.conftest import FakeShell
 
 _OLLAMA_LIST_OUT = (

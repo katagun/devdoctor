@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from diskdoctor.memory.collectors.processes import classify_process, parse_ps_output
+from devdoctor.memory.collectors.processes import classify_process, parse_ps_output
 
 
 def test_parse_ps_output_sorts_by_rss_and_classifies_known_apps() -> None:

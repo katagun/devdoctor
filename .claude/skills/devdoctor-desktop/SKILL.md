@@ -6,7 +6,7 @@ description: Use when someone wants to build, install, or launch the DevDoctor E
 # DevDoctor desktop — build, install, launch (macOS)
 
 Builds the Electron desktop app, which bundles the web UI plus a standalone
-(PyInstaller) copy of the `diskdoctor` backend, so it runs with no separate
+(PyInstaller) copy of the `devdoctor` backend, so it runs with no separate
 Python install. **macOS only**, and requires a dev checkout with the toolchain
 (`uv`, `node`/`npm`, and PyInstaller via the `dev` extra).
 
@@ -32,7 +32,7 @@ CSC_IDENTITY_AUTO_DISCOVERY=false npm run electron:pack
 
 Output: `web/release/mac-arm64/DevDoctor.app` (Apple Silicon; `web/release/mac/`
 on Intel), with the backend embedded at
-`Contents/Resources/backend/diskdoctor`. Expect a few minutes (npm ci + vite
+`Contents/Resources/backend/devdoctor`. Expect a few minutes (npm ci + vite
 build + PyInstaller + an Electron download). The `.app` is ~350 MB.
 
 ## Launch (in place)
@@ -63,7 +63,7 @@ tail -n 20 "$HOME/Library/Application Support/DevDoctor/logs/devdoctor-electron.
 pgrep -fl "DevDoctor.app/Contents/MacOS/DevDoctor"
 ```
 
-A healthy log shows `backendCommand=...backend/diskdoctor serve --port <N>`,
+A healthy log shows `backendCommand=...backend/devdoctor serve --port <N>`,
 `Uvicorn running`, and `GET /api/health ... 200 OK`, followed by the SPA and
 `/api/*` calls returning 200.
 

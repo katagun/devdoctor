@@ -5,10 +5,10 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from diskdoctor.providers.base import PathProvider
-from diskdoctor.providers.ollama import OllamaProvider
-from diskdoctor.types import Risk
-from diskdoctor.web.app import build_app
+from devdoctor.providers.base import PathProvider
+from devdoctor.providers.ollama import OllamaProvider
+from devdoctor.types import Risk
+from devdoctor.web.app import build_app
 from tests.conftest import FakeShell
 
 
@@ -29,7 +29,7 @@ def _client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     )
     class_provider = OllamaProvider(shell)
 
-    from diskdoctor import registry
+    from devdoctor import registry
 
     monkeypatch.setattr(
         registry,
@@ -39,7 +39,7 @@ def _client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     yaml_file = tmp_path / "paths.yaml"
     yaml_file.write_text("[]\n")
-    monkeypatch.setenv("DISKDOCTOR_PATHS_YAML", str(yaml_file))
+    monkeypatch.setenv("DEVDOCTOR_PATHS_YAML", str(yaml_file))
     (tmp_path / "index.html").write_text("<!doctype html><title>t</title>")
 
     app = build_app(shell, allowed_hosts={"testserver"}, static_dir=tmp_path)

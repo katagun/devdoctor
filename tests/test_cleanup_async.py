@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from diskdoctor.cleanup import run_async
-from diskdoctor.types import CleanupOpts, Entry, Report, Risk, ShellResult
+from devdoctor.cleanup import run_async
+from devdoctor.types import CleanupOpts, Entry, Report, Risk, ShellResult
 
 
 def _report(*entries: Entry) -> Report:

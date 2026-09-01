@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from tests.conftest import FakeShell
 
-from diskdoctor.memory.actions import execute_memory_action
-from diskdoctor.types import ShellResult
+from devdoctor.memory.actions import execute_memory_action
+from devdoctor.types import ShellResult
 
 
 def _shell(**responses: ShellResult) -> FakeShell:

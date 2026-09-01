@@ -2,7 +2,7 @@ from pathlib import Path
 
 from starlette.testclient import TestClient
 
-from diskdoctor.web.app import build_app
+from devdoctor.web.app import build_app
 from tests.conftest import FakeShell
 
 
@@ -10,7 +10,7 @@ def _client(tmp_path: Path, monkeypatch) -> TestClient:
     (tmp_path / "index.html").write_text("<!doctype html><title>t</title>")
     yaml = tmp_path / "paths.yaml"
     yaml.write_text("[]\n")
-    monkeypatch.setenv("DISKDOCTOR_PATHS_YAML", str(yaml))
+    monkeypatch.setenv("DEVDOCTOR_PATHS_YAML", str(yaml))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
     shell = FakeShell(which_table={"ollama": None, "docker": None})
     app = build_app(shell, allowed_hosts={"testserver"}, static_dir=tmp_path)
@@ -74,7 +74,7 @@ def test_diff_live_compares_against_current(tmp_path, monkeypatch):
 
 
 def test_history_includes_snapshot_events(tmp_path, monkeypatch):
-    from diskdoctor.history import default_snapshot_dir
+    from devdoctor.history import default_snapshot_dir
 
     client = _client(tmp_path, monkeypatch)
     # Pre-seed two snapshots with distinct filenames — POSTing twice in-process
@@ -102,7 +102,7 @@ def test_history_includes_snapshot_events(tmp_path, monkeypatch):
 
 
 def test_history_includes_audit_log_cleanup_events(tmp_path, monkeypatch):
-    from diskdoctor import history_log
+    from devdoctor import history_log
 
     client = _client(tmp_path, monkeypatch)
     # Append must happen AFTER _client() sets XDG_DATA_HOME so the log lands
@@ -131,8 +131,8 @@ def test_history_includes_audit_log_cleanup_events(tmp_path, monkeypatch):
 def test_snapshots_listing_includes_kind_and_duration(tmp_path, monkeypatch) -> None:
     from datetime import UTC, datetime
 
-    from diskdoctor import history
-    from diskdoctor.types import ProviderTiming, Report, SnapshotKind
+    from devdoctor import history
+    from devdoctor.types import ProviderTiming, Report, SnapshotKind
 
     client = _client(tmp_path, monkeypatch)
     snapshot_dir = history.default_snapshot_dir()
@@ -165,8 +165,8 @@ def test_snapshots_listing_filters_by_kind(tmp_path, monkeypatch) -> None:
     from datetime import UTC, datetime
     from pathlib import Path
 
-    from diskdoctor import history
-    from diskdoctor.types import Entry, ProviderTiming, Report, Risk, SnapshotKind
+    from devdoctor import history
+    from devdoctor.types import Entry, ProviderTiming, Report, Risk, SnapshotKind
 
     client = _client(tmp_path, monkeypatch)
     snapshot_dir = history.default_snapshot_dir()
@@ -208,8 +208,8 @@ def test_snapshots_listing_filters_by_kind(tmp_path, monkeypatch) -> None:
 def test_snapshots_listing_respects_limit(tmp_path, monkeypatch) -> None:
     from datetime import UTC, datetime
 
-    from diskdoctor import history
-    from diskdoctor.types import Report, SnapshotKind
+    from devdoctor import history
+    from devdoctor.types import Report, SnapshotKind
 
     client = _client(tmp_path, monkeypatch)
     snapshot_dir = history.default_snapshot_dir()

@@ -368,10 +368,10 @@ a{color:inherit;text-decoration:none}
       </div>
     </div>
 
-    <div class="term" role="img" aria-label="Sample output of the diskdoctor scan command: a table of caches with sizes and risk labels, totalling 65.2 gigabytes reclaimable.">
+    <div class="term" role="img" aria-label="Sample output of the devdoctor scan command: a table of caches with sizes and risk labels, totalling 65.2 gigabytes reclaimable.">
       <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="ttl">~/work — devdoctor</span></div>
       <div class="term-body">
-        <div class="term-cmd"><span class="pr">$ </span>diskdoctor scan <span class="fl">--sort size</span><span class="caret" id="caret"></span></div>
+        <div class="term-cmd"><span class="pr">$ </span>devdoctor scan <span class="fl">--sort size</span><span class="caret" id="caret"></span></div>
         <div id="scan" style="margin-top:.7rem"></div>
         <div class="scan-total" id="scanTotal" style="opacity:0">
           <span class="lbl">reclaimable (safe + reclaimable, dangerous excluded)</span>
@@ -624,8 +624,8 @@ a{color:inherit;text-decoration:none}
         <button class="copy" data-copy="uv tool install git+https://github.com/katagun/devdoctor" aria-label="Copy install command"><span class="ct">copy</span></button>
       </div>
       <div class="cmd">
-        <code><span class="pr">$ </span>uv tool install "diskdoctor[web] @ git+https://github.com/katagun/devdoctor"</code>
-        <button class="copy" data-copy='uv tool install "diskdoctor[web] @ git+https://github.com/katagun/devdoctor"' aria-label="Copy web install command"><span class="ct">copy</span></button>
+        <code><span class="pr">$ </span>uv tool install "devdoctor[web] @ git+https://github.com/katagun/devdoctor"</code>
+        <button class="copy" data-copy='uv tool install "devdoctor[web] @ git+https://github.com/katagun/devdoctor"' aria-label="Copy web install command"><span class="ct">copy</span></button>
       </div>
     </div>
 
@@ -633,16 +633,16 @@ a{color:inherit;text-decoration:none}
       <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="ttl">first run</span></div>
       <div class="tb-body">
         <div class="ln"><span class="cm"># see everything, biggest first</span></div>
-        <div class="ln"><span class="pr">$ </span>diskdoctor scan</div>
+        <div class="ln"><span class="pr">$ </span>devdoctor scan</div>
         <div class="ln">&nbsp;</div>
         <div class="ln"><span class="cm"># preview a cleanup — nothing is deleted</span></div>
-        <div class="ln"><span class="pr">$ </span>diskdoctor clean</div>
+        <div class="ln"><span class="pr">$ </span>devdoctor clean</div>
         <div class="ln">&nbsp;</div>
         <div class="ln"><span class="cm"># interactive cleanup, safe entries auto-approved</span></div>
-        <div class="ln"><span class="pr">$ </span>diskdoctor clean --execute --yes-safe</div>
+        <div class="ln"><span class="pr">$ </span>devdoctor clean --execute --yes-safe</div>
         <div class="ln">&nbsp;</div>
         <div class="ln"><span class="cm"># open the local dashboard (web extra)</span></div>
-        <div class="ln"><span class="pr">$ </span>diskdoctor serve</div>
+        <div class="ln"><span class="pr">$ </span>devdoctor serve</div>
         <div class="ln"><span class="out">DevDoctor web UI -> http://127.0.0.1:8731</span></div>
       </div>
     </div>

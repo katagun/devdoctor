@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from diskdoctor.types import ShellResult
+from devdoctor.types import ShellResult
 
 
 @pytest.fixture(autouse=True)
 def _isolate_xdg_data_home(tmp_path: Path, monkeypatch):
     """Pin XDG_DATA_HOME to a fresh tmp dir for every test so snapshot and
     audit writes (e.g. CleanupRunner's audit log) never touch the real
-    ~/.local/share/diskdoctor."""
+    ~/.local/share/devdoctor."""
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
 
@@ -28,7 +28,7 @@ class FakeShell:
     responses: dict[tuple[str, ...], ShellResult] = field(default_factory=dict)
     which_table: dict[str, str | None] = field(default_factory=dict)
     calls: list[tuple[str, ...]] = field(default_factory=list)
-    # Discovery runs providers concurrently (diskdoctor.discovery.scan), and a
+    # Discovery runs providers concurrently (devdoctor.discovery.scan), and a
     # single shell instance can be shared across those providers, so record
     # calls under a lock to keep `calls` consistent under concurrent run().
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)

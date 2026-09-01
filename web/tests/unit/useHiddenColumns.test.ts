@@ -38,13 +38,13 @@ describe("useHiddenColumns", () => {
     const { result } = renderHook(() => useHiddenColumns());
     act(() => result.current.setHidden("stale", true));
     expect(result.current.isVisible("stale")).toBe(false);
-    const stored = JSON.parse(localStorage.getItem("diskdoctor.settings.v1") ?? "{}");
+    const stored = JSON.parse(localStorage.getItem("devdoctor.settings.v1") ?? "{}");
     expect(stored.scanTableHiddenColumns).toContain("stale");
   });
 
   it("setHidden('stale', false) un-hides and removes from storage", async () => {
     localStorage.setItem(
-      "diskdoctor.settings.v1",
+      "devdoctor.settings.v1",
       JSON.stringify({
         scanTableHiddenColumns: ["stale"],
         scanTableColumnsCustomized: true,
@@ -55,13 +55,13 @@ describe("useHiddenColumns", () => {
     expect(result.current.isVisible("stale")).toBe(false);
     act(() => result.current.setHidden("stale", false));
     expect(result.current.isVisible("stale")).toBe(true);
-    const stored = JSON.parse(localStorage.getItem("diskdoctor.settings.v1") ?? "{}");
+    const stored = JSON.parse(localStorage.getItem("devdoctor.settings.v1") ?? "{}");
     expect(stored.scanTableHiddenColumns).not.toContain("stale");
   });
 
   it("isVisible('provider') is always true even if someone hand-edits it into the hidden set", async () => {
     localStorage.setItem(
-      "diskdoctor.settings.v1",
+      "devdoctor.settings.v1",
       JSON.stringify({ scanTableHiddenColumns: ["provider"] }),
     );
     const { useHiddenColumns } = await import("@/hooks/useHiddenColumns");
@@ -71,7 +71,7 @@ describe("useHiddenColumns", () => {
 
   it("unknown column ids in stored settings are dropped on read", async () => {
     localStorage.setItem(
-      "diskdoctor.settings.v1",
+      "devdoctor.settings.v1",
       JSON.stringify({
         scanTableHiddenColumns: ["stale", "unknown_column", "owner"],
         scanTableColumnsCustomized: true,
@@ -95,7 +95,7 @@ describe("useHiddenColumns", () => {
   it("respects the user's explicit choice over the viewport default once customized", async () => {
     setViewportWidth(1600);
     localStorage.setItem(
-      "diskdoctor.settings.v1",
+      "devdoctor.settings.v1",
       JSON.stringify({
         scanTableHiddenColumns: ["owner", "perms"],
         scanTableColumnsCustomized: true,
@@ -115,7 +115,7 @@ describe("useHiddenColumns", () => {
     expect(result.current.isVisible("owner")).toBe(true); // wide → auto-shown
     act(() => result.current.setHidden("owner", true));
     expect(result.current.isVisible("owner")).toBe(false);
-    const stored = JSON.parse(localStorage.getItem("diskdoctor.settings.v1") ?? "{}");
+    const stored = JSON.parse(localStorage.getItem("devdoctor.settings.v1") ?? "{}");
     expect(stored.scanTableColumnsCustomized).toBe(true);
     expect(stored.scanTableHiddenColumns).toContain("owner");
   });

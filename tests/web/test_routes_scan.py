@@ -2,14 +2,14 @@ from pathlib import Path
 
 from starlette.testclient import TestClient
 
-from diskdoctor.web.app import build_app
+from devdoctor.web.app import build_app
 from tests.conftest import FakeShell
 
 
 def _client(tmp_path: Path, monkeypatch) -> TestClient:
     yaml = tmp_path / "paths.yaml"
     yaml.write_text("[]\n")
-    monkeypatch.setenv("DISKDOCTOR_PATHS_YAML", str(yaml))
+    monkeypatch.setenv("DEVDOCTOR_PATHS_YAML", str(yaml))
     (tmp_path / "index.html").write_text("<!doctype html><title>t</title>")
     shell = FakeShell(which_table={"ollama": None, "docker": None})
     app = build_app(shell, allowed_hosts={"testserver"}, static_dir=tmp_path)
@@ -80,7 +80,7 @@ def test_recipe_respects_provider_filter(tmp_path, monkeypatch):
 
 
 def test_scan_without_snapshot_flag_writes_nothing(tmp_path, monkeypatch) -> None:
-    from diskdoctor import history
+    from devdoctor import history
 
     client = _client(tmp_path, monkeypatch)
     resp = client.get("/api/scan", headers={"Host": "testserver"})
@@ -90,7 +90,7 @@ def test_scan_without_snapshot_flag_writes_nothing(tmp_path, monkeypatch) -> Non
 
 
 def test_scan_with_snapshot_flag_writes_auto(tmp_path, monkeypatch) -> None:
-    from diskdoctor import history
+    from devdoctor import history
 
     client = _client(tmp_path, monkeypatch)
     resp = client.get("/api/scan?snapshot=true", headers={"Host": "testserver"})
@@ -104,7 +104,7 @@ def test_scan_skips_auto_snapshot_inside_min_interval(tmp_path, monkeypatch) -> 
     """Filter-chip changes on the disk page send `snapshot=true` on every fetch.
     Without server-side rate limiting, a daily-cadence user would still see
     one auto-snapshot per click. The min-interval param is the cadence."""
-    from diskdoctor import history
+    from devdoctor import history
 
     client = _client(tmp_path, monkeypatch)
     snapshot_dir = history.default_snapshot_dir()
@@ -128,7 +128,7 @@ def test_scan_skips_auto_snapshot_inside_min_interval(tmp_path, monkeypatch) -> 
 def test_scan_writes_auto_snapshot_when_min_interval_zero(tmp_path, monkeypatch) -> None:
     """Live cadence (staleTime=0) opts out of rate-limiting — every scan should
     still record. Backward-compat with the no-param case."""
-    from diskdoctor import history
+    from devdoctor import history
 
     client = _client(tmp_path, monkeypatch)
     snapshot_dir = history.default_snapshot_dir()
@@ -143,8 +143,8 @@ def test_scan_writes_auto_snapshot_when_min_interval_zero(tmp_path, monkeypatch)
 def test_scan_with_snapshot_flag_prunes_to_retention(tmp_path, monkeypatch) -> None:
     from datetime import UTC, datetime
 
-    from diskdoctor import history
-    from diskdoctor.types import ProviderTiming, Report, SnapshotKind
+    from devdoctor import history
+    from devdoctor.types import ProviderTiming, Report, SnapshotKind
 
     monkeypatch.setattr(history, "AUTO_SNAPSHOT_RETENTION", 3)
     client = _client(tmp_path, monkeypatch)

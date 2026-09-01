@@ -76,7 +76,7 @@ describe("Sidebar", () => {
 
   it("can move tools out of the sidebar when page tabs are preferred", () => {
     localStorage.setItem(
-      "diskdoctor.settings.v1",
+      "devdoctor.settings.v1",
       JSON.stringify({ toolNavigation: "tabs" }),
     );
     __testReloadSettings();
@@ -93,7 +93,7 @@ describe("Sidebar", () => {
     beforeEach(() => {
       localStorage.clear();
       localStorage.setItem(
-        "diskdoctor.settings.v1",
+        "devdoctor.settings.v1",
         JSON.stringify({ sidebarWidth: 48, sidebarExpandedWidth: 180 }),
       );
       __testReloadSettings();

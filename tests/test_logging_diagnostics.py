@@ -8,24 +8,24 @@ from pathlib import Path
 import pytest
 from rich.console import Console
 
-from diskdoctor import discovery
-from diskdoctor.config import default_app_settings, load_app_settings
-from diskdoctor.logging_config import configure_logging
-from diskdoctor.providers.base import PathProvider
-from diskdoctor.rendering import render_report_table
-from diskdoctor.types import Entry, Report, Risk, ScanFilters
+from devdoctor import discovery
+from devdoctor.config import default_app_settings, load_app_settings
+from devdoctor.logging_config import configure_logging
+from devdoctor.providers.base import PathProvider
+from devdoctor.rendering import render_report_table
+from devdoctor.types import Entry, Report, Risk, ScanFilters
 from tests.conftest import FakeShell
 
 
 @pytest.fixture(autouse=True)
-def _propagate_diskdoctor_logs():
+def _propagate_devdoctor_logs():
     """Let caplog (whose handler sits on the root logger) see our records.
 
-    configure_logging sets propagate=False on the `diskdoctor` logger to avoid
+    configure_logging sets propagate=False on the `devdoctor` logger to avoid
     double output under uvicorn; that would otherwise hide records from caplog.
     Force propagation for the duration of each test, then restore.
     """
-    logger = logging.getLogger("diskdoctor")
+    logger = logging.getLogger("devdoctor")
     previous = logger.propagate
     logger.propagate = True
     try:
@@ -39,18 +39,18 @@ def _propagate_diskdoctor_logs():
 
 def test_configure_logging_sets_info_by_default() -> None:
     configure_logging(False)
-    assert logging.getLogger("diskdoctor").level == logging.INFO
+    assert logging.getLogger("devdoctor").level == logging.INFO
 
 
 def test_configure_logging_verbose_sets_debug() -> None:
     configure_logging(True)
-    assert logging.getLogger("diskdoctor").level == logging.DEBUG
+    assert logging.getLogger("devdoctor").level == logging.DEBUG
     # Reset for other tests / suites.
     configure_logging(False)
 
 
 def test_configure_logging_does_not_add_duplicate_handlers() -> None:
-    logger = logging.getLogger("diskdoctor")
+    logger = logging.getLogger("devdoctor")
     configure_logging(False)
     count = len(logger.handlers)
     configure_logging(True)
@@ -64,7 +64,7 @@ def test_configure_logging_does_not_add_duplicate_handlers() -> None:
 def test_corrupt_config_logs_warning_and_falls_back(tmp_path: Path, caplog) -> None:
     path = tmp_path / "config.json"
     path.write_text("{ this is not valid json ")
-    with caplog.at_level(logging.WARNING, logger="diskdoctor.config"):
+    with caplog.at_level(logging.WARNING, logger="devdoctor.config"):
         settings = load_app_settings(path)
     # Same behaviour as before: defaults are returned.
     assert settings == default_app_settings()
@@ -76,7 +76,7 @@ def test_corrupt_config_logs_warning_and_falls_back(tmp_path: Path, caplog) -> N
 def test_non_object_config_logs_warning(tmp_path: Path, caplog) -> None:
     path = tmp_path / "config.json"
     path.write_text("[1, 2, 3]")
-    with caplog.at_level(logging.WARNING, logger="diskdoctor.config"):
+    with caplog.at_level(logging.WARNING, logger="devdoctor.config"):
         load_app_settings(path)
     assert any("not a JSON object" in rec.message for rec in caplog.records)
 
@@ -105,7 +105,7 @@ def test_scan_surfaces_skipped_path_in_diagnostics(tmp_path: Path, caplog) -> No
     protected.chmod(0o000)
     try:
         provider = _path_provider(root)
-        with caplog.at_level(logging.WARNING, logger="diskdoctor.providers.base"):
+        with caplog.at_level(logging.WARNING, logger="devdoctor.providers.base"):
             report = discovery.scan([provider], ScanFilters(), datetime.now(UTC))
         # The unreadable dir was skipped during sizing and surfaced as a
         # diagnostic (control flow unchanged — the readable entry still shows).

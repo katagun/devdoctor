@@ -2,7 +2,7 @@ from pathlib import Path
 
 from starlette.testclient import TestClient
 
-from diskdoctor.web.app import build_app
+from devdoctor.web.app import build_app
 from tests.conftest import FakeShell
 
 

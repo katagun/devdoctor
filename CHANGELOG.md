@@ -10,19 +10,25 @@ built so far is collected under **Unreleased**; the first cut will move these
 entries under a versioned heading as described in
 [RELEASING.md](RELEASING.md).
 
-> **Note on names:** the product is **DevDoctor**; the installable Python
-> package and CLI are still named `diskdoctor` during the transition.
-
 ## [Unreleased]
+
+### Changed
+
+- **Renamed the package and CLI from `diskdoctor` to `devdoctor`**, completing
+  the transition that started with the repository rename. The installable
+  package is now `devdoctor`, the command is `devdoctor`, and the
+  `DISKDOCTOR_*` environment variables are now `DEVDOCTOR_*`. Existing local
+  state in `~/.local/share/diskdoctor` keeps working: the new CLI falls back
+  to it until a `devdoctor` data directory exists.
 
 ### Added
 
-- **CLI (`diskdoctor`)** — repeatable disk-cache analysis and interactive
+- **CLI (`devdoctor`)** — repeatable disk-cache analysis and interactive
   cleanup for macOS and Linux: `scan`, `recipe`, `clean`, `snapshot`, `diff`,
   and `providers`, with a preview-first safety model and explicit
   safe/reclaimable/dangerous labels. Providers cover Ollama, LM Studio, Docker,
   and Hugging Face, plus a set of YAML-defined cache paths.
-- **Local web UI (`diskdoctor serve`)** — a FastAPI backend and React
+- **Local web UI (`devdoctor serve`)** — a FastAPI backend and React
   dashboard with a size treemap, per-provider details, and live scan/cleanup
   over server-sent events.
 - **Electron desktop app packaging (macOS)** — a desktop shell that bundles the
@@ -50,7 +56,7 @@ entries under a versioned heading as described in
 ### Changed
 
 - **Rebranded to DevDoctor** — the product is now DevDoctor and ships a public
-  landing page; the Python package and CLI stay named `diskdoctor` during the
+  landing page; the Python package and CLI stay named `devdoctor` during the
   transition, with copyright attributed to embark-delve.
 - **Parallelized provider discovery** — discovery runs concurrently in a
   bounded thread pool, with identical, deterministic output.

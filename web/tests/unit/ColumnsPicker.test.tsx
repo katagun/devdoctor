@@ -44,7 +44,7 @@ describe("ColumnsPicker", () => {
     expect(staleItem.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(staleItem);
     expect(staleItem.getAttribute("aria-checked")).toBe("false");
-    const stored = JSON.parse(localStorage.getItem("diskdoctor.settings.v1") ?? "{}");
+    const stored = JSON.parse(localStorage.getItem("devdoctor.settings.v1") ?? "{}");
     expect(stored.scanTableHiddenColumns).toContain("stale");
   });
 
@@ -55,7 +55,7 @@ describe("ColumnsPicker", () => {
     const providerItem = items.find((el) => /provider/i.test(el.textContent ?? ""))!;
     fireEvent.click(providerItem);
     expect(providerItem.getAttribute("aria-checked")).toBe("true");
-    const stored = JSON.parse(localStorage.getItem("diskdoctor.settings.v1") ?? "{}");
+    const stored = JSON.parse(localStorage.getItem("devdoctor.settings.v1") ?? "{}");
     expect(stored.scanTableHiddenColumns ?? []).not.toContain("provider");
   });
 

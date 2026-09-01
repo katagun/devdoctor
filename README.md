@@ -5,16 +5,16 @@
 
 DevDoctor is a local developer workstation resource manager.
 
-Today it includes the original diskdoctor workflow: repeatable disk-cache
+Today it includes the original devdoctor workflow: repeatable disk-cache
 analysis and interactive cleanup for macOS and Linux. The current installable
-Python package and CLI remain named `diskdoctor` during the transition.
+Python package and CLI remain named `devdoctor` during the transition.
 
 **[See what it does → katagun.github.io/devdoctor](https://katagun.github.io/devdoctor/)**
 
 ## Install
 
 ```bash
-uv tool install --from git+https://github.com/katagun/devdoctor diskdoctor
+uv tool install --from git+https://github.com/katagun/devdoctor devdoctor
 # or from a local clone:
 uv tool install .
 ```
@@ -22,24 +22,24 @@ uv tool install .
 ## Commands
 
 ```bash
-diskdoctor scan                       # Rich table of all known caches, sorted by size
-diskdoctor scan --json                # same, as JSON to stdout
-diskdoctor scan --min-size 100M --risk safe,reclaimable
+devdoctor scan                       # Rich table of all known caches, sorted by size
+devdoctor scan --json                # same, as JSON to stdout
+devdoctor scan --min-size 100M --risk safe,reclaimable
 
-diskdoctor recipe                     # emit a commented-out cleanup shell script
-diskdoctor recipe --provider ollama   # only one section
-diskdoctor recipe -o /tmp/cleanup.sh  # write to file
+devdoctor recipe                     # emit a commented-out cleanup shell script
+devdoctor recipe --provider ollama   # only one section
+devdoctor recipe -o /tmp/cleanup.sh  # write to file
 
-diskdoctor clean                      # preview (no prompts, no shell calls)
-diskdoctor clean --execute            # interactive cleanup (per-entry prompts + final confirm)
-diskdoctor clean --execute --yes-safe
-diskdoctor clean --execute --allow-dangerous
+devdoctor clean                      # preview (no prompts, no shell calls)
+devdoctor clean --execute            # interactive cleanup (per-entry prompts + final confirm)
+devdoctor clean --execute --yes-safe
+devdoctor clean --execute --allow-dangerous
 
-diskdoctor snapshot --note "before cleanup"
-diskdoctor diff                       # latest two snapshots
-diskdoctor diff --to live             # last snapshot vs current
+devdoctor snapshot --note "before cleanup"
+devdoctor diff                       # latest two snapshots
+devdoctor diff --to live             # last snapshot vs current
 
-diskdoctor providers                  # show registered providers and their availability
+devdoctor providers                  # show registered providers and their availability
 ```
 
 ## Safety model
@@ -55,7 +55,7 @@ diskdoctor providers                  # show registered providers and their avai
 uv tool install '.[web]' --force
 
 # Launch
-diskdoctor serve
+devdoctor serve
 # → opens http://127.0.0.1:<random-port> in your browser
 ```
 
@@ -71,7 +71,7 @@ Dev loop:
 cd web && npm install && cd ..
 
 # Terminal 1: FastAPI
-uv run diskdoctor serve --port 8731 --no-browser
+uv run devdoctor serve --port 8731 --no-browser
 
 # Terminal 2: Vite with HMR (proxies /api to 8731)
 cd web && npm run dev
@@ -86,14 +86,14 @@ built bundle into the package on release):
 ./scripts/deploy.sh                       # install web deps + build + reinstall
 ./scripts/deploy.sh --skip-npm-install    # skip `npm install` when node_modules is fresh
 ./scripts/deploy.sh --help                # show what each step does and why
-diskdoctor serve
+devdoctor serve
 ```
 
 The script runs the three steps you otherwise have to remember in order:
 
 ```bash
 cd web && npm run build && cd ..
-uv cache clean diskdoctor  # drop the stale wheel built from an older dist/
+uv cache clean devdoctor  # drop the stale wheel built from an older dist/
 uv tool install '.[web]' --force
 ```
 
@@ -106,7 +106,7 @@ uv tool install '.[web]' --force
 ## Building the desktop app
 
 DevDoctor ships an Electron desktop shell that bundles the web UI and a
-standalone (PyInstaller) copy of the `diskdoctor` backend, so the app runs with
+standalone (PyInstaller) copy of the `devdoctor` backend, so the app runs with
 no separate Python install. Packaging currently targets **macOS** and must be
 run on a Mac.
 
@@ -120,7 +120,7 @@ npm run electron:pack
 executable (`npm run backend:build`), verify the bundle
 (`node electron/check-backend-bundle.mjs`), then `electron-builder --dir`. It
 produces an unpacked, launchable `DevDoctor.app` under `web/release/` with the
-backend binary embedded at `Contents/Resources/backend/diskdoctor`. On first
+backend binary embedded at `Contents/Resources/backend/devdoctor`. On first
 launch DevDoctor spawns that backend, waits for `/api/health`, and loads the UI;
 it also points you at **Full Disk Access** (System Settings › Privacy &
 Security) so scans can reach protected folders.

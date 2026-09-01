@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from diskdoctor.history_log import append_event, read_events
+from devdoctor.history_log import append_event, read_events
 
 
 def test_append_and_read_roundtrip(tmp_path: Path):
@@ -70,7 +70,7 @@ def test_append_preserves_caller_schema_version(tmp_path: Path):
 
 def test_rotates_when_live_file_exceeds_max(tmp_path: Path, monkeypatch):
     # Shrink the rotation threshold so the test stays fast.
-    monkeypatch.setattr("diskdoctor.history_log.MAX_LOG_BYTES", 200)
+    monkeypatch.setattr("devdoctor.history_log.MAX_LOG_BYTES", 200)
     log = tmp_path / "audit.jsonl"
     # Three ~120-byte events — the third crosses the 200B threshold, so the
     # rotation check at the start of append_event moves the existing 2-line
@@ -90,7 +90,7 @@ def test_rotates_when_live_file_exceeds_max(tmp_path: Path, monkeypatch):
 
 
 def test_read_events_merges_across_rotations(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("diskdoctor.history_log.MAX_LOG_BYTES", 200)
+    monkeypatch.setattr("devdoctor.history_log.MAX_LOG_BYTES", 200)
     log = tmp_path / "audit.jsonl"
     for i in range(5):
         append_event({"type": "cleanup", "job_id": f"job-{i:030d}"}, log)
@@ -106,7 +106,7 @@ def test_read_events_merges_across_rotations(tmp_path: Path, monkeypatch):
 
 
 def test_read_events_stops_early_when_limit_satisfied(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("diskdoctor.history_log.MAX_LOG_BYTES", 200)
+    monkeypatch.setattr("devdoctor.history_log.MAX_LOG_BYTES", 200)
     log = tmp_path / "audit.jsonl"
     for i in range(5):
         append_event({"type": "cleanup", "job_id": f"job-{i:030d}"}, log)
@@ -116,8 +116,8 @@ def test_read_events_stops_early_when_limit_satisfied(tmp_path: Path, monkeypatc
 
 
 def test_oldest_rotation_is_dropped(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("diskdoctor.history_log.MAX_LOG_BYTES", 120)
-    monkeypatch.setattr("diskdoctor.history_log.KEEP_ROTATIONS", 2)
+    monkeypatch.setattr("devdoctor.history_log.MAX_LOG_BYTES", 120)
+    monkeypatch.setattr("devdoctor.history_log.KEEP_ROTATIONS", 2)
     log = tmp_path / "audit.jsonl"
     # Each line is >120B so every append triggers a rotation. After 4
     # rotations the first event should have fallen off the end.

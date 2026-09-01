@@ -1,10 +1,10 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from diskdoctor import discovery
-from diskdoctor.discovery import scan
-from diskdoctor.providers.base import Provider
-from diskdoctor.types import Entry, Risk, ScanFilters, SnapshotKind
+from devdoctor import discovery
+from devdoctor.discovery import scan
+from devdoctor.providers.base import Provider
+from devdoctor.types import Entry, Risk, ScanFilters, SnapshotKind
 from tests.conftest import FakeShell
 
 

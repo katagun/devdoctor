@@ -6,13 +6,13 @@ deliberately lightweight and pre-1.0: DevDoctor follows
 major version is `0`, breaking changes are allowed in minor bumps.
 
 > **Note on names:** the product is **DevDoctor**; the installable Python
-> package and CLI are still named `diskdoctor`. There are two version strings to
+> package and CLI are still named `devdoctor`. There are two version strings to
 > keep in sync — `pyproject.toml` (the package) and `web/package.json` (the web
 > UI and desktop shell).
 
 ## What is and isn't automated
 
-- **Not yet published to PyPI.** Reserving the `diskdoctor` name on PyPI is
+- **Not yet published to PyPI.** Reserving the `devdoctor` name on PyPI is
   tracked by [#7](https://github.com/katagun/devdoctor/issues/7); until then the
   release process does **not** publish to PyPI, and there is no PyPI credential
   anywhere in CI.
@@ -76,7 +76,7 @@ uv build
 ```
 
 The wheel force-includes the built web bundle
-(`src/diskdoctor/web/_static/dist`), so if you are building the wheel by hand
+(`src/devdoctor/web/_static/dist`), so if you are building the wheel by hand
 run the web build first — `./scripts/deploy.sh` or `cd web && npm run build` —
 otherwise the packaged UI shows the "assets are not built yet" placeholder.
 

@@ -4,8 +4,8 @@ from pathlib import Path
 
 from rich.console import Console
 
-from diskdoctor.rendering import render_diff_table, render_report_table
-from diskdoctor.types import DiffReport, DiffRow, Entry, Report, Risk
+from devdoctor.rendering import render_diff_table, render_report_table
+from devdoctor.types import DiffReport, DiffRow, Entry, Report, Risk
 
 
 def _rep(*entries) -> Report:

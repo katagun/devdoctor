@@ -1,8 +1,8 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from diskdoctor.cleanup import build_script, run
-from diskdoctor.types import CleanupOpts, Entry, Report, Risk, ShellResult
+from devdoctor.cleanup import build_script, run
+from devdoctor.types import CleanupOpts, Entry, Report, Risk, ShellResult
 from tests.conftest import FakeShell
 
 

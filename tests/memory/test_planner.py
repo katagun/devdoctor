@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from diskdoctor.memory.planner import plan_workload
-from diskdoctor.memory.types import (
+from devdoctor.memory.planner import plan_workload
+from devdoctor.memory.types import (
     MemoryAction,
     MemoryConsumer,
     MemoryReport,

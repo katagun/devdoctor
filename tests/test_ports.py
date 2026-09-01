@@ -1,5 +1,5 @@
-from diskdoctor.ports import RealShell
-from diskdoctor.types import ShellResult
+from devdoctor.ports import RealShell
+from devdoctor.types import ShellResult
 
 
 def test_real_shell_runs_command_and_returns_result():
