@@ -14,6 +14,9 @@ entries under a versioned heading as described in
 
 ### Changed
 
+- **Migrated the web and desktop toolchain from npm to Bun** — local scripts,
+  CI, release builds, Electron packaging, dependency updates, and contributor
+  docs now use the pinned Bun version and committed text lockfile.
 - **Renamed the package and CLI from `diskdoctor` to `devdoctor`**, completing
   the transition that started with the repository rename. The installable
   package is now `devdoctor`, the command is `devdoctor`, and the

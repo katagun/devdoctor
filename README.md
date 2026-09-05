@@ -70,14 +70,14 @@ Flags:
 Dev loop:
 
 ```bash
-# One-time: install the SPA's node deps
-cd web && npm install && cd ..
+# One-time: install the SPA dependencies
+cd web && bun install --frozen-lockfile && cd ..
 
 # Terminal 1: FastAPI
 uv run devdoctor serve --port 8731 --no-browser
 
 # Terminal 2: Vite with HMR (proxies /api to 8731)
-cd web && npm run dev
+cd web && bun run dev
 ```
 
 Open http://localhost:5173.
@@ -87,7 +87,7 @@ built bundle into the package on release):
 
 ```bash
 ./scripts/deploy.sh                       # install web deps + build + reinstall
-./scripts/deploy.sh --skip-npm-install    # skip `npm install` when node_modules is fresh
+./scripts/deploy.sh --skip-bun-install    # skip `bun install` when node_modules is fresh
 ./scripts/deploy.sh --help                # show what each step does and why
 devdoctor serve
 ```
@@ -95,7 +95,7 @@ devdoctor serve
 The script runs the three steps you otherwise have to remember in order:
 
 ```bash
-cd web && npm run build && cd ..
+cd web && bun run build && cd ..
 uv cache clean devdoctor  # drop the stale wheel built from an older dist/
 uv tool install '.[web]' --force
 ```
@@ -115,12 +115,12 @@ run on a Mac.
 
 ```bash
 cd web
-npm ci
-npm run electron:pack
+bun ci
+bun run electron:pack
 ```
 
 `electron:pack` runs the full pipeline — build the SPA, build the backend
-executable (`npm run backend:build`), verify the bundle
+executable (`bun run backend:build`), verify the bundle
 (`node electron/check-backend-bundle.mjs`), then `electron-builder --dir`. It
 produces an unpacked, launchable `DevDoctor.app` under `web/release/` with the
 backend binary embedded at `Contents/Resources/backend/devdoctor`. On first

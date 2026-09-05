@@ -12,7 +12,7 @@
 
 - [ ] `ruff check`, `ruff format`, and `mypy` pass
 - [ ] `pytest` passes (and covers behavior changes / bug fixes)
-- [ ] Web changes: `npm run typecheck`, `npm run test`, and `npm run build` pass
+- [ ] Web changes: `bun run typecheck`, `bun run test`, and `bun run build` pass
 - [ ] Safety model preserved (preview-first, risk labels, no-shell execution, no
       injectable content in generated scripts) — see CONTRIBUTING.md
 - [ ] Docs / comments updated if behavior or usage changed

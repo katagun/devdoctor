@@ -1,6 +1,7 @@
 {
   "name": "devdoctor-web",
   "private": true,
+  "packageManager": "bun@1.4.0",
   "version": "0.1.0",
   "description": "DevDoctor desktop shell and web UI",
   "author": "embark-delve",
@@ -11,7 +12,7 @@
     "build": "tsc --noEmit && vite build",
     "electron:dev": "electron electron/main.mjs",
     "backend:build": "cd .. && uv run --extra dev --extra web python scripts/build_backend.py",
-    "electron:pack": "npm run build && npm run backend:build && node electron/check-backend-bundle.mjs && electron-builder --config electron-builder.json --dir",
+    "electron:pack": "bun run build && bun run backend:build && node electron/check-backend-bundle.mjs && electron-builder --config electron-builder.json --dir",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

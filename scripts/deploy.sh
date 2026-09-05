@@ -3,7 +3,7 @@
 # `devdoctor serve` picks up the fresh frontend assets.
 #
 # Why these three steps are all needed:
-#   1. `npm run build` writes a new JS/CSS bundle under
+#   1. `bun run build` writes a new JS/CSS bundle under
 #      src/devdoctor/web/_static/dist/. hatchling force-includes that path
 #      when building the wheel, so the bundle ships inside the installed tool.
 #   2. `uv cache clean devdoctor` drops any wheel uv already cached for this
@@ -19,7 +19,7 @@
 #
 # Usage: run from anywhere — the script resolves its own repo root.
 #   ./scripts/deploy.sh                     # default (restart if running)
-#   ./scripts/deploy.sh --skip-npm-install  # skip npm install
+#   ./scripts/deploy.sh --skip-bun-install  # skip bun install
 #   ./scripts/deploy.sh --skip-restart      # don't touch the running server
 #   ./scripts/deploy.sh --port 8080         # check a non-default port
 
@@ -28,14 +28,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-SKIP_NPM_INSTALL=0
+SKIP_BUN_INSTALL=0
 SKIP_RESTART=0
 PORT=8731
 
 # Parse flags. --port takes a value; everything else is a boolean.
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --skip-npm-install) SKIP_NPM_INSTALL=1; shift ;;
+    --skip-bun-install) SKIP_BUN_INSTALL=1; shift ;;
     --skip-restart) SKIP_RESTART=1; shift ;;
     --port)
       if [[ $# -lt 2 ]]; then
@@ -56,20 +56,20 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-for cmd in npm uv; do
+for cmd in bun uv; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "error: '$cmd' not on PATH" >&2
     exit 1
   fi
 done
 
-if [[ $SKIP_NPM_INSTALL -eq 0 ]]; then
-  echo "→ Installing web deps (pass --skip-npm-install to skip)"
-  (cd web && npm install --silent)
+if [[ $SKIP_BUN_INSTALL -eq 0 ]]; then
+  echo "→ Installing web deps (pass --skip-bun-install to skip)"
+  (cd web && bun install --frozen-lockfile --silent)
 fi
 
 echo "→ Building SPA bundle"
-(cd web && npm run build)
+(cd web && bun run build)
 
 echo "→ Clearing cached devdoctor wheel"
 uv cache clean devdoctor

@@ -49,7 +49,7 @@ def build_pyinstaller_command() -> list[str]:
 
 def main() -> None:
     if not (WEB_DIST / "index.html").is_file():
-        raise SystemExit("Missing bundled web UI. Run `cd web && npm run build` first.")
+        raise SystemExit("Missing bundled web UI. Run `cd web && bun run build` first.")
     if not DATA_FILE.is_file():
         raise SystemExit(f"Missing provider registry data: {DATA_FILE}")
 

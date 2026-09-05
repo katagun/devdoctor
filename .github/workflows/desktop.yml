@@ -13,6 +13,7 @@ on:
     paths:
       - "web/electron/**"
       - "web/electron-builder.json"
+      - "web/bun.lock"
       - "web/package.json"
       - "scripts/build_backend.py"
       - ".github/workflows/desktop.yml"
@@ -21,6 +22,7 @@ on:
     paths:
       - "web/electron/**"
       - "web/electron-builder.json"
+      - "web/bun.lock"
       - "web/package.json"
       - "scripts/build_backend.py"
       - ".github/workflows/desktop.yml"
@@ -51,8 +53,10 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "20"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.0"
 
       # Cache the Electron and electron-builder downloads (framework zips, etc.)
       # so repeated runs don't re-download the full Electron distribution.
@@ -61,21 +65,21 @@ jobs:
           path: |
             ~/Library/Caches/electron
             ~/Library/Caches/electron-builder
-          key: electron-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+          key: electron-${{ runner.os }}-${{ hashFiles('web/bun.lock') }}
           restore-keys: |
             electron-${{ runner.os }}-
 
       - name: Install web dependencies
         working-directory: web
-        run: npm ci
+        run: bun ci
 
       - name: Build web UI
         working-directory: web
-        run: npm run build
+        run: bun run build
 
       - name: Build backend executable
         working-directory: web
-        run: npm run backend:build
+        run: bun run backend:build
 
       - name: Verify bundled backend
         working-directory: web
@@ -83,7 +87,7 @@ jobs:
 
       - name: Package unsigned .app (electron-builder --dir)
         working-directory: web
-        run: npx electron-builder --config electron-builder.json --dir
+        run: bun run electron-builder --config electron-builder.json --dir
 
       - name: Assert DevDoctor.app was produced
         working-directory: web

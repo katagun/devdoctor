@@ -10,12 +10,12 @@ updates:
         patterns: ["*"]
     labels: ["tech-debt"]
 
-  # Web UI dependencies (package-lock.json is committed).
+  # Web UI dependencies (bun.lock is committed).
   # Group only minor/patch bumps so they land in one tidy PR; major bumps come
   # as individual PRs so each breaking migration (e.g. React 19, react-router 7,
   # recharts 3, eslint 10, vite/vitest/electron majors) can be reviewed and
   # migrated deliberately instead of in a grab-bag.
-  - package-ecosystem: npm
+  - package-ecosystem: bun
     directory: /web
     schedule:
       interval: weekly
