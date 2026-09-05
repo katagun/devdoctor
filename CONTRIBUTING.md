@@ -10,15 +10,15 @@ your change needs to pass, and the conventions the project follows.
 
 ## Getting set up
 
-DevDoctor uses [uv](https://docs.astral.sh/uv/) for the Python side and npm for
-the web UI.
+DevDoctor uses [uv](https://docs.astral.sh/uv/) for the Python side and
+[Bun](https://bun.com/docs/installation) for the web UI.
 
 ```bash
 # Python: install the project with dev + web extras into a managed venv
 uv sync --extra dev --extra web
 
 # Web UI (optional — only if you touch web/)
-cd web && npm ci
+cd web && bun ci
 ```
 
 Run the tool from the source tree:
@@ -41,9 +41,9 @@ uv run --extra dev --extra web pytest                      # tests
 
 # Web (only if you changed web/)
 cd web
-npm run typecheck
-npm run test
-npm run build
+bun run typecheck
+bun run test
+bun run build
 ```
 
 A pre-commit hook config is included; enable it with

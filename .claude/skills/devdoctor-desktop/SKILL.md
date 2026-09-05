@@ -8,7 +8,7 @@ description: Use when someone wants to build, install, or launch the DevDoctor E
 Builds the Electron desktop app, which bundles the web UI plus a standalone
 (PyInstaller) copy of the `devdoctor` backend, so it runs with no separate
 Python install. **macOS only**, and requires a dev checkout with the toolchain
-(`uv`, `node`/`npm`, and PyInstaller via the `dev` extra).
+(`uv`, Bun, Node 20, and PyInstaller via the `dev` extra).
 
 The result is **unsigned** (ad-hoc). That's fine to run locally; a
 signed/notarized `.dmg` for distribution is separate (issue #6, needs an Apple
@@ -21,18 +21,18 @@ From the repo root, on the branch/commit you want to package:
 
 ```bash
 cd web
-npm ci
-CSC_IDENTITY_AUTO_DISCOVERY=false npm run electron:pack
+bun ci
+CSC_IDENTITY_AUTO_DISCOVERY=false bun run electron:pack
 ```
 
 `electron:pack` runs the whole pipeline: build the SPA → build the backend
-(`npm run backend:build`, PyInstaller onefile) → verify the bundle
+(`bun run backend:build`, PyInstaller onefile) → verify the bundle
 (`node electron/check-backend-bundle.mjs`) → `electron-builder --dir`.
 `CSC_IDENTITY_AUTO_DISCOVERY=false` keeps electron-builder from trying to sign.
 
 Output: `web/release/mac-arm64/DevDoctor.app` (Apple Silicon; `web/release/mac/`
 on Intel), with the backend embedded at
-`Contents/Resources/backend/devdoctor`. Expect a few minutes (npm ci + vite
+`Contents/Resources/backend/devdoctor`. Expect a few minutes (bun ci + Vite
 build + PyInstaller + an Electron download). The `.app` is ~350 MB.
 
 ## Launch (in place)
@@ -69,9 +69,9 @@ A healthy log shows `backendCommand=...backend/devdoctor serve --port <N>`,
 
 ## Notes
 
-- If `npm ci` warns about blocked install scripts, that's fine — electron-builder
-  downloads its own Electron binary regardless.
-- To rebuild after code changes, re-run `npm run electron:pack`; then re-copy to
+- If `bun ci` reports blocked install scripts, inspect them with
+  `bun pm untrusted` before deciding whether to trust them.
+- To rebuild after code changes, re-run `bun run electron:pack`; then re-copy to
   `/Applications` if you installed it there.
 - Don't commit build artifacts (`web/release/`, `web/dist-backend/*`, `.build/`,
   the regenerated `web/_static/dist/index.html`) — they're gitignored.

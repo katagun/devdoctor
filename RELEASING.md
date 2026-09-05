@@ -16,7 +16,7 @@ major version is `0`, breaking changes are allowed in minor bumps.
   tracked by [#7](https://github.com/katagun/devdoctor/issues/7); until then the
   release process does **not** publish to PyPI, and there is no PyPI credential
   anywhere in CI.
-- **No signed desktop distributable yet.** `npm run electron:pack` produces an
+- **No signed desktop distributable yet.** `bun run electron:pack` produces an
   **unsigned** `.app`. A signed and notarized `.dmg`/`.zip` is deferred to
   [#6](https://github.com/katagun/devdoctor/issues/6), which is blocked on an
   Apple Developer certificate.
@@ -28,7 +28,7 @@ major version is `0`, breaking changes are allowed in minor bumps.
 ## Prerequisites
 
 - [`uv`](https://docs.astral.sh/uv/) for the Python build.
-- Node and npm (only if you are also producing the desktop app).
+- Bun and Node 20 (only if you are also producing the desktop app).
 - Push access to `main` and permission to create tags and releases.
 - A clean working tree on an up-to-date `main`.
 
@@ -77,15 +77,15 @@ uv build
 
 The wheel force-includes the built web bundle
 (`src/devdoctor/web/_static/dist`), so if you are building the wheel by hand
-run the web build first — `./scripts/deploy.sh` or `cd web && npm run build` —
+run the web build first — `./scripts/deploy.sh` or `cd web && bun run build` —
 otherwise the packaged UI shows the "assets are not built yet" placeholder.
 
 For the desktop app (macOS only, unsigned):
 
 ```bash
 cd web
-npm ci
-npm run electron:pack   # → web/release/…/DevDoctor.app (unsigned)
+bun ci
+bun run electron:pack   # → web/release/…/DevDoctor.app (unsigned)
 ```
 
 ### 6. Tag and push
