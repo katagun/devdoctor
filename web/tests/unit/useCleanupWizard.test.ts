@@ -132,4 +132,38 @@ describe("useCleanupWizard", () => {
     // The tail (what the UI actually renders) is preserved.
     expect(lines[lines.length - 1]).toBe("line 4999");
   });
+
+  it("sends explicit consent when a dangerous entry is enabled", async () => {
+    const entries = [
+      {
+        id: "docker:volume:pgdata",
+        provider: "docker",
+        label: "docker named volume pgdata",
+        path: null,
+        size_bytes: 5_000_000_000,
+        risk: "dangerous" as const,
+        mtime: null,
+        recipeHint: "docker volume rm pgdata",
+      },
+    ];
+    const qc = new QueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children);
+    const { result } = renderHook(() => useCleanupWizard({ entries }), { wrapper });
+
+    expect(result.current.state.enabled.size).toBe(0);
+    act(() => {
+      result.current.toggleEnabled(entries[0].id, true);
+    });
+
+    await act(async () => {
+      await result.current.startJob();
+    });
+
+    const body = postJson.mock.calls.find(([url]) => url === "/clean/jobs")?.[1];
+    expect(JSON.parse(String(body))).toEqual({
+      entry_ids: ["docker:volume:pgdata"],
+      allow_dangerous: true,
+    });
+  });
 });

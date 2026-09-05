@@ -159,6 +159,8 @@ export function useCleanupWizard({
   // changes — switching to useCallback deps would reintroduce stale-closure bugs.
   const enabledRef = useRef(state.enabled);
   enabledRef.current = state.enabled;
+  const entriesRef = useRef(state.entries);
+  entriesRef.current = state.entries;
   const jobIdRef = useRef<string | null>(state.jobId);
   jobIdRef.current = state.jobId;
   // Ref the callback so openStream's deps stay empty and the listener reads the
@@ -247,10 +249,19 @@ export function useCleanupWizard({
 
   const startJob = useCallback(async () => {
     const ids = Array.from(enabledRef.current);
+    // Dangerous entries start disabled. If the user explicitly enables one in
+    // the review step, carry that consent to the backend instead of silently
+    // asking the cleanup core to skip the selected entry.
+    const allowDangerous = entriesRef.current.some(
+      (entry) => entry.risk === "dangerous" && enabledRef.current.has(entry.id),
+    );
     try {
       const res = await apiFetch<{ job_id: string }>("/clean/jobs", {
         method: "POST",
-        body: JSON.stringify({ entry_ids: ids, allow_dangerous: false }),
+        body: JSON.stringify({
+          entry_ids: ids,
+          allow_dangerous: allowDangerous,
+        }),
       });
       dispatch({ type: "START", jobId: res.job_id });
       openStream(res.job_id);
