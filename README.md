@@ -47,6 +47,9 @@ devdoctor providers                  # show registered providers and their avail
 - `clean` defaults to **preview only** — zero prompts, zero shell commands.
 - `recipe` always emits a **commented-out** script. You review and uncomment what you want.
 - Entries are labelled **safe / reclaimable / dangerous**. DANGEROUS entries are *skipped* unless you pass `--allow-dangerous`.
+- Unused Docker volumes are reviewed and removed individually. Anonymous volumes
+  are reclaimable; named volumes are dangerous and stay off by default because
+  they may contain durable application data.
 
 ## Web UI
 

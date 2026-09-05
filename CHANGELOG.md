@@ -68,6 +68,11 @@ entries under a versioned heading as described in
 
 ### Fixed
 
+- **Made Docker volume cleanup precise and version-independent** — unused
+  volumes are now listed individually instead of pairing Docker's aggregate
+  volume size with version-dependent `docker volume prune` behavior. Anonymous
+  volumes are reclaimable, named volumes require explicit dangerous-cleanup
+  consent, and the web cleanup flow now carries that consent to the backend.
 - **De-flaked the SSE lifecycle test** — it now runs on a pre-bound socket with
   no port race, and drops deprecated `websockets` APIs.
   ([#14](https://github.com/katagun/devdoctor/issues/14))
