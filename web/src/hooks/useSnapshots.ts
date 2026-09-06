@@ -6,6 +6,9 @@ export interface ProviderTimingMeta {
   bytes: number;
   entries: number;
   duration_ms: number;
+  footprint_bytes?: number | null;
+  reclaimable_bytes?: number | null;
+  shared_bytes?: number;
 }
 
 export interface SnapshotMeta {
@@ -21,6 +24,10 @@ export interface SnapshotMeta {
   duration_ms?: number | null;
   entry_count?: number | null;
   per_provider?: ProviderTimingMeta[] | null;
+  total_footprint_bytes?: number | null;
+  total_reclaimable_bytes?: number | null;
+  total_shared_bytes?: number;
+  unknown_reclaimable_entries?: number;
 }
 
 export function useSnapshots() {
@@ -35,6 +42,9 @@ interface SnapshotReportEntry {
   provider: string;
   label: string;
   size_bytes: number;
+  footprint_bytes?: number | null;
+  reclaimable_bytes?: number | null;
+  shared_bytes?: number;
   risk: string;
 }
 

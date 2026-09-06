@@ -19,16 +19,16 @@ export function ExecuteStep() {
   const activePrompt = state.pendingPrompts[0] ?? null;
   const approvedTotal = state.entries
     .filter((e) => state.enabled.has(e.id))
-    .reduce((a, b) => a + b.size_bytes, 0);
+    .reduce((a, b) => a + (b.reclaimable_bytes ?? 0), 0);
   const pct = state.entries.length ? (doneCount / state.entries.length) * 100 : 0;
 
   return (
     <div className="font-mono text-[11px]">
       <div className="px-4 py-3.5 border-b border-border">
         <div className="flex items-center justify-between">
-          <span>freeing space</span>
+          <span>running cleanup</span>
           <b>
-            {humanBytes(progressList.reduce((a, b) => a + (b.freed_bytes || 0), 0))} of{" "}
+            ~{humanBytes(progressList.reduce((a, b) => a + (b.freed_bytes || 0), 0))} of ~{" "}
             {humanBytes(approvedTotal)}
           </b>
         </div>
@@ -94,7 +94,9 @@ export function ExecuteStep() {
               ))}
             </div>
             <span className={`text-right tabular-nums ${p.status === "ok" ? "text-risk-safe" : "text-text-muted"}`}>
-              {p.status === "pending" ? "—" : humanBytes(p.freed_bytes)}
+              {p.status === "pending"
+                ? "—"
+                : `${p.bytes_verified ? "" : "~"}${humanBytes(p.freed_bytes)}`}
             </span>
           </div>
         ))}

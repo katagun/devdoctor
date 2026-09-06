@@ -67,7 +67,7 @@ describe("CacheTable", () => {
 
   it("clicking a header reverses sort direction on the second click", () => {
     render(<CacheTable rows={rows} selected={new Set()} onToggle={() => {}} />);
-    const sizeHeader = screen.getByRole("button", { name: /size/i });
+    const sizeHeader = screen.getByRole("button", { name: /footprint/i });
     // First click on the already-active 'size' header flips asc → now smallest first.
     fireEvent.click(sizeHeader);
     const providerCells = screen.getAllByText(/^(docker|uv-cache)$/);

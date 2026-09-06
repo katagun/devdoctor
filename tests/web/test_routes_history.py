@@ -158,7 +158,17 @@ def test_snapshots_listing_includes_kind_and_duration(tmp_path, monkeypatch) -> 
     assert row["kind"] == "auto"
     assert row["duration_ms"] == 4821
     assert row["entry_count"] is None
-    assert row["per_provider"] == [{"name": "p", "bytes": 100, "entries": 1, "duration_ms": 4821}]
+    assert row["per_provider"] == [
+        {
+            "name": "p",
+            "bytes": 100,
+            "entries": 1,
+            "duration_ms": 4821,
+            "footprint_bytes": None,
+            "reclaimable_bytes": None,
+            "shared_bytes": 0,
+        }
+    ]
 
 
 def test_snapshots_listing_filters_by_kind(tmp_path, monkeypatch) -> None:

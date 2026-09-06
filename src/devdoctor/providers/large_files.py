@@ -15,7 +15,7 @@ import shlex
 from pathlib import Path
 
 from devdoctor.providers.base import Provider, _stat_kwargs
-from devdoctor.types import Entry, Risk
+from devdoctor.types import AdviceAction, DiskUsage, Entry, HardlinkRecord, Risk
 
 # Files below this threshold aren't worth surfacing individually. Tuned to
 # catch ISOs / VM images / large video exports while ignoring normal
@@ -47,6 +47,7 @@ _SKIP_DIR_NAMES = frozenset(
 
 class LargeFilesProvider(Provider):
     name = "large-files"
+    family = "system"
     description = (
         "Individual files >= 500 MB in Desktop / Documents / Movies / Pictures — "
         "often forgotten VM images, ISOs, video exports, or backup archives"
@@ -71,7 +72,7 @@ class LargeFilesProvider(Provider):
                 root_dev = root.lstat().st_dev
             except OSError:
                 continue
-            for file_path, size, mtime in _walk_for_large_files(root, root_dev):
+            for file_path, size, mtime, hardlink in _walk_for_large_files(root, root_dev):
                 path_str = str(file_path)
                 quoted = shlex.quote(path_str)
                 # Advice-only — the UI renders this as bulleted sentences.
@@ -99,14 +100,20 @@ class LargeFilesProvider(Provider):
                         mtime=mtime,
                         risk=self.risk,
                         recipe=[recipe_line],
+                        usage=DiskUsage(size, None),
+                        actions=(AdviceAction(msg),),
+                        hardlinks=(hardlink,) if hardlink is not None else (),
                         **_stat_kwargs(file_path),
                     )
                 )
         return entries
 
 
-def _walk_for_large_files(root: Path, root_dev: int) -> list[tuple[Path, int, float | None]]:
-    hits: list[tuple[Path, int, float | None]] = []
+def _walk_for_large_files(
+    root: Path,
+    root_dev: int,
+) -> list[tuple[Path, int, float | None, HardlinkRecord | None]]:
+    hits: list[tuple[Path, int, float | None, HardlinkRecord | None]] = []
 
     def on_error(_err: OSError) -> None:
         return None
@@ -141,7 +148,18 @@ def _walk_for_large_files(root: Path, root_dev: int) -> list[tuple[Path, int, fl
             size = min(st.st_size, blocks) if blocks else st.st_size
             if size < _MIN_BYTES:
                 continue
-            hits.append((fp, size, st.st_mtime))
+            hardlink = (
+                HardlinkRecord(
+                    device=st.st_dev,
+                    inode=st.st_ino,
+                    allocated_bytes=size,
+                    link_count=st.st_nlink,
+                    paths=(str(fp),),
+                )
+                if st.st_nlink > 1
+                else None
+            )
+            hits.append((fp, size, st.st_mtime, hardlink))
     return hits
 
 

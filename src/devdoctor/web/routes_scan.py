@@ -122,13 +122,16 @@ def providers(request: Request) -> list[ProviderInfo]:
             resolved_paths = None
             recipe_template = None
         info = ProviderInfo(
+            id=p.provider_id,
             name=p.name,
+            family=p.family,
             description=p.description,
             risk=p.risk.value,
             platforms=list(p.platforms),
             available=p.available(),
             required_binary=p.required_binary,
             kind=kind,
+            origin="manifest" if kind == "yaml" else "builtin",
             details=details,
             raw_paths=raw_paths,
             resolved_paths=resolved_paths,

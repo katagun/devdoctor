@@ -8,6 +8,9 @@ interface ScanResponseEntry {
   label: string;
   path: string | null;
   size_bytes: number;
+  footprint_bytes?: number | null;
+  reclaimable_bytes?: number | null;
+  shared_bytes?: number;
   mtime: number | null;
   risk: "safe" | "reclaimable" | "dangerous";
   recipe: string[];
@@ -22,6 +25,7 @@ interface ScanResponse {
   hostname: string;
   platform: string;
   skipped_paths: string[];
+  total_reclaimable_bytes?: number;
 }
 
 export interface UseScanOptions {
@@ -75,24 +79,38 @@ export function useScan(params: UseScanOptions = {}) {
       }
       const query = qs.toString() ? `?${qs}` : "";
       const raw = await apiFetch<ScanResponse>(`/scan${query}`);
-      const rows: CacheTableRow[] = raw.entries.map((e) => ({
-        id: e.id,
-        provider: e.provider,
-        label: e.label,
-        path: e.path ?? "—",
-        size_bytes: e.size_bytes,
-        risk: e.risk,
-        mtime: e.mtime,
-        recipeHint: e.recipe[0] ?? "",
-        owner: e.owner ?? null,
-        group: e.group ?? null,
-        perms: e.perms ?? null,
-      }));
+      const rows: CacheTableRow[] = raw.entries.map((e) => {
+        const footprint = e.footprint_bytes ?? e.size_bytes;
+        const reclaimable =
+          e.reclaimable_bytes !== undefined
+            ? e.reclaimable_bytes
+            : e.risk === "dangerous"
+              ? null
+              : e.size_bytes;
+        return {
+          id: e.id,
+          provider: e.provider,
+          label: e.label,
+          path: e.path ?? "—",
+          size_bytes: footprint,
+          footprint_bytes: footprint,
+          reclaimable_bytes: reclaimable,
+          shared_bytes: e.shared_bytes ?? 0,
+          risk: e.risk,
+          mtime: e.mtime,
+          recipeHint: e.recipe[0] ?? "",
+          owner: e.owner ?? null,
+          group: e.group ?? null,
+          perms: e.perms ?? null,
+        };
+      });
       return {
         rows,
-        totalBytes: raw.entries
-          .filter((e) => e.risk !== "dangerous")
-          .reduce((a, b) => a + b.size_bytes, 0),
+        totalBytes:
+          raw.total_reclaimable_bytes ??
+          rows
+            .filter((entry) => entry.risk !== "dangerous")
+            .reduce((sum, entry) => sum + (entry.reclaimable_bytes ?? 0), 0),
         scannedAt: raw.scanned_at,
       };
     },

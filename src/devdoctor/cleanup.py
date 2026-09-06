@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shlex
 from collections.abc import Generator
 from dataclasses import dataclass
 from typing import Literal
@@ -11,6 +10,7 @@ from devdoctor.types import (
     AsyncPromptChoice,
     AsyncRunLine,
     CleanResult,
+    CleanupAction,
     CleanupOpts,
     Confirm,
     Entry,
@@ -18,6 +18,9 @@ from devdoctor.types import (
     Report,
     Risk,
     ShellResult,
+    cleanup_action_argv,
+    estimated_reclaimable_bytes,
+    render_cleanup_action,
 )
 
 _ASCII_SPACE = 0x20  # first printable char; anything below is a C0 control
@@ -41,12 +44,24 @@ class PromptRequired:
 class ConfirmRequired:
     approved: list[Entry]
     total_bytes: int
+    unknown_entries: int = 0
 
 
 @dataclass
 class ExecuteStep:
     entry: Entry
-    line: str
+    action: CleanupAction
+
+    @property
+    def argv(self) -> tuple[str, ...]:
+        argv = cleanup_action_argv(self.action)
+        if argv is None:
+            raise ValueError("advice actions are not executable")
+        return argv
+
+    @property
+    def line(self) -> str:
+        return render_cleanup_action(self.action)
 
 
 @dataclass
@@ -72,7 +87,16 @@ def iter_cleanup_events(report: Report, opts: CleanupOpts) -> Generator[CleanupE
     if not opts.execute:
         for e in candidates:
             yield EntryResolved(
-                CleanResult(entry_id=e.id, status="dry_run", freed_bytes=e.size_bytes)
+                CleanResult(
+                    entry_id=e.id,
+                    status="dry_run",
+                    freed_bytes=e.reclaimable_bytes or 0,
+                    message=(
+                        "reclaimable bytes are unknown"
+                        if e.reclaimable_bytes is None
+                        else "byte count is an estimate"
+                    ),
+                )
             )
         return
 
@@ -85,8 +109,13 @@ def iter_cleanup_events(report: Report, opts: CleanupOpts) -> Generator[CleanupE
             yield EntryResolved(_to_result(e, state))
         return
 
-    total_bytes = sum(e.size_bytes for e in approved)
-    confirmed = yield ConfirmRequired(approved=approved, total_bytes=total_bytes)
+    total_bytes = estimated_reclaimable_bytes(approved)
+    unknown_entries = sum(e.reclaimable_bytes is None for e in approved)
+    confirmed = yield ConfirmRequired(
+        approved=approved,
+        total_bytes=total_bytes,
+        unknown_entries=unknown_entries,
+    )
     if not confirmed:
         yield from _resolve_aborted(selections)
         return
@@ -183,26 +212,50 @@ def _iter_execute(
         if state != "approved":
             yield EntryResolved(_to_result(entry, state))
             continue
-        error_msg = yield from _run_recipe(entry)
+        error_msg, executed = yield from _run_actions(entry)
         if error_msg:
             yield EntryResolved(
                 CleanResult(entry_id=entry.id, status="error", freed_bytes=0, message=error_msg)
             )
-        else:
+        elif not executed:
             yield EntryResolved(
-                CleanResult(entry_id=entry.id, status="ok", freed_bytes=entry.size_bytes)
+                CleanResult(
+                    entry_id=entry.id,
+                    status="skipped",
+                    freed_bytes=0,
+                    message="advice only; no command executed",
+                )
+            )
+        else:
+            estimate = entry.reclaimable_bytes
+            yield EntryResolved(
+                CleanResult(
+                    entry_id=entry.id,
+                    status="ok",
+                    freed_bytes=estimate or 0,
+                    message=(
+                        "cleanup succeeded; reclaimed bytes were not measured"
+                        if estimate is None
+                        else "cleanup succeeded; byte count is an estimate"
+                    ),
+                    bytes_verified=False,
+                )
             )
 
 
-def _run_recipe(entry: Entry) -> Generator[CleanupEvent, object, str | None]:
-    """Yield ExecuteStep per recipe line; return error message on failure, None on success."""
-    for line in entry.recipe:
-        result = yield ExecuteStep(entry=entry, line=line)
+def _run_actions(entry: Entry) -> Generator[CleanupEvent, object, tuple[str | None, bool]]:
+    """Yield executable typed actions; advice is deliberately non-executable."""
+    executed = False
+    for action in entry.cleanup_actions():
+        if cleanup_action_argv(action) is None:
+            continue
+        executed = True
+        result = yield ExecuteStep(entry=entry, action=action)
         assert isinstance(result, ShellResult)
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or "").strip()
-            return detail or f"exit {result.returncode}"
-    return None
+            return detail or f"exit {result.returncode}", executed
+    return None, executed
 
 
 def run(
@@ -222,14 +275,10 @@ def run(
             if isinstance(event, PromptRequired):
                 event = gen.send(prompt_choice(event.entry))
             elif isinstance(event, ConfirmRequired):
-                summary = (
-                    f"Execute cleanup for {len(event.approved)} entries, "
-                    f"freeing ~{event.total_bytes} bytes?"
-                )
+                summary = _confirm_summary(event)
                 event = gen.send(confirm(summary))
             elif isinstance(event, ExecuteStep):
-                argv = shlex.split(event.line)
-                event = gen.send(shell.run(argv, check=False))
+                event = gen.send(shell.run(list(event.argv), check=False))
             elif isinstance(event, EntryResolved):
                 results.append(event.result)
                 event = next(gen)
@@ -256,19 +305,26 @@ async def run_async(
                 answer = await prompt_choice(event.entry)
                 event = gen.send(answer)
             elif isinstance(event, ConfirmRequired):
-                summary = (
-                    f"Execute cleanup for {len(event.approved)} entries, "
-                    f"freeing ~{event.total_bytes} bytes?"
-                )
+                summary = _confirm_summary(event)
                 event = gen.send(await confirm(summary))
             elif isinstance(event, ExecuteStep):
-                event = gen.send(await run_line(event.line))
+                event = gen.send(await run_line(event.argv))
             elif isinstance(event, EntryResolved):
                 results.append(event.result)
                 event = next(gen)
     except StopIteration:
         pass
     return results
+
+
+def _confirm_summary(event: ConfirmRequired) -> str:
+    summary = (
+        f"Execute cleanup for {len(event.approved)} entries, "
+        f"estimated reclaimable space ~{event.total_bytes} bytes"
+    )
+    if event.unknown_entries:
+        summary += f" plus {event.unknown_entries} unknown estimate(s)"
+    return summary + "?"
 
 
 def _select_candidates(report: Report, opts: CleanupOpts) -> list[Entry]:
@@ -330,14 +386,22 @@ def build_script(report: Report) -> str:
         "",
     ]
     for provider, entries in report.by_provider().items():
-        total = sum(e.size_bytes for e in entries)
+        total = estimated_reclaimable_bytes(entries)
+        unknown = sum(e.reclaimable_bytes is None for e in entries)
         risks = {e.risk.value for e in entries}
         risk = risks.pop() if len(risks) == 1 else "mixed"
-        lines.append(f"# --- {_comment_safe(provider)}: {total} bytes freed, risk={risk} ---")
+        estimate = f"~{total} reclaimable bytes"
+        if unknown:
+            estimate += f" + {unknown} unknown"
+        lines.append(f"# --- {_comment_safe(provider)}: {estimate}, risk={risk} ---")
         lines.append(f"# {len(entries)} entr{'y' if len(entries) == 1 else 'ies'}")
         for e in entries:
-            lines.append(f"#   [{e.size_bytes} B] {_comment_safe(e.label)}")
-            for cmd in e.recipe:
+            footprint = e.footprint_bytes
+            size_label = (
+                f"{footprint} B footprint" if footprint is not None else "unknown footprint"
+            )
+            lines.append(f"#   [{size_label}] {_comment_safe(e.label)}")
+            for cmd in e.recipe_lines():
                 lines.append(f"#   {_comment_safe(cmd)}")
         lines.append("")
     return "\n".join(lines)

@@ -420,7 +420,15 @@ function SingleSnapshotSummary({
       </div>
 
       <dl className="grid grid-cols-2 gap-x-8 gap-y-3">
-        <Stat label="total reclaimable" value={humanBytes(meta.total_bytes)} big />
+        <Stat
+          label="total footprint"
+          value={humanBytes(meta.total_footprint_bytes ?? meta.total_bytes)}
+          big
+        />
+        <Stat
+          label="estimated reclaimable"
+          value={`~${humanBytes(meta.total_reclaimable_bytes ?? meta.total_bytes)}`}
+        />
         <Stat label="platform" value={meta.platform} />
         <Stat label="hostname" value={meta.hostname} />
         <Stat label="note" value={meta.note ?? "—"} />
@@ -437,7 +445,8 @@ function SingleSnapshotSummary({
         ) : (
           <div className="space-y-1.5">
             {top.map(([name, bytes]) => {
-              const pct = meta.total_bytes > 0 ? (bytes / meta.total_bytes) * 100 : 0;
+              const footprint = meta.total_footprint_bytes ?? meta.total_bytes;
+              const pct = footprint > 0 ? (bytes / footprint) * 100 : 0;
               return (
                 <div key={name} className="flex items-center gap-3">
                   <div className="w-36 text-text-dim truncate">{name}</div>

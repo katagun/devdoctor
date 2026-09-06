@@ -6,14 +6,15 @@ import shlex
 from pathlib import Path
 
 from devdoctor.providers.base import Provider, _stat_kwargs
-from devdoctor.sizer import size_path
-from devdoctor.types import Entry, Risk
+from devdoctor.sizer import size_path_detailed
+from devdoctor.types import DeletePathAction, DiskUsage, Entry, Risk
 
 _REPO_RE = re.compile(r"^(models|datasets)--(.+)$")
 
 
 class HuggingFaceProvider(Provider):
     name = "huggingface-hub"
+    family = "local-ai"
     description = "HuggingFace hub cache (models and datasets)"
     platforms = ("darwin", "linux")
     risk = Risk.RECLAIMABLE
@@ -37,8 +38,9 @@ class HuggingFaceProvider(Provider):
                 continue
             kind = m.group(1)
             repo_id = m.group(2).replace("--", "/")
-            size, skipped = size_path(repo)
-            self._note_skipped(skipped)
+            sizing = size_path_detailed(repo)
+            size = sizing.allocated_bytes
+            self._note_skipped(list(sizing.skipped_paths))
             label = f"{kind}:{repo_id}"
             try:
                 mtime: float | None = repo.lstat().st_mtime
@@ -54,6 +56,9 @@ class HuggingFaceProvider(Provider):
                     mtime=mtime,
                     risk=self.risk,
                     recipe=[f"rm -rf {shlex.quote(str(repo))}"],
+                    usage=DiskUsage(size, size),
+                    actions=(DeletePathAction(repo),),
+                    hardlinks=sizing.hardlinks,
                     **_stat_kwargs(repo),
                 )
             )

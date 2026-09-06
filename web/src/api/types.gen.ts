@@ -452,6 +452,23 @@ export interface paths {
         patch: operations["patch_settings_api_settings_patch"];
         trace?: never;
     };
+    "/api/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Health */
+        get: operations["health_api_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -509,6 +526,15 @@ export interface components {
             label: string;
             /** Size Bytes */
             size_bytes: number;
+            /** Footprint Bytes */
+            footprint_bytes?: number | null;
+            /** Reclaimable Bytes */
+            reclaimable_bytes?: number | null;
+            /**
+             * Shared Bytes
+             * @default 0
+             */
+            shared_bytes: number;
             /**
              * Risk
              * @enum {string}
@@ -523,6 +549,15 @@ export interface components {
             bytes: number;
             /** Count */
             count: number;
+            /** Footprint Bytes */
+            footprint_bytes?: number | null;
+            /** Reclaimable Bytes */
+            reclaimable_bytes?: number | null;
+            /**
+             * Shared Bytes
+             * @default 0
+             */
+            shared_bytes: number;
         };
         /** DiskDashboardSummaryInfo */
         DiskDashboardSummaryInfo: {
@@ -540,6 +575,20 @@ export interface components {
             entries?: components["schemas"]["DiskDashboardEntryInfo"][];
             /** Provider Totals */
             provider_totals?: components["schemas"]["DiskDashboardProviderTotalInfo"][];
+            /** Total Footprint Bytes */
+            total_footprint_bytes?: number | null;
+            /** Total Reclaimable Bytes */
+            total_reclaimable_bytes?: number | null;
+            /**
+             * Total Shared Bytes
+             * @default 0
+             */
+            total_shared_bytes: number;
+            /**
+             * Unknown Reclaimable Entries
+             * @default 0
+             */
+            unknown_reclaimable_entries: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -907,8 +956,12 @@ export interface components {
         };
         /** ProviderInfo */
         ProviderInfo: {
+            /** Id */
+            id: string;
             /** Name */
             name: string;
+            /** Family */
+            family: string;
             /** Description */
             description: string;
             /**
@@ -927,6 +980,11 @@ export interface components {
              * @enum {string}
              */
             kind: "class" | "yaml";
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "builtin" | "manifest";
             /** Reason If Unavailable */
             reason_if_unavailable?: string | null;
             /** Details */
@@ -983,6 +1041,20 @@ export interface components {
             per_provider?: {
                 [key: string]: unknown;
             }[] | null;
+            /** Total Footprint Bytes */
+            total_footprint_bytes?: number | null;
+            /** Total Reclaimable Bytes */
+            total_reclaimable_bytes?: number | null;
+            /**
+             * Total Shared Bytes
+             * @default 0
+             */
+            total_shared_bytes: number;
+            /**
+             * Unknown Reclaimable Entries
+             * @default 0
+             */
+            unknown_reclaimable_entries: number;
         };
         /** SystemMemoryInfo */
         SystemMemoryInfo: {
@@ -1892,6 +1964,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    health_api_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean | string;
+                    };
                 };
             };
         };

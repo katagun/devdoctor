@@ -280,8 +280,8 @@ def test_build_script_groups_by_provider_with_totals():
         _e("b", "1", 50, recipe=["rm -rf /b1"]),
     )
     script = build_script(rep)
-    assert "# --- a: 300 bytes freed" in script
-    assert "# --- b: 50 bytes freed" in script
+    assert "# --- a: ~300 reclaimable bytes" in script
+    assert "# --- b: ~50 reclaimable bytes" in script
 
 
 def test_build_script_newline_in_filename_cannot_inject_uncommented_lines():

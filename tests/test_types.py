@@ -297,7 +297,15 @@ def test_manual_round_trip_emits_full_entries() -> None:
     assert payload["total_bytes"] == 100
     assert payload["entry_count"] == 1
     assert payload["per_provider"] == [
-        {"name": "p", "bytes": 100, "entries": 1, "duration_ms": 1234}
+        {
+            "name": "p",
+            "bytes": 100,
+            "entries": 1,
+            "duration_ms": 1234,
+            "footprint_bytes": None,
+            "reclaimable_bytes": None,
+            "shared_bytes": 0,
+        }
     ]
     assert isinstance(payload["entries"], list) and len(payload["entries"]) == 1
 

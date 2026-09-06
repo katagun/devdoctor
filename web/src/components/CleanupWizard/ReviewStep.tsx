@@ -9,7 +9,10 @@ export function ReviewStep() {
   const { state, toggleEnabled, startJob } = useWizardContext();
   const enabledTotal = state.entries
     .filter((e) => state.enabled.has(e.id))
-    .reduce((a, b) => a + b.size_bytes, 0);
+    .reduce((a, b) => a + (b.reclaimable_bytes ?? 0), 0);
+  const unknownEstimates = state.entries.filter(
+    (e) => state.enabled.has(e.id) && e.reclaimable_bytes === null,
+  ).length;
 
   return (
     <div className="flex flex-col h-full font-mono text-[11px]">
@@ -35,7 +38,9 @@ export function ReviewStep() {
                 </div>
                 <div className="flex items-center gap-3">
                   <RiskBadge risk={e.risk} />
-                  <span className="font-medium text-[12px]">{humanBytes(e.size_bytes)}</span>
+                  <span className="font-medium text-[12px]">
+                    {humanBytes(e.size_bytes)} footprint
+                  </span>
                   <button
                     onClick={() => toggleEnabled(e.id, !on)}
                     className={`w-[30px] h-[16px] rounded-full relative ${
@@ -97,7 +102,9 @@ export function ReviewStep() {
           <b className="text-text">
             {state.enabled.size} of {state.entries.length}
           </b>{" "}
-          enabled · <b className="text-risk-safe">{humanBytes(enabledTotal)}</b> will be freed
+          enabled · <b className="text-risk-safe">~{humanBytes(enabledTotal)}</b>{" "}
+          estimated reclaimable
+          {unknownEstimates > 0 ? ` + ${unknownEstimates} unknown` : ""}
         </span>
         <button
           onClick={startJob}

@@ -12,7 +12,7 @@ from tests.test_cleanup_async import _e, _report
 async def test_runner_drives_async_cleanup_to_completion():
     rep = _report(_e("a", "1", 100, recipe=["rm -rf /1"]))
 
-    async def fake_run_line(line: str) -> ShellResult:
+    async def fake_run_line(_argv: tuple[str, ...]) -> ShellResult:
         return ShellResult(0, "", "")
 
     runner = CleanupRunner(report=rep, opts=CleanupOpts(execute=True), run_line=fake_run_line)
@@ -49,7 +49,7 @@ async def test_runner_cancel_marks_remaining_skipped():
         _e("a", "2", 200, recipe=["rm /2"]),
     )
 
-    async def fake_run_line(line: str) -> ShellResult:
+    async def fake_run_line(_argv: tuple[str, ...]) -> ShellResult:
         return ShellResult(0, "", "")
 
     runner = CleanupRunner(report=rep, opts=CleanupOpts(execute=True), run_line=fake_run_line)
@@ -98,10 +98,10 @@ async def test_shared_provider_local_id_does_not_cross_route():
     rep.entries = [e for e in rep.entries if e.id in selected]
     assert [e.provider for e in rep.entries] == ["docker"]  # ollama not swept in
 
-    executed: list[str] = []
+    executed: list[tuple[str, ...]] = []
 
-    async def fake_run_line(line: str) -> ShellResult:
-        executed.append(line)
+    async def fake_run_line(argv: tuple[str, ...]) -> ShellResult:
+        executed.append(argv)
         return ShellResult(0, "", "")
 
     runner = CleanupRunner(report=rep, opts=CleanupOpts(execute=True), run_line=fake_run_line)
@@ -127,7 +127,7 @@ async def test_shared_provider_local_id_does_not_cross_route():
     results = await asyncio.wait_for(task, timeout=1)
 
     # Only docker's recipe ran; ollama was never touched.
-    assert executed == ["docker-clean"]
+    assert executed == [("docker-clean",)]
     assert [r.entry_id for r in results] == ["docker:images"]
 
 
@@ -152,7 +152,7 @@ async def test_runner_multi_entry_attributes_events_to_correct_entry():
         _e("a", "B", 200, recipe=["cmd-B"]),
     )
 
-    async def fake_run_line(line: str) -> ShellResult:
+    async def fake_run_line(_argv: tuple[str, ...]) -> ShellResult:
         return ShellResult(0, "", "")
 
     runner = CleanupRunner(report=rep, opts=CleanupOpts(execute=True), run_line=fake_run_line)

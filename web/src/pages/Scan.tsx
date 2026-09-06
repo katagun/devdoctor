@@ -79,9 +79,12 @@ export default function Scan() {
 
   const selectedRows = visibleRows.filter((r) => selected.has(r.id));
   const totalSelected = useMemo(
-    () => selectedRows.reduce((a, b) => a + b.size_bytes, 0),
+    () => selectedRows.reduce((a, b) => a + (b.reclaimable_bytes ?? 0), 0),
     [selectedRows],
   );
+  const unknownSelected = selectedRows.filter(
+    (row) => row.reclaimable_bytes === null,
+  ).length;
 
   // Stable identity so the memoised CacheTable rows don't all re-render when an
   // unrelated bit of Scan state changes; pairs with virtualization to keep large
@@ -99,7 +102,8 @@ export default function Scan() {
     <div className="flex flex-col h-screen">
       <DiskPageHeader>
         <span>
-          <b className="text-text">{humanBytes(data?.totalBytes ?? 0)}</b> reclaimable
+          <b className="text-text">~{humanBytes(data?.totalBytes ?? 0)}</b>{" "}
+          estimated reclaimable
         </span>
         <SparklineBar heights={[20, 35, 45, 58, 70, 82, 92, 85]} />
         <span>
@@ -221,7 +225,8 @@ export default function Scan() {
       <div className="px-4 py-3 bg-bg-elev-1 border-t border-border flex justify-between items-center">
         <span className="font-mono text-[11px] text-text-dim">
           {selectedRows.length} selected ·{" "}
-          <b className="text-text">{humanBytes(totalSelected)}</b>
+          <b className="text-text">~{humanBytes(totalSelected)}</b> estimated reclaimable
+          {unknownSelected > 0 ? ` + ${unknownSelected} unknown` : ""}
         </span>
         <button
           disabled={selectedRows.length === 0}

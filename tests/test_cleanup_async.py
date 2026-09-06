@@ -39,10 +39,10 @@ def _scripted(values):
 @pytest.mark.asyncio
 async def test_run_async_drives_generator_to_completion():
     rep = _report(_e("a", "1", 100, recipe=["rm /1"]))
-    executed: list[str] = []
+    executed: list[tuple[str, ...]] = []
 
-    async def run_line(line: str) -> ShellResult:
-        executed.append(line)
+    async def run_line(argv: tuple[str, ...]) -> ShellResult:
+        executed.append(argv)
         return ShellResult(0, "", "")
 
     results = await run_async(
@@ -52,7 +52,7 @@ async def test_run_async_drives_generator_to_completion():
         confirm=_scripted([True]),
         opts=CleanupOpts(execute=True),
     )
-    assert executed == ["rm /1"]
+    assert executed == [("rm", "/1")]
     assert [(r.status, r.freed_bytes) for r in results] == [("ok", 100)]
 
 

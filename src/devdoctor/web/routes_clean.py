@@ -13,7 +13,7 @@ from devdoctor import discovery, registry
 from devdoctor.types import CleanupOpts, ScanFilters, ShellResult
 from devdoctor.web.cleanup_runner import CleanupRunner
 from devdoctor.web.models import CleanJobCreate, ConfirmAnswer, PromptAnswer
-from devdoctor.web.subprocess_stream import OnChunk, run_line_streaming
+from devdoctor.web.subprocess_stream import OnChunk, run_argv_streaming
 
 router = APIRouter(prefix="/api/clean")
 
@@ -37,9 +37,9 @@ async def start_job(body: CleanJobCreate, request: Request) -> Response:
 
     registry_obj = request.app.state.runner_registry
 
-    async def run_line(line: str) -> ShellResult:
+    async def run_line(argv: tuple[str, ...]) -> ShellResult:
         # Dummy default; the runner uses run_line_with_chunks below.
-        return await run_line_streaming(line, on_chunk=_noop_chunk)
+        return await run_argv_streaming(argv, on_chunk=_noop_chunk)
 
     try:
         runner = registry_obj.create(
@@ -65,8 +65,8 @@ async def start_job(body: CleanJobCreate, request: Request) -> Response:
             },
         )
 
-    async def run_line_with_chunks(line: str, on_chunk: OnChunk) -> ShellResult:
-        return await run_line_streaming(line, on_chunk=on_chunk)
+    async def run_line_with_chunks(argv: tuple[str, ...], on_chunk: OnChunk) -> ShellResult:
+        return await run_argv_streaming(argv, on_chunk=on_chunk)
 
     runner.run_line_with_chunks = run_line_with_chunks
 

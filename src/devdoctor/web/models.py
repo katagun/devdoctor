@@ -19,13 +19,16 @@ class RecipeResponse(BaseModel):
 
 
 class ProviderInfo(BaseModel):
+    id: str
     name: str
+    family: str
     description: str
     risk: Literal["safe", "reclaimable", "dangerous"]
     platforms: list[str]
     available: bool
     required_binary: str | None
     kind: Literal["class", "yaml"]
+    origin: Literal["builtin", "manifest"]
     reason_if_unavailable: str | None = None
     # Provider details — populated per kind. Class providers set `details`;
     # YAML (PathProvider) sets the three path/recipe fields.
@@ -74,6 +77,10 @@ class SnapshotMeta(BaseModel):
     duration_ms: int | None = None
     entry_count: int | None = None
     per_provider: list[dict[str, object]] | None = None
+    total_footprint_bytes: int | None = None
+    total_reclaimable_bytes: int | None = None
+    total_shared_bytes: int = 0
+    unknown_reclaimable_entries: int = 0
 
 
 class DiskDashboardEntryInfo(BaseModel):
@@ -81,6 +88,9 @@ class DiskDashboardEntryInfo(BaseModel):
     provider: str
     label: str
     size_bytes: int
+    footprint_bytes: int | None = None
+    reclaimable_bytes: int | None = None
+    shared_bytes: int = 0
     risk: Literal["safe", "reclaimable", "dangerous"]
 
 
@@ -88,6 +98,9 @@ class DiskDashboardProviderTotalInfo(BaseModel):
     provider: str
     bytes: int
     count: int
+    footprint_bytes: int | None = None
+    reclaimable_bytes: int | None = None
+    shared_bytes: int = 0
 
 
 class DiskDashboardSummaryInfo(BaseModel):
@@ -98,6 +111,10 @@ class DiskDashboardSummaryInfo(BaseModel):
     entry_count: int
     entries: list[DiskDashboardEntryInfo] = Field(default_factory=list)
     provider_totals: list[DiskDashboardProviderTotalInfo] = Field(default_factory=list)
+    total_footprint_bytes: int | None = None
+    total_reclaimable_bytes: int | None = None
+    total_shared_bytes: int = 0
+    unknown_reclaimable_entries: int = 0
 
 
 class SystemMemoryInfo(BaseModel):

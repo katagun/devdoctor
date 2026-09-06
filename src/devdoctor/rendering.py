@@ -39,7 +39,9 @@ def render_report_table(console: Console, report: Report) -> None:
     table = Table(title=f"devdoctor scan — {len(report.entries)} entries", show_lines=False)
     table.add_column("Provider", style="cyan")
     table.add_column("Label", overflow="fold")
-    table.add_column("Size", justify="right")
+    table.add_column("Footprint", justify="right")
+    table.add_column("Est. reclaim", justify="right")
+    table.add_column("Shared", justify="right")
     table.add_column("Risk", justify="center")
     table.add_column("Stale?", justify="center")
     table.add_column("Recipe hint", overflow="ellipsis")
@@ -51,16 +53,24 @@ def render_report_table(console: Console, report: Report) -> None:
         table.add_row(
             _safe_cell(e.provider),
             _safe_cell(e.label),
-            _human_bytes(e.size_bytes),
+            _human_bytes_or_unknown(e.footprint_bytes),
+            _estimated_bytes(e.reclaimable_bytes),
+            _human_bytes(e.shared_bytes),
             _risk_label(e.risk),
             _staleness(e.mtime),
-            _safe_cell((e.recipe[0] if e.recipe else "")[:hint_max]),
+            _safe_cell((e.recipe_lines()[0] if e.recipe_lines() else "")[:hint_max]),
         )
 
     if not report.entries:
-        table.add_row("(no entries)", "", "", "", "", "")
+        table.add_row("(no entries)", "", "", "", "", "", "", "")
 
-    table.caption = f"Total: {_human_bytes(report.total_bytes())}"
+    unknown = report.unknown_reclaimable_entries()
+    suffix = f" + {unknown} unknown" if unknown else ""
+    table.caption = (
+        f"Footprint: {_human_bytes(report.total_footprint_bytes())} · "
+        f"estimated reclaimable: ~{_human_bytes(report.total_reclaimable_bytes())}{suffix} · "
+        f"shared: {_human_bytes(report.total_shared_bytes())}"
+    )
     console.print(table)
     _render_diagnostics(console, report)
 
@@ -125,10 +135,13 @@ def real_prompts(console: Console) -> tuple[PromptChoice, Confirm]:
         header.append(_strip_controls(entry.provider), style="bold")
         header.append(
             f" — {_strip_controls(entry.label)}  "
-            f"({_human_bytes(entry.size_bytes)}, risk={_risk_label(entry.risk)})"
+            f"(footprint={_human_bytes_or_unknown(entry.footprint_bytes)}, "
+            f"estimated reclaimable={_estimated_bytes(entry.reclaimable_bytes)}, "
+            f"risk={_risk_label(entry.risk)})"
         )
         console.print(header)
-        recipe_hint = _strip_controls(entry.recipe[0]) if entry.recipe else "(no recipe)"
+        recipes = entry.recipe_lines()
+        recipe_hint = _strip_controls(recipes[0]) if recipes else "(no cleanup action)"
         console.print(Text(f"  → {recipe_hint}"))
         raw = Prompt.ask(
             "[y]es / [n]o / [a]ll-in-provider / [s]kip-provider / [q]uit",
@@ -172,6 +185,14 @@ def _human_bytes(n: int) -> str:
             return f"{sign}{value:.0f}{unit}" if unit == "B" else f"{sign}{value:.1f}{unit}"
         value /= _BYTES_UNIT_STEP
     return f"{sign}{value:.1f}P"
+
+
+def _human_bytes_or_unknown(n: int | None) -> str:
+    return "unknown" if n is None else _human_bytes(n)
+
+
+def _estimated_bytes(n: int | None) -> str:
+    return "unknown" if n is None else f"~{_human_bytes(n)}"
 
 
 def _staleness(mtime: float | None) -> str:

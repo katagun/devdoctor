@@ -368,11 +368,18 @@ def _snapshot_meta(name: str, path: str, report: Report) -> StoredSnapshotMeta:
                 "bytes": pt.bytes,
                 "entries": pt.entries,
                 "duration_ms": pt.duration_ms,
+                "footprint_bytes": pt.footprint_bytes,
+                "reclaimable_bytes": pt.reclaimable_bytes,
+                "shared_bytes": pt.shared_bytes,
             }
             for pt in report.per_provider
         ]
         if report.per_provider
         else None,
+        total_footprint_bytes=report.total_footprint_bytes(),
+        total_reclaimable_bytes=report.total_reclaimable_bytes(),
+        total_shared_bytes=report.total_shared_bytes(),
+        unknown_reclaimable_entries=report.unknown_reclaimable_entries(),
     )
 
 
