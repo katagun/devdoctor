@@ -16,6 +16,9 @@ def _isolate_xdg_data_home(tmp_path: Path, monkeypatch):
     ~/.local/share/devdoctor."""
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    # Keep project-artifact scans hermetic. Provider-specific tests override
+    # this with an explicit fixture tree.
+    monkeypatch.setenv("DEVDOCTOR_PROJECT_ROOTS", str(tmp_path / "projects"))
 
 
 @dataclass

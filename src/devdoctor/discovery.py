@@ -10,7 +10,17 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from devdoctor.providers.base import Provider
-from devdoctor.types import Entry, ProviderTiming, Report, ScanFilters, SnapshotKind
+from devdoctor.types import (
+    DiskUsage,
+    Entry,
+    ProviderTiming,
+    Report,
+    ScanFilters,
+    SnapshotKind,
+    estimated_reclaimable_bytes,
+    unique_footprint_bytes,
+    unique_shared_bytes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +68,55 @@ class _ProviderResult:
     timing: ProviderTiming
 
 
+def _reconcile_shared_usage(entries: list[Entry]) -> list[Entry]:
+    """Annotate hard-linked allocations after deterministic result assembly."""
+    by_inode: dict[
+        tuple[int, int],
+        dict[int, tuple[int, set[str]]],
+    ] = {}
+    for index, entry in enumerate(entries):
+        for record in entry.hardlinks:
+            members = by_inode.setdefault(record.key, {})
+            current = members.get(index)
+            paths = set(record.paths)
+            if current is None:
+                members[index] = (record.link_count, paths)
+            else:
+                members[index] = (max(current[0], record.link_count), current[1] | paths)
+
+    shared_by_entry = [0] * len(entries)
+    for key, members in by_inode.items():
+        records = [
+            record for index in members for record in entries[index].hardlinks if record.key == key
+        ]
+        if not records:
+            continue
+        allocated = records[0].allocated_bytes
+        for index, (link_count, paths) in members.items():
+            if len(paths) < link_count:
+                shared_by_entry[index] += allocated
+
+    reconciled: list[Entry] = []
+    for entry, discovered_shared in zip(entries, shared_by_entry, strict=True):
+        usage = entry.usage or DiskUsage(entry.size_bytes, entry.size_bytes)
+        shared = max(usage.shared_bytes, discovered_shared)
+        reclaimable = usage.reclaimable_bytes
+        additional_shared = max(0, discovered_shared - usage.shared_bytes)
+        if reclaimable is not None and additional_shared:
+            reclaimable = max(0, reclaimable - additional_shared)
+        reconciled.append(
+            dataclasses.replace(
+                entry,
+                usage=DiskUsage(
+                    footprint_bytes=usage.footprint_bytes,
+                    reclaimable_bytes=reclaimable,
+                    shared_bytes=shared,
+                ),
+            )
+        )
+    return reconciled
+
+
 def _discover_one(p: Provider) -> _ProviderResult:
     """Run a single provider's discover() and package its result.
 
@@ -73,7 +132,7 @@ def _discover_one(p: Provider) -> _ProviderResult:
         # (`ollama list` reports `-` for size, which parses to 0), but also
         # empty cache directories. Surfacing them is noise that the user
         # can't act on.
-        provider_entries = [e for e in p.discover() if e.size_bytes > 0]
+        provider_entries = [e for e in p.discover() if e.display_bytes > 0]
     except Exception as exc:  # isolate one provider's failure from the scan
         dt_ms = int((time.monotonic() - t0) * 1000)
         msg = f"{p.name}: discovery failed: {exc}"
@@ -97,6 +156,9 @@ def _discover_one(p: Provider) -> _ProviderResult:
             bytes=sum(e.size_bytes for e in provider_entries),
             entries=len(provider_entries),
             duration_ms=dt_ms,
+            footprint_bytes=sum(e.footprint_bytes or 0 for e in provider_entries),
+            reclaimable_bytes=sum(e.reclaimable_bytes or 0 for e in provider_entries),
+            shared_bytes=sum(e.shared_bytes for e in provider_entries),
         ),
     )
 
@@ -147,10 +209,28 @@ def scan(
             diagnostics.extend(result.diagnostics)
             per_provider.append(result.timing)
 
+    entries = _reconcile_shared_usage(entries)
+    timing_by_name = {timing.name: timing for timing in per_provider}
+    per_provider = [
+        dataclasses.replace(
+            timing,
+            footprint_bytes=unique_footprint_bytes(
+                [entry for entry in entries if entry.provider == timing.name]
+            ),
+            reclaimable_bytes=estimated_reclaimable_bytes(
+                [entry for entry in entries if entry.provider == timing.name]
+            ),
+            shared_bytes=unique_shared_bytes(
+                [entry for entry in entries if entry.provider == timing.name]
+            ),
+        )
+        for timing in (timing_by_name[name] for name in timing_by_name)
+    ]
+
     scanned_at = datetime.now(UTC)
     duration_ms = int((scanned_at - started_at).total_seconds() * 1000)
 
-    entries.sort(key=lambda e: e.size_bytes, reverse=True)
+    entries.sort(key=lambda e: e.display_bytes, reverse=True)
 
     if diagnostics:
         logger.info("scan completed with %d diagnostic note(s)", len(diagnostics))

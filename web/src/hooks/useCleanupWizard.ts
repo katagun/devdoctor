@@ -20,9 +20,15 @@ type Action =
       entry_id: string;
       status: ExecuteProgressEntry["status"];
       freed_bytes: number;
+      bytes_verified?: boolean;
       message?: string;
     }
-  | { type: "DONE"; results: CleanupResult[] }
+  | {
+      type: "DONE";
+      results: CleanupResult[];
+      estimatedReclaimedBytes: number;
+      bytesVerified: boolean;
+    }
   | { type: "JOB_ERROR"; message: string }
   | { type: "TOGGLE_ENABLED"; id: string; next: boolean }
   | { type: "CLOSE" };
@@ -91,6 +97,7 @@ export function reducer(state: WizardState, action: Action): WizardState {
             entry_id: action.entry_id,
             status: action.status,
             freed_bytes: action.freed_bytes,
+            bytes_verified: action.bytes_verified,
             message: action.message,
             consoleLines: prev?.consoleLines ?? [],
           },
@@ -98,7 +105,13 @@ export function reducer(state: WizardState, action: Action): WizardState {
       };
     }
     case "DONE":
-      return { ...state, step: "summary", results: action.results };
+      return {
+        ...state,
+        step: "summary",
+        results: action.results,
+        estimatedReclaimedBytes: action.estimatedReclaimedBytes,
+        bytesVerified: action.bytesVerified,
+      };
     case "JOB_ERROR":
       return { ...state, step: "summary", error: action.message };
     case "TOGGLE_ENABLED": {
@@ -113,6 +126,8 @@ export function reducer(state: WizardState, action: Action): WizardState {
         step: "review",
         jobId: null,
         results: null,
+        estimatedReclaimedBytes: null,
+        bytesVerified: false,
         progress: {},
         pendingPrompts: [],
         awaitingConfirm: null,
@@ -133,6 +148,8 @@ export function initial(entries: CacheTableRow[]): WizardState {
     pendingPrompts: [],
     progress: {},
     results: null,
+    estimatedReclaimedBytes: null,
+    bytesVerified: false,
     error: null,
   };
 }
@@ -218,13 +235,22 @@ export function useCleanupWizard({
         entry_id: String(d.entry_id ?? ""),
         status: (d.status as ExecuteProgressEntry["status"]) ?? "ok",
         freed_bytes: Number(d.freed_bytes ?? 0),
+        bytes_verified: Boolean(d.bytes_verified),
         message: d.message as string | undefined,
       });
     });
     es.addEventListener("done", (e) => {
       const d = parseEvent(e as MessageEvent);
       const results = Array.isArray(d.results) ? (d.results as CleanupResult[]) : [];
-      dispatch({ type: "DONE", results });
+      dispatch({
+        type: "DONE",
+        results,
+        estimatedReclaimedBytes: Number(
+          d.estimated_reclaimed_bytes ??
+            results.reduce((sum, result) => sum + (result.freed_bytes || 0), 0),
+        ),
+        bytesVerified: Boolean(d.bytes_verified),
+      });
       es.close();
       if (esRef.current === es) esRef.current = null;
       // Refresh any view sitting on stale post-cleanup data. Invalidate rather

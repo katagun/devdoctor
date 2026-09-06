@@ -25,6 +25,16 @@ async def run_line_streaming(
     asyncio.create_subprocess_exec; no shell is invoked.
     """
     argv = shlex.split(line)
+    return await run_argv_streaming(tuple(argv), on_chunk=on_chunk, timeout=timeout)
+
+
+async def run_argv_streaming(
+    argv: tuple[str, ...],
+    *,
+    on_chunk: OnChunk,
+    timeout: float | None = None,
+) -> ShellResult:
+    """Execute structured argv asynchronously without shell parsing."""
     if not argv:
         return ShellResult(returncode=1, stdout="", stderr="empty command")
 

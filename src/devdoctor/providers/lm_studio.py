@@ -8,8 +8,8 @@ from typing import Any
 import yaml
 
 from devdoctor.providers.base import Provider, _stat_kwargs
-from devdoctor.sizer import size_path
-from devdoctor.types import Entry, Risk
+from devdoctor.sizer import size_path_detailed
+from devdoctor.types import DeletePathAction, DiskUsage, Entry, HardlinkRecord, Risk
 
 
 class LMStudioProvider(Provider):
@@ -31,6 +31,7 @@ class LMStudioProvider(Provider):
     """
 
     name = "lm-studio-models"
+    family = "local-ai"
     description = "LM Studio downloaded models, grouped by <publisher>/<model>"
     platforms = ("darwin", "linux")
     risk = Risk.RECLAIMABLE
@@ -74,8 +75,9 @@ def _scan_legacy(root: Path, provider: LMStudioProvider) -> list[Entry]:
     entries: list[Entry] = []
     for pub_dir in sorted(p for p in root.iterdir() if p.is_dir()):
         for model_dir in sorted(m for m in pub_dir.iterdir() if m.is_dir()):
-            size, skipped = size_path(model_dir)
-            provider._note_skipped(skipped)
+            sizing = size_path_detailed(model_dir)
+            size = sizing.allocated_bytes
+            provider._note_skipped(list(sizing.skipped_paths))
             if size == 0:
                 # Empty publisher/model dirs left behind by uninstalls — skip.
                 continue
@@ -94,6 +96,9 @@ def _scan_legacy(root: Path, provider: LMStudioProvider) -> list[Entry]:
                     mtime=mtime,
                     risk=risk,
                     recipe=[f"rm -rf {shlex.quote(str(model_dir))}"],
+                    usage=DiskUsage(size, size),
+                    actions=(DeletePathAction(model_dir),),
+                    hardlinks=sizing.hardlinks,
                     **_stat_kwargs(model_dir),
                 )
             )
@@ -114,16 +119,20 @@ def _scan_hub(root: Path, provider: LMStudioProvider) -> list[Entry]:
             hf_repos = _repos_from_manifest(manifest)
             hf_paths: list[Path] = []
             hf_size = 0
+            hardlinks: list[HardlinkRecord] = []
             for user, repo in hf_repos:
                 candidate = hf_hub / f"models--{user}--{repo}"
                 if candidate.exists():
-                    s, skipped = size_path(candidate)
-                    provider._note_skipped(skipped)
-                    hf_size += s
+                    sizing = size_path_detailed(candidate)
+                    provider._note_skipped(list(sizing.skipped_paths))
+                    hf_size += sizing.allocated_bytes
+                    hardlinks.extend(sizing.hardlinks)
                     hf_paths.append(candidate)
 
-            manifest_size, manifest_skipped = size_path(model_dir)
-            provider._note_skipped(manifest_skipped)
+            manifest_sizing = size_path_detailed(model_dir)
+            provider._note_skipped(list(manifest_sizing.skipped_paths))
+            manifest_size = manifest_sizing.allocated_bytes
+            hardlinks.extend(manifest_sizing.hardlinks)
             total = manifest_size + hf_size
             if total == 0:
                 continue
@@ -149,6 +158,9 @@ def _scan_hub(root: Path, provider: LMStudioProvider) -> list[Entry]:
                     mtime=mtime,
                     risk=risk,
                     recipe=recipe,
+                    usage=DiskUsage(total, total),
+                    actions=tuple(DeletePathAction(path) for path in (model_dir, *hf_paths)),
+                    hardlinks=tuple(hardlinks),
                     **_stat_kwargs(model_dir),
                 )
             )

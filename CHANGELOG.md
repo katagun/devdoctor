@@ -26,6 +26,11 @@ entries under a versioned heading as described in
 
 ### Added
 
+- **Expanded provider coverage** — added pnpm, Yarn, Bun, bounded
+  `node_modules`, Go caches, Cargo dependency/build storage, Xcode/iOS,
+  Android SDK/build storage, Conda, NuGet, and tox/nox providers, grouped by
+  stable ecosystem families.
+
 - **CLI (`devdoctor`)** — repeatable disk-cache analysis and interactive
   cleanup for macOS and Linux: `scan`, `recipe`, `clean`, `snapshot`, `diff`,
   and `providers`, with a preview-first safety model and explicit
@@ -57,6 +62,16 @@ entries under a versioned heading as described in
   scanning, Dependabot, web ESLint, and CODEOWNERS.
 
 ### Changed
+
+- **Made disk-byte semantics explicit** — reports and snapshots now distinguish
+  filesystem footprint, estimated reclaimable space, and shared allocations;
+  cleanup history no longer presents estimates as verified bytes freed.
+- **Introduced typed cleanup actions** — path deletion, argv commands, and
+  non-executable advice replace shell-like execution while old snapshots and
+  generated commented scripts remain compatible.
+- **Made shared-file accounting deterministic** — hard-linked allocations are
+  reconciled after concurrent discovery and recalculated for the complete
+  selected cleanup plan without double-counting overlapping entries.
 
 - **Rebranded to DevDoctor** — the product is now DevDoctor and ships a public
   landing page; the Python package and CLI stay named `devdoctor` during the

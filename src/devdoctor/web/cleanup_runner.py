@@ -17,6 +17,7 @@ from devdoctor.types import (
     Entry,
     Report,
     ShellResult,
+    estimated_reclaimable_bytes,
 )
 from devdoctor.web.subprocess_stream import OnChunk
 
@@ -60,14 +61,15 @@ class CleanupRunner:
                         choice = await self._prompt_choice(event.entry)
                         event = gen.send(choice)
                     elif isinstance(event, cleanup_mod.ConfirmRequired):
-                        summary = (
-                            f"Execute cleanup for {len(event.approved)} entries, "
-                            f"freeing ~{event.total_bytes} bytes?"
-                        )
+                        summary = cleanup_mod._confirm_summary(event)
                         confirmed = await self._confirm(summary)
                         event = gen.send(confirmed)
                     elif isinstance(event, cleanup_mod.ExecuteStep):
-                        result = await self._run_execute_step(event.entry, event.line)
+                        result = await self._run_execute_step(
+                            event.entry,
+                            event.argv,
+                            event.line,
+                        )
                         event = gen.send(result)
                     elif isinstance(event, cleanup_mod.EntryResolved):
                         results.append(event.result)
@@ -87,9 +89,12 @@ class CleanupRunner:
                                 "status": r.status,
                                 "freed_bytes": r.freed_bytes,
                                 "message": r.message,
+                                "bytes_verified": r.bytes_verified,
                             }
                             for r in results
                         ],
+                        "estimated_reclaimed_bytes": self._estimated_reclaimed_bytes(results),
+                        "bytes_verified": self._all_bytes_verified(results),
                         "cancelled": True,
                     },
                 }
@@ -120,17 +125,23 @@ class CleanupRunner:
     ) -> None:
         """Persist the job outcome to the audit log. Errors here are non-fatal."""
         try:
+            estimated_reclaimed = self._estimated_reclaimed_bytes(results)
             payload: dict[str, Any] = {
                 "type": "cleanup",
                 "job_id": self.id,
                 "outcome": outcome,
-                "total_freed_bytes": sum(r.freed_bytes for r in results),
+                # Compatibility key for audit readers written before explicit
+                # estimate semantics. New readers use the field below.
+                "total_freed_bytes": estimated_reclaimed,
+                "total_estimated_reclaimed_bytes": estimated_reclaimed,
+                "bytes_verified": self._all_bytes_verified(results),
                 "results": [
                     {
                         "entry_id": r.entry_id,
                         "status": r.status,
                         "freed_bytes": r.freed_bytes,
                         "message": r.message,
+                        "bytes_verified": r.bytes_verified,
                     }
                     for r in results
                 ],
@@ -152,12 +163,28 @@ class CleanupRunner:
                 exc_info=True,
             )
 
-    async def _run_execute_step(self, entry: Entry, line: str) -> ShellResult:
+    def _estimated_reclaimed_bytes(self, results: list[CleanResult]) -> int:
+        successful_ids = {result.entry_id for result in results if result.status == "ok"}
+        return estimated_reclaimable_bytes(
+            [entry for entry in self.report.entries if entry.id in successful_ids]
+        )
+
+    @staticmethod
+    def _all_bytes_verified(results: list[CleanResult]) -> bool:
+        successful = [result for result in results if result.status == "ok"]
+        return bool(successful) and all(result.bytes_verified for result in successful)
+
+    async def _run_execute_step(
+        self,
+        entry: Entry,
+        argv: tuple[str, ...],
+        display_line: str,
+    ) -> ShellResult:
         """Emit execute_start, stream progress, return the final ShellResult."""
         await self.events.put(
             {
                 "event": "execute_start",
-                "data": {"entry_id": entry.id, "cmd": line},
+                "data": {"entry_id": entry.id, "cmd": display_line},
             }
         )
 
@@ -169,15 +196,19 @@ class CleanupRunner:
                 }
             )
 
-        return await self.run_line_with_chunks(line, on_chunk)
+        return await self.run_line_with_chunks(argv, on_chunk)
 
-    async def run_line_with_chunks(self, line: str, on_chunk: OnChunk) -> ShellResult:
+    async def run_line_with_chunks(
+        self,
+        argv: tuple[str, ...],
+        on_chunk: OnChunk,
+    ) -> ShellResult:
         """Default impl: ignore chunks and call run_line.
 
         The web route (Task 10) replaces this method post-construction with one
         that wires on_chunk through ``subprocess_stream.run_line_streaming``.
         """
-        return await self.run_line(line)
+        return await self.run_line(argv)
 
     async def _prompt_choice(self, entry: Entry) -> Choice:
         fut: asyncio.Future[Choice] = asyncio.get_running_loop().create_future()
@@ -189,8 +220,11 @@ class CleanupRunner:
                     "entry_id": entry.id,
                     "label": entry.label,
                     "risk": entry.risk.value,
-                    "size_bytes": entry.size_bytes,
-                    "recipe": list(entry.recipe),
+                    "size_bytes": entry.display_bytes,
+                    "footprint_bytes": entry.footprint_bytes,
+                    "reclaimable_bytes": entry.reclaimable_bytes,
+                    "shared_bytes": entry.shared_bytes,
+                    "recipe": entry.recipe_lines(),
                 },
             }
         )
@@ -217,6 +251,7 @@ class CleanupRunner:
                         "status": r.status,
                         "freed_bytes": r.freed_bytes,
                         "message": r.message,
+                        "bytes_verified": r.bytes_verified,
                     },
                 }
             )
@@ -230,9 +265,12 @@ class CleanupRunner:
                             "status": r.status,
                             "freed_bytes": r.freed_bytes,
                             "message": r.message,
+                            "bytes_verified": r.bytes_verified,
                         }
                         for r in results
                     ],
+                    "estimated_reclaimed_bytes": self._estimated_reclaimed_bytes(results),
+                    "bytes_verified": self._all_bytes_verified(results),
                 },
             }
         )

@@ -6,8 +6,8 @@ import shlex
 from pathlib import Path
 
 from devdoctor.providers.base import Provider, _stat_kwargs
-from devdoctor.sizer import size_path
-from devdoctor.types import Entry, Risk
+from devdoctor.sizer import size_path_detailed
+from devdoctor.types import CommandAction, DeletePathAction, DiskUsage, Entry, Risk
 
 _SIZE_UNITS = {"B": 1, "KB": 1024, "MB": 1024**2, "GB": 1024**3, "TB": 1024**4}
 _SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(B|KB|MB|GB|TB)", re.IGNORECASE)
@@ -24,6 +24,7 @@ _MANIFEST_PARTS_FULLY_QUALIFIED = 3
 
 class OllamaProvider(Provider):
     name = "ollama"
+    family = "local-ai"
     description = "Ollama local LLM models"
     platforms = ("darwin", "linux")
     risk = Risk.RECLAIMABLE
@@ -74,6 +75,8 @@ class OllamaProvider(Provider):
                     mtime=mtime,
                     risk=self.risk,
                     recipe=[f"ollama rm {shlex.quote(name)}"],
+                    usage=DiskUsage(size_bytes, size_bytes),
+                    actions=(CommandAction(("ollama", "rm", name)),),
                     **stat_kwargs,
                 )
             )
@@ -83,7 +86,9 @@ class OllamaProvider(Provider):
         models = Path(os.path.expanduser("~/.ollama/models"))
         if not models.exists():
             return []
-        total, _skipped = size_path(models)
+        sizing = size_path_detailed(models)
+        total = sizing.allocated_bytes
+        self._note_skipped(list(sizing.skipped_paths))
         return [
             Entry(
                 provider=self.name,
@@ -94,6 +99,9 @@ class OllamaProvider(Provider):
                 mtime=None,
                 risk=self.risk,
                 recipe=[f"rm -rf {shlex.quote(str(models))}"],
+                usage=DiskUsage(total, total),
+                actions=(DeletePathAction(models),),
+                hardlinks=sizing.hardlinks,
                 **_stat_kwargs(models),
             )
         ]

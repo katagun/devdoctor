@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from devdoctor.types import HardlinkRecord
+
 
 @dataclass(frozen=True)
 class StatFields:
@@ -61,19 +63,30 @@ def stat_fields(path: Path) -> StatFields | None:
     )
 
 
+@dataclass(frozen=True)
+class SizeResult:
+    allocated_bytes: int
+    skipped_paths: tuple[Path, ...]
+    hardlinks: tuple[HardlinkRecord, ...]
+
+
 def size_path(root: Path) -> tuple[int, list[Path]]:
+    result = size_path_detailed(root)
+    return result.allocated_bytes, list(result.skipped_paths)
+
+
+def size_path_detailed(root: Path) -> SizeResult:
     """Compute byte size of `root` recursively.
 
     Symlink-safe (does not follow), stays on the root's device, and dedupes
-    hard-linked / reflinked files by (dev, ino) so a single tree that links
+    hard-linked files by (dev, ino) so a single tree that links
     the same inode from multiple places counts its bytes exactly once.
     Records any paths that errored during walk in the returned `skipped`
     list rather than raising.
 
-    Note: the inode dedup is scoped to a single `size_path` invocation.
-    Two providers that separately scan trees sharing hard links will still
-    each count the shared bytes — fixing that would require a process-wide
-    inode tracker threaded through the scan, which we haven't introduced.
+    The detailed result carries hard-link identities and observed paths so the
+    scan layer can deterministically reconcile allocations shared by separate
+    entries and providers after concurrent discovery finishes.
     """
     skipped: list[Path] = []
 
@@ -81,11 +94,12 @@ def size_path(root: Path) -> tuple[int, list[Path]]:
         root_stat = root.lstat()
     except (FileNotFoundError, PermissionError, OSError):
         skipped.append(root)
-        return 0, skipped
+        return SizeResult(0, tuple(skipped), ())
 
     root_dev = root_stat.st_dev
     total = 0
     seen_inodes: set[tuple[int, int]] = set()
+    hardlinks: dict[tuple[int, int], tuple[int, int, list[str]]] = {}
 
     def on_error(err: OSError) -> None:
         filename = getattr(err, "filename", None)
@@ -114,10 +128,18 @@ def size_path(root: Path) -> tuple[int, list[Path]]:
             except (FileNotFoundError, PermissionError, OSError):
                 skipped.append(p)
                 continue
-            # Hard-link / reflink dedup: skip bytes we've already counted in
+            blocks = getattr(st, "st_blocks", 0) * 512
+            allocated = min(st.st_size, blocks) if blocks else st.st_size
+            # Hard-link dedup: skip bytes we've already counted in
             # this walk. st_nlink > 1 signals the file has other names, but
             # the check is unconditional since the cost is just a set lookup.
             key = (st.st_dev, st.st_ino)
+            if st.st_nlink > 1:
+                current = hardlinks.get(key)
+                if current is None:
+                    hardlinks[key] = (allocated, st.st_nlink, [str(p)])
+                else:
+                    current[2].append(str(p))
             if key in seen_inodes:
                 continue
             seen_inodes.add(key)
@@ -125,7 +147,16 @@ def size_path(root: Path) -> tuple[int, list[Path]]:
             # (e.g. Docker.raw reports 80 GB apparent but uses only megabytes).
             # For non-sparse files st_blocks*512 rounds up to a block boundary,
             # so we cap at st_size to preserve per-byte accuracy for normal files.
-            blocks = getattr(st, "st_blocks", 0) * 512
-            total += min(st.st_size, blocks) if blocks else st.st_size
+            total += allocated
 
-    return total, skipped
+    records = tuple(
+        HardlinkRecord(
+            device=device,
+            inode=inode,
+            allocated_bytes=allocated,
+            link_count=link_count,
+            paths=tuple(sorted(set(paths))),
+        )
+        for (device, inode), (allocated, link_count, paths) in sorted(hardlinks.items())
+    )
+    return SizeResult(total, tuple(skipped), records)

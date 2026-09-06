@@ -5,6 +5,7 @@ export interface CleanupResultEntry {
   entry_id: string;
   status: string;
   freed_bytes: number;
+  bytes_verified?: boolean;
   message?: string | null;
 }
 
@@ -14,6 +15,8 @@ export interface CleanupEvent {
   job_id: string;
   outcome: "ok" | "cancelled" | "error" | string;
   total_freed_bytes: number;
+  total_estimated_reclaimed_bytes?: number;
+  bytes_verified?: boolean;
   results: CleanupResultEntry[];
   error?: string;
 }

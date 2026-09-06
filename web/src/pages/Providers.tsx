@@ -36,18 +36,33 @@ export default function Providers() {
     return providers.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
+        p.family.toLowerCase().includes(q) ||
         p.description.toLowerCase().includes(q),
     );
   }, [providers, query]);
 
-  const enabledCount = providers.filter((p) => isEnabled(p.name)).length;
+  const grouped = useMemo(() => {
+    const byFamily = new Map<string, ProviderRow[]>();
+    for (const provider of filtered) {
+      const rows = byFamily.get(provider.family) ?? [];
+      rows.push(provider);
+      byFamily.set(provider.family, rows);
+    }
+    return [...byFamily.entries()].sort(([left], [right]) =>
+      left.localeCompare(right),
+    );
+  }, [filtered]);
+
+  const enabledCount = providers.filter((p) => isEnabled(p.id)).length;
   const allOn = providers.length > 0 && enabledCount === providers.length;
   const allOff = enabledCount === 0;
   const mixed = !allOn && !allOff;
 
   function flipMaster() {
-    const names = providers.map((p) => p.name);
-    setMany(names, allOff);
+    setMany(
+      providers.map((p) => p.id),
+      allOff,
+    );
   }
 
   function toggleExpanded(name: string) {
@@ -79,7 +94,7 @@ export default function Providers() {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search providers by name or description…"
+            placeholder="Search providers by family, name, or description…"
             className="w-full bg-bg-elev-1 border border-border rounded pl-7 pr-8 py-1.5 text-[11px] text-text placeholder:text-text-muted focus:outline-none focus:border-risk-reclaim"
           />
           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none">
@@ -155,18 +170,53 @@ export default function Providers() {
             )}
           </div>
         ) : (
-          filtered.map((p) => (
-            <ProviderRowView
-              key={p.name}
-              provider={p}
-              query={query}
-              isOn={isEnabled(p.name)}
-              isExpanded={expandedRows.has(p.name)}
-              lastAuto={lastByProvider.get(p.name) ?? null}
-              onToggleEnabled={() => setEnabled(p.name, !isEnabled(p.name))}
-              onToggleExpanded={() => toggleExpanded(p.name)}
-            />
-          ))
+          grouped.map(([family, rows]) => {
+            const enabledInFamily = rows.filter((p) => isEnabled(p.id)).length;
+            const familyOn = enabledInFamily === rows.length;
+            return (
+              <section key={family}>
+                <div className="flex items-center gap-3 px-3 py-2 border-b border-border bg-bg-elev-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMany(
+                        rows.map((p) => p.id),
+                        !familyOn,
+                      )
+                    }
+                    aria-pressed={familyOn}
+                    className={`w-[30px] h-[16px] rounded-full relative transition-colors ${
+                      familyOn ? "bg-btn-primary-to" : "bg-bg-control-off"
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-[2px] w-[12px] h-[12px] rounded-full bg-white transition-all ${
+                        familyOn ? "right-[2px]" : "left-[2px] bg-text-muted"
+                      }`}
+                    />
+                  </button>
+                  <span className="uppercase tracking-widest text-[9.5px] text-text">
+                    {family.replaceAll("-", " ")}
+                  </span>
+                  <span className="text-text-muted text-[9.5px]">
+                    {enabledInFamily}/{rows.length}
+                  </span>
+                </div>
+                {rows.map((p) => (
+                  <ProviderRowView
+                    key={p.id}
+                    provider={p}
+                    query={query}
+                    isOn={isEnabled(p.id)}
+                    isExpanded={expandedRows.has(p.id)}
+                    lastAuto={lastByProvider.get(p.id) ?? null}
+                    onToggleEnabled={() => setEnabled(p.id, !isEnabled(p.id))}
+                    onToggleExpanded={() => toggleExpanded(p.id)}
+                  />
+                ))}
+              </section>
+            );
+          })
         )}
       </div>
     </div>

@@ -50,7 +50,11 @@ export default function Dashboard() {
   const memory = useMemory(selectedMemoryProviderIds);
 
   const diskRows = disk.data?.rows ?? diskSummary.data?.entries ?? [];
-  const diskTotalBytes = disk.data?.totalBytes ?? diskSummary.data?.total_bytes ?? null;
+  const diskTotalBytes =
+    disk.data?.totalBytes ??
+    diskSummary.data?.total_reclaimable_bytes ??
+    diskSummary.data?.total_bytes ??
+    null;
   const diskScannedAt = disk.data?.scannedAt ?? diskSummary.data?.scanned_at ?? null;
   const diskShowingCached = !disk.data && diskSummary.data !== null && diskSummary.data !== undefined;
   const diskHasNoCache = diskSummary.data === null && !disk.data;
@@ -130,7 +134,7 @@ export default function Dashboard() {
               ["other", "other"],
             ]}
             stats={[
-              ["reclaimable", diskTotalBytes === null ? "…" : humanBytes(diskTotalBytes)],
+              ["estimated reclaimable", diskTotalBytes === null ? "…" : `~${humanBytes(diskTotalBytes)}`],
               ["entries", diskTotalBytes === null ? "…" : String(diskRows.length)],
               [
                 "top provider",

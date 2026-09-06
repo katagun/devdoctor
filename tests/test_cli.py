@@ -17,7 +17,8 @@ def test_scan_exits_zero_and_prints_table(tmp_path, monkeypatch):
     runner = CliRunner()
     result = runner.invoke(build_cli(shell), ["scan"])
     assert result.exit_code == 0, result.output
-    assert "Total" in result.output
+    assert "Footprint" in result.output
+    assert "estimated reclaimable" in result.output
 
 
 def test_scan_json_emits_valid_json(tmp_path, monkeypatch):

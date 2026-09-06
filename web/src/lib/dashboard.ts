@@ -36,6 +36,9 @@ export interface DiskMosaicInput {
   provider: string;
   label: string;
   size_bytes: number;
+  footprint_bytes?: number | null;
+  reclaimable_bytes?: number | null;
+  shared_bytes?: number;
   risk: "safe" | "reclaimable" | "dangerous";
 }
 
@@ -57,6 +60,9 @@ export interface DiskProviderTotal {
   provider: string;
   bytes: number;
   count: number;
+  footprint_bytes?: number | null;
+  reclaimable_bytes?: number | null;
+  shared_bytes?: number;
 }
 
 export function buildDiskMosaicItems(

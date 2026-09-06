@@ -15,6 +15,9 @@ export interface CacheTableRow {
   label: string;
   path: string;
   size_bytes: number;
+  footprint_bytes: number | null;
+  reclaimable_bytes: number | null;
+  shared_bytes: number;
   risk: RiskValue;
   mtime: number | null;
   recipeHint: string;

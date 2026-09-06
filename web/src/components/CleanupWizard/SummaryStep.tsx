@@ -4,7 +4,9 @@ import { humanBytes } from "@/lib/format";
 export function SummaryStep() {
   const { state, close } = useWizardContext();
   const results = state.results ?? [];
-  const freed = results.reduce((a, b) => a + (b.freed_bytes || 0), 0);
+  const reclaimed =
+    state.estimatedReclaimedBytes ??
+    results.reduce((a, b) => a + (b.freed_bytes || 0), 0);
   const errors = results.filter((r) => r.status === "error");
 
   return (
@@ -20,7 +22,11 @@ export function SummaryStep() {
           {state.error ? "Cleanup stopped." : "Cleanup complete."}
         </div>
         <div className="text-text-dim mt-1">
-          Freed <b className="text-risk-safe">{humanBytes(freed)}</b>. {errors.length} error{errors.length === 1 ? "" : "s"}.
+          {state.bytesVerified ? "Verified reclaimed" : "Estimated reclaimed"}{" "}
+          <b className="text-risk-safe">
+            {state.bytesVerified ? "" : "~"}{humanBytes(reclaimed)}
+          </b>.{" "}
+          {errors.length} error{errors.length === 1 ? "" : "s"}.
         </div>
       </div>
       <div className="border border-border rounded">
@@ -35,7 +41,10 @@ export function SummaryStep() {
             <div className={r.status === "ok" ? "text-risk-safe" : r.status === "error" ? "text-risk-danger" : "text-text-muted"}>
               {r.status}
             </div>
-            <div className="text-right tabular-nums">{humanBytes(r.freed_bytes)}</div>
+            <div className="text-right tabular-nums">
+              {r.bytes_verified ? "" : "~"}
+              {humanBytes(r.freed_bytes)}
+            </div>
           </div>
         ))}
       </div>

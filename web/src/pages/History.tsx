@@ -24,18 +24,18 @@ export default function History() {
     let cleanup = 0;
     let snapshot = 0;
     let memoryAction = 0;
-    let freed = 0;
+    let reclaimed = 0;
     for (const e of events) {
       if (e.type === "cleanup") {
         cleanup++;
-        freed += e.total_freed_bytes || 0;
+        reclaimed += e.total_estimated_reclaimed_bytes ?? e.total_freed_bytes ?? 0;
       } else if (e.type === "snapshot") {
         snapshot++;
       } else if (e.type === "memory_action") {
         memoryAction++;
       }
     }
-    return { cleanup, snapshot, memoryAction, freed };
+    return { cleanup, snapshot, memoryAction, reclaimed };
   }, [events]);
 
   const visible = useMemo(() => {
@@ -52,7 +52,7 @@ export default function History() {
           </span>
           <span className="text-text-muted">
             <b className="text-text-dim">{counts.cleanup}</b> cleanups ·{" "}
-            <b className="text-risk-safe">{humanBytes(counts.freed)}</b> reclaimed ·{" "}
+            <b className="text-risk-safe">~{humanBytes(counts.reclaimed)}</b> estimated reclaimed ·{" "}
             <b className="text-text-dim">{counts.snapshot}</b> snapshots ·{" "}
             <b className="text-text-dim">{counts.memoryAction}</b> {MEMORY_LABEL} actions
           </span>
@@ -135,7 +135,7 @@ function Event({ event }: { event: HistoryEvent }) {
 
 function CleanupRow({ event }: { event: CleanupEvent }) {
   const [open, setOpen] = useState(false);
-  const freed = event.total_freed_bytes || 0;
+  const reclaimed = event.total_estimated_reclaimed_bytes ?? event.total_freed_bytes ?? 0;
   const errors = event.results.filter((r) => r.status === "error").length;
   const okCount = event.results.filter((r) => r.status === "ok").length;
 
@@ -166,7 +166,7 @@ function CleanupRow({ event }: { event: CleanupEvent }) {
               )}
             </span>
             <span className="tabular-nums text-risk-safe font-medium">
-              {freed > 0 ? `−${humanBytes(freed)}` : humanBytes(freed)}
+              {event.bytes_verified ? "" : "~"}{reclaimed > 0 ? `−${humanBytes(reclaimed)}` : humanBytes(reclaimed)}
             </span>
           </div>
           <div className="text-text-muted text-[10px] mt-0.5 flex items-center gap-3">
@@ -197,7 +197,7 @@ function CleanupRow({ event }: { event: CleanupEvent }) {
                 <tr className="text-text-muted uppercase text-[9px] tracking-widest">
                   <th className="text-left font-normal pb-1">entry</th>
                   <th className="text-left font-normal pb-1 w-20">status</th>
-                  <th className="text-right font-normal pb-1 w-20">freed</th>
+                  <th className="text-right font-normal pb-1 w-20">estimate</th>
                 </tr>
               </thead>
               <tbody>
@@ -221,7 +221,7 @@ function CleanupRow({ event }: { event: CleanupEvent }) {
                       )}
                     </td>
                     <td className="py-1 text-right text-text-dim">
-                      {humanBytes(r.freed_bytes || 0)}
+                      {r.bytes_verified ? "" : "~"}{humanBytes(r.freed_bytes || 0)}
                     </td>
                   </tr>
                 ))}

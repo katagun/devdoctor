@@ -6,7 +6,7 @@ import re
 import shlex
 
 from devdoctor.providers.base import Provider
-from devdoctor.types import Entry, Risk
+from devdoctor.types import CommandAction, DiskUsage, Entry, Risk
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,7 @@ _TYPE_TO_ID = {
 
 class DockerProvider(Provider):
     name = "docker"
+    family = "containers"
     description = "Docker images, containers, volumes, build cache"
     platforms = ("darwin", "linux")
     risk = Risk.RECLAIMABLE
@@ -101,6 +102,8 @@ class DockerProvider(Provider):
                     mtime=None,
                     risk=self.risk,
                     recipe=[cmd],
+                    usage=DiskUsage(None, reclaimable),
+                    actions=(CommandAction(tuple(shlex.split(cmd))),),
                 )
             )
 
@@ -172,6 +175,11 @@ class DockerProvider(Provider):
                     # Remove only the volume the user reviewed. If it becomes
                     # referenced before execution, Docker refuses the removal.
                     recipe=[f"docker volume rm {shlex.quote(name)}"],
+                    usage=DiskUsage(
+                        None if anonymous else size_bytes,
+                        size_bytes if anonymous else None,
+                    ),
+                    actions=(CommandAction(("docker", "volume", "rm", name)),),
                 )
             )
 

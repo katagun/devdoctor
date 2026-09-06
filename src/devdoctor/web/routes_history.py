@@ -131,4 +131,8 @@ def _snapshot_meta_to_info(meta: StoredSnapshotMeta) -> SnapshotMeta:
         duration_ms=meta.duration_ms,
         entry_count=meta.entry_count,
         per_provider=meta.per_provider,
+        total_footprint_bytes=meta.total_footprint_bytes,
+        total_reclaimable_bytes=meta.total_reclaimable_bytes,
+        total_shared_bytes=meta.total_shared_bytes,
+        unknown_reclaimable_entries=meta.unknown_reclaimable_entries,
     )

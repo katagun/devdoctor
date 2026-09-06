@@ -28,6 +28,10 @@ class StoredSnapshotMeta:
     duration_ms: int | None
     entry_count: int | None
     per_provider: list[dict[str, object]] | None
+    total_footprint_bytes: int | None = None
+    total_reclaimable_bytes: int | None = None
+    total_shared_bytes: int = 0
+    unknown_reclaimable_entries: int = 0
 
 
 @dataclass(frozen=True)
@@ -37,6 +41,9 @@ class DiskDashboardEntry:
     label: str
     size_bytes: int
     risk: Literal["safe", "reclaimable", "dangerous"]
+    footprint_bytes: int | None = None
+    reclaimable_bytes: int | None = None
+    shared_bytes: int = 0
 
 
 @dataclass(frozen=True)
@@ -44,6 +51,9 @@ class DiskDashboardProviderTotal:
     provider: str
     bytes: int
     count: int
+    footprint_bytes: int | None = None
+    reclaimable_bytes: int | None = None
+    shared_bytes: int = 0
 
 
 @dataclass(frozen=True)
@@ -55,6 +65,10 @@ class DiskDashboardSummary:
     entry_count: int
     entries: list[DiskDashboardEntry]
     provider_totals: list[DiskDashboardProviderTotal]
+    total_footprint_bytes: int | None = None
+    total_reclaimable_bytes: int | None = None
+    total_shared_bytes: int = 0
+    unknown_reclaimable_entries: int = 0
 
 
 @dataclass(frozen=True)

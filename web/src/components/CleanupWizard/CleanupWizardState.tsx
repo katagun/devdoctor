@@ -7,6 +7,7 @@ export interface ExecuteProgressEntry {
   entry_id: string;
   status: "pending" | "running" | "ok" | "error" | "skipped";
   freed_bytes: number;
+  bytes_verified?: boolean;
   message?: string;
   consoleLines: string[];
 }
@@ -15,6 +16,7 @@ export interface CleanupResult {
   entry_id: string;
   status: ExecuteProgressEntry["status"];
   freed_bytes: number;
+  bytes_verified?: boolean;
   message?: string;
 }
 
@@ -27,6 +29,8 @@ export interface WizardState {
   pendingPrompts: { entry_id: string; recipe: string[] }[];
   progress: Record<string, ExecuteProgressEntry>;
   results: CleanupResult[] | null;
+  estimatedReclaimedBytes: number | null;
+  bytesVerified: boolean;
   error: string | null;
 }
 

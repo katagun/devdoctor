@@ -6,6 +6,9 @@ export interface DiskDashboardProviderTotal {
   provider: string;
   bytes: number;
   count: number;
+  footprint_bytes: number | null;
+  reclaimable_bytes: number | null;
+  shared_bytes: number;
 }
 
 export interface DiskDashboardSummary {
@@ -16,6 +19,10 @@ export interface DiskDashboardSummary {
   entry_count: number;
   entries: DiskMosaicInput[];
   provider_totals: DiskDashboardProviderTotal[];
+  total_footprint_bytes: number | null;
+  total_reclaimable_bytes: number | null;
+  total_shared_bytes: number;
+  unknown_reclaimable_entries: number;
 }
 
 export function useDiskDashboardSummary(providerParam?: string) {

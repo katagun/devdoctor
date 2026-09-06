@@ -217,7 +217,7 @@ class SQLiteStorage:
             rows = conn.execute(
                 f"""
                 SELECT name, kind, scanned_at, hostname, platform, note, total_bytes,
-                       duration_ms, entry_count, per_provider_json
+                       duration_ms, entry_count, per_provider_json, report_json
                 FROM disk_snapshots
                 {where}
                 ORDER BY scanned_at DESC, name DESC
@@ -225,24 +225,31 @@ class SQLiteStorage:
                 """,
                 params,
             ).fetchall()
-        return [
-            StoredSnapshotMeta(
-                name=str(row["name"]),
-                path=_snapshot_path(self.path, str(row["name"])),
-                scanned_at=str(row["scanned_at"]),
-                hostname=str(row["hostname"]),
-                platform=str(row["platform"]),
-                note=row["note"],
-                total_bytes=int(row["total_bytes"]),
-                kind=str(row["kind"]),
-                duration_ms=row["duration_ms"],
-                entry_count=row["entry_count"],
-                per_provider=json.loads(row["per_provider_json"])
-                if row["per_provider_json"]
-                else None,
+        out: list[StoredSnapshotMeta] = []
+        for row in rows:
+            report = Report.from_json(str(row["report_json"]))
+            out.append(
+                StoredSnapshotMeta(
+                    name=str(row["name"]),
+                    path=_snapshot_path(self.path, str(row["name"])),
+                    scanned_at=str(row["scanned_at"]),
+                    hostname=str(row["hostname"]),
+                    platform=str(row["platform"]),
+                    note=row["note"],
+                    total_bytes=int(row["total_bytes"]),
+                    kind=str(row["kind"]),
+                    duration_ms=row["duration_ms"],
+                    entry_count=row["entry_count"],
+                    per_provider=json.loads(row["per_provider_json"])
+                    if row["per_provider_json"]
+                    else None,
+                    total_footprint_bytes=report.total_footprint_bytes(),
+                    total_reclaimable_bytes=report.total_reclaimable_bytes(),
+                    total_shared_bytes=report.total_shared_bytes(),
+                    unknown_reclaimable_entries=report.unknown_reclaimable_entries(),
+                )
             )
-            for row in rows
-        ]
+        return out
 
     def load_disk_snapshot(self, name: str) -> Report:
         with self._connect() as conn:
@@ -637,6 +644,9 @@ def _per_provider(report: Report) -> list[dict[str, object]] | None:
             "bytes": pt.bytes,
             "entries": pt.entries,
             "duration_ms": pt.duration_ms,
+            "footprint_bytes": pt.footprint_bytes,
+            "reclaimable_bytes": pt.reclaimable_bytes,
+            "shared_bytes": pt.shared_bytes,
         }
         for pt in report.per_provider
     ]

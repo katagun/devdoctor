@@ -11,8 +11,16 @@ from pathlib import Path
 from typing import Any, ClassVar, TypedDict
 
 from devdoctor.ports import Shell
-from devdoctor.sizer import size_path, stat_fields
-from devdoctor.types import Entry, Risk
+from devdoctor.sizer import size_path_detailed, stat_fields
+from devdoctor.types import (
+    AdviceAction,
+    CleanupAction,
+    CommandAction,
+    DeletePathAction,
+    DiskUsage,
+    Entry,
+    Risk,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +28,7 @@ logger = logging.getLogger(__name__)
 # thousands of unreadable entries can't bloat the message (or the snapshot the
 # Report is serialized into).
 _DIAGNOSTIC_SAMPLE = 3
+_RM_RECIPE_ARGC = 3
 
 
 class Provider(ABC):
@@ -34,6 +43,7 @@ class Provider(ABC):
     risk: ClassVar[Risk]
     required_binary: ClassVar[str | None] = None
     details: ClassVar[str | None] = None
+    family: ClassVar[str] = "other"
 
     def __init__(self, shell: Shell) -> None:
         self._shell = shell
@@ -68,6 +78,11 @@ class Provider(ABC):
         if self.required_binary is None:
             return True
         return self._shell.which(self.required_binary) is not None
+
+    @property
+    def provider_id(self) -> str:
+        """Stable provider identity; current names remain valid IDs."""
+        return self.name
 
     @abstractmethod
     def discover(self) -> list[Entry]: ...
@@ -129,6 +144,7 @@ class PathProvider(Provider):
     platforms: tuple[str, ...] = ()  # type: ignore[misc]
     risk: Risk = Risk.SAFE  # type: ignore[misc]
     required_binary: str | None = None  # type: ignore[misc]
+    family: str = "other"  # type: ignore[misc]
 
     raw_paths: tuple[str, ...] = field(default_factory=tuple)
     recipe_template: list[str] = field(default_factory=list)
@@ -143,6 +159,7 @@ class PathProvider(Provider):
         risk: Risk,
         raw_paths: tuple[str, ...],
         recipe_template: list[str],
+        family: str = "other",
     ) -> None:
         super().__init__(shell)
         self.name = name
@@ -152,6 +169,7 @@ class PathProvider(Provider):
         self.required_binary = None
         self.raw_paths = raw_paths
         self.recipe_template = recipe_template
+        self.family = family
 
     @classmethod
     def from_yaml(cls, spec: dict[str, Any], shell: Shell) -> PathProvider:
@@ -162,6 +180,7 @@ class PathProvider(Provider):
             platforms_raw = tuple(spec["platforms"])
             paths_raw = tuple(str(p) for p in spec["paths"])
             recipe_raw = spec["recipe"]
+            family = str(spec.get("family") or _infer_provider_family(name))
         except KeyError as e:
             raise ValueError(f"paths.yaml entry missing required key: {e}") from e
 
@@ -194,6 +213,7 @@ class PathProvider(Provider):
             risk=risk,
             raw_paths=paths_raw,
             recipe_template=recipe_template,
+            family=family,
         )
 
     def available(self) -> bool:
@@ -215,10 +235,12 @@ class PathProvider(Provider):
     def discover(self) -> list[Entry]:
         entries: list[Entry] = []
         for p in self.resolve_paths():
-            size, skipped = size_path(p)
-            self._note_skipped(skipped)
+            sizing = size_path_detailed(p)
+            size = sizing.allocated_bytes
+            self._note_skipped(list(sizing.skipped_paths))
             quoted = shlex.quote(str(p))
             recipe = [line.format(path=quoted) for line in self.recipe_template]
+            actions = _typed_path_actions(recipe, p)
             try:
                 mtime: float | None = p.lstat().st_mtime
             except OSError:
@@ -233,7 +255,67 @@ class PathProvider(Provider):
                     mtime=mtime,
                     risk=self.risk,
                     recipe=recipe,
+                    usage=DiskUsage(
+                        footprint_bytes=size,
+                        reclaimable_bytes=(
+                            None
+                            if self.risk is Risk.DANGEROUS
+                            or any(isinstance(action, AdviceAction) for action in actions)
+                            else size
+                        ),
+                    ),
+                    actions=actions,
+                    hardlinks=sizing.hardlinks,
                     **_stat_kwargs(p),
                 )
             )
         return entries
+
+
+def _typed_path_actions(lines: list[str], path: Path) -> tuple[CleanupAction, ...]:
+    actions: list[CleanupAction] = []
+    for line in lines:
+        try:
+            argv = tuple(shlex.split(line))
+        except ValueError:
+            actions.append(AdviceAction(f"Could not parse legacy recipe: {line}"))
+            continue
+        if not argv:
+            continue
+        if (
+            len(argv) == _RM_RECIPE_ARGC
+            and argv[0] == "rm"
+            and argv[1] in {"-rf", "-fr"}
+            and argv[2] == str(path)
+        ):
+            actions.append(DeletePathAction(path))
+        elif argv[0] == "echo":
+            actions.append(AdviceAction(" ".join(argv[1:])))
+        else:
+            actions.append(CommandAction(argv))
+    return tuple(actions)
+
+
+def _infer_provider_family(name: str) -> str:
+    exact = {
+        "uv-cache": "python",
+        "pip-cache": "python",
+        "poetry-cache": "python",
+        "npm-cache": "javascript",
+        "playwright": "javascript",
+        "chrome-cache": "browsers",
+        "firefox-cache": "browsers",
+        "arc-browser-cache": "browsers",
+        "vscode-cache": "desktop-apps",
+        "cursor-cache": "desktop-apps",
+        "slack-service-worker": "desktop-apps",
+        "gradle-caches": "java",
+        "maven-repo": "java",
+        "homebrew-downloads": "system",
+        "downloads": "system",
+    }
+    if family := exact.get(name):
+        return family
+    if name.startswith("docker-"):
+        return "containers"
+    return "local-ai"

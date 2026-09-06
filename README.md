@@ -47,9 +47,20 @@ devdoctor providers                  # show registered providers and their avail
 - `clean` defaults to **preview only** — zero prompts, zero shell commands.
 - `recipe` always emits a **commented-out** script. You review and uncomment what you want.
 - Entries are labelled **safe / reclaimable / dangerous**. DANGEROUS entries are *skipped* unless you pass `--allow-dangerous`.
+- Disk figures distinguish **footprint** (allocated storage), **estimated
+  reclaimable** space, and **shared** hard-linked allocations. Cleanup results
+  remain estimates unless a future provider explicitly verifies the post-clean size.
+- Cleanup is modeled as typed path deletion, argv command, or non-executable
+  advice actions; commands never pass through a shell.
 - Unused Docker volumes are reviewed and removed individually. Anonymous volumes
   are reclaimable; named volumes are dangerous and stay off by default because
   they may contain durable application data.
+
+Provider families now cover JavaScript (npm, pnpm, Yarn, Bun, and bounded
+`node_modules` discovery), Python/Conda, Go, Rust/Cargo, .NET/NuGet, Android,
+Xcode/iOS, containers, browsers, desktop applications, and local AI tooling.
+Project discovery is bounded to common code roots or the colon-separated paths
+in `DEVDOCTOR_PROJECT_ROOTS`.
 
 ## Web UI
 

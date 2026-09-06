@@ -18,7 +18,7 @@ export interface ColumnDef {
 
 export const COLUMNS: readonly ColumnDef[] = [
   { id: "provider", label: "provider", width: "1fr",  sortable: true,  hideable: false, defaultVisible: true },
-  { id: "size",     label: "size",     width: "90px", sortable: true,  align: "right", hideable: true, defaultVisible: true },
+  { id: "size",     label: "footprint", width: "90px", sortable: true,  align: "right", hideable: true, defaultVisible: true },
   { id: "risk",     label: "risk",     width: "96px", sortable: true,  hideable: true, defaultVisible: true },
   { id: "stale",    label: "stale",    width: "64px", sortable: true,  align: "right", hideable: true, defaultVisible: true },
   { id: "owner",    label: "owner",    width: "80px", sortable: false, hideable: true, defaultVisible: false },

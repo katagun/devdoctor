@@ -43,13 +43,13 @@ def test_render_report_table_contains_entries_and_total():
     assert "ollama" in out
     assert "uv-cache" in out
     assert "llama3:8b" in out
-    # Total line
-    assert "Total" in out
+    assert "Footprint" in out
+    assert "estimated reclaimable" in out
 
 
 def test_render_report_table_handles_empty():
     out = _render(render_report_table, _rep())
-    assert "No entries" in out or "Total" in out
+    assert "No entries" in out or "Footprint" in out
 
 
 def test_render_report_table_neutralizes_malicious_filenames():

@@ -217,7 +217,7 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         )
         freed = sum(r.freed_bytes for r in results if r.status == "ok")
         failures = [r for r in results if r.status == "error"]
-        console.print(f"[bold]Freed ~{freed} bytes; {len(failures)} error(s).[/]")
+        console.print(f"[bold]Estimated reclaimed ~{freed} bytes; {len(failures)} error(s).[/]")
         if failures:
             sys.exit(2)
 
@@ -275,12 +275,14 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         providers_list = registry.load_providers(ctx.obj["shell"])
         console = Console()
         table = Table(title="providers")
+        table.add_column("Family")
         table.add_column("Name")
         table.add_column("Risk")
         table.add_column("Platforms")
         table.add_column("Available")
         for p in providers_list:
             table.add_row(
+                p.family,
                 p.name,
                 p.risk.value,
                 ",".join(p.platforms),

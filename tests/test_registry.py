@@ -10,6 +10,8 @@ def test_load_providers_returns_sorted_by_name():
     providers = load_providers(FakeShell())
     names = [p.name for p in providers]
     assert names == sorted(names)
+    assert len({p.provider_id for p in providers}) == len(providers)
+    assert all(p.provider_id and p.family for p in providers)
 
 
 def test_load_providers_includes_yaml_entries():
@@ -17,6 +19,30 @@ def test_load_providers_includes_yaml_entries():
     names = {p.name for p in providers}
     assert "uv-cache" in names
     assert "pip-cache" in names
+
+
+def test_registry_includes_expanded_ecosystem_providers():
+    providers = {provider.name: provider for provider in load_providers(FakeShell())}
+
+    assert {
+        "node-project-dependencies",
+        "pnpm-store",
+        "yarn-cache",
+        "bun-cache",
+        "go-caches",
+        "cargo-dependency-cache",
+        "cargo-targets",
+        "xcode-development-data",
+        "android-sdk-storage",
+        "android-project-builds",
+        "conda-package-caches",
+        "conda-environments",
+        "nuget-caches",
+        "tox-nox-environments",
+    } <= providers.keys()
+    assert providers["go-caches"].family == "go"
+    assert providers["cargo-targets"].family == "rust"
+    assert providers["android-sdk-storage"].family == "android"
 
 
 def test_downloads_provider_is_dangerous_and_advice_only():

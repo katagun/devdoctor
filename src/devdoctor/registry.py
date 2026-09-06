@@ -12,7 +12,25 @@ from devdoctor.providers.docker import DockerProvider
 from devdoctor.providers.huggingface import HuggingFaceProvider
 from devdoctor.providers.large_files import LargeFilesProvider
 from devdoctor.providers.lm_studio import LMStudioProvider
+from devdoctor.providers.mobile import AndroidSdkProvider, XcodeProvider
 from devdoctor.providers.ollama import OllamaProvider
+from devdoctor.providers.project_artifacts import (
+    AndroidBuildProvider,
+    CargoTargetsProvider,
+    NodeModulesProvider,
+    ProjectArtifactIndex,
+    ToxNoxProvider,
+)
+from devdoctor.providers.tool_caches import (
+    BunCacheProvider,
+    CargoCacheProvider,
+    CondaCacheProvider,
+    CondaEnvironmentsProvider,
+    GoCachesProvider,
+    NuGetCacheProvider,
+    PnpmStoreProvider,
+    YarnCacheProvider,
+)
 from devdoctor.providers.venv import VenvProvider
 
 
@@ -20,21 +38,47 @@ class DuplicateProviderError(ValueError):
     """Two providers share a name."""
 
 
-# Class providers — populated when Task 16+ add them. Keep the import list
-# here and registry code will auto-include any class in _CLASS_PROVIDERS.
+# Built-in providers. Keep registration explicit so IDs, availability checks,
+# and provider ordering remain stable as the catalog grows.
 _CLASS_PROVIDERS: list[type[Provider]] = [
     DockerProvider,
+    AndroidBuildProvider,
+    AndroidSdkProvider,
+    BunCacheProvider,
+    CargoCacheProvider,
+    CargoTargetsProvider,
+    CondaCacheProvider,
+    CondaEnvironmentsProvider,
+    GoCachesProvider,
     HuggingFaceProvider,
     LargeFilesProvider,
     LMStudioProvider,
     OllamaProvider,
+    NodeModulesProvider,
+    NuGetCacheProvider,
+    PnpmStoreProvider,
+    ToxNoxProvider,
     VenvProvider,
+    XcodeProvider,
+    YarnCacheProvider,
 ]
 
 
 def load_providers(shell: Shell) -> list[Provider]:
     """Load and sort all providers. Fails on duplicate names."""
-    providers: list[Provider] = [cls(shell) for cls in _CLASS_PROVIDERS]
+    project_index = ProjectArtifactIndex()
+    project_provider_types = {
+        NodeModulesProvider,
+        CargoTargetsProvider,
+        AndroidBuildProvider,
+        ToxNoxProvider,
+    }
+    providers: list[Provider] = []
+    for cls in _CLASS_PROVIDERS:
+        if cls in project_provider_types:
+            providers.append(cls(shell, index=project_index))
+        else:
+            providers.append(cls(shell))
 
     yaml_path = _locate_paths_yaml()
     yaml_text = yaml_path.read_text()
