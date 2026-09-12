@@ -14,6 +14,14 @@ entries under a versioned heading as described in
 
 ### Changed
 
+- **Project scanning no longer skips dot-directories.** The walker refused to
+  descend into any directory starting with `.`, so projects inside agent and
+  git worktrees (`.worktrees/`, `.claude/worktrees/`, `.codex/`) were invisible.
+  Pruning is now driven solely by an explicit, auditable skip list, which also
+  gained the build and tool caches that list was implicitly relying on
+  (`.terraform`, `.next`, `.gradle`, `.mypy_cache`, and similar). On one real
+  machine this took surfaced `node_modules` from 4.6 GB across 33 directories to
+  20.2 GB across 75.
 - **Migrated the web and desktop toolchain from npm to Bun** — local scripts,
   CI, release builds, Electron packaging, dependency updates, and contributor
   docs now use the pinned Bun version and committed text lockfile.

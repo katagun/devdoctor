@@ -99,3 +99,60 @@ def test_project_index_does_not_follow_symlinked_artifacts(
     (project / "node_modules").symlink_to(external, target_is_directory=True)
 
     assert NodeModulesProvider(FakeShell()).discover() == []
+
+
+def test_project_index_finds_projects_nested_under_dot_directories(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Agent and git worktrees live behind dot-directories; they must be walked."""
+    root = tmp_path / "projects"
+    monkeypatch.setenv("DEVDOCTOR_PROJECT_ROOTS", str(root))
+
+    worktree = root / "repo" / ".worktrees" / "feature-branch"
+    _payload(worktree / "package.json")
+    _payload(worktree / "package-lock.json")
+    _payload(worktree / "node_modules" / "pkg" / "index.js")
+
+    agent_worktree = root / "repo" / ".claude" / "worktrees" / "some-task"
+    _payload(agent_worktree / "package.json")
+    _payload(agent_worktree / "package-lock.json")
+    _payload(agent_worktree / "node_modules" / "pkg" / "index.js")
+
+    found = {entry.path for entry in NodeModulesProvider(FakeShell()).discover()}
+
+    assert found == {
+        worktree / "node_modules",
+        agent_worktree / "node_modules",
+    }
+
+
+def test_project_index_never_walks_into_vcs_metadata(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / "projects"
+    monkeypatch.setenv("DEVDOCTOR_PROJECT_ROOTS", str(root))
+
+    buried = root / "repo" / ".git" / "modules" / "vendored"
+    _payload(buried / "package.json")
+    _payload(buried / "package-lock.json")
+    _payload(buried / "node_modules" / "pkg" / "index.js")
+
+    assert NodeModulesProvider(FakeShell()).discover() == []
+
+
+def test_project_index_never_walks_into_pruned_tool_caches(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / "projects"
+    monkeypatch.setenv("DEVDOCTOR_PROJECT_ROOTS", str(root))
+
+    for cache_dir in (".terraform", ".next", ".gradle", ".mypy_cache"):
+        buried = root / "repo" / cache_dir / "vendored"
+        _payload(buried / "package.json")
+        _payload(buried / "package-lock.json")
+        _payload(buried / "node_modules" / "pkg" / "index.js")
+
+    assert NodeModulesProvider(FakeShell()).discover() == []

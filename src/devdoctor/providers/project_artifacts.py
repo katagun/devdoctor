@@ -27,16 +27,49 @@ _PROJECT_ROOTS = (
     "~/github",
     "~/workspace",
 )
+# Directories we never descend into. This is the single source of truth for walk
+# pruning: dot-directories are NOT skipped as a class, because modern agent and
+# git worktrees (".worktrees", ".claude/worktrees", ".codex") hold real projects.
+# Anything listed here owns no projects of its own and is expensive to walk.
 _PRUNE_DIRS = frozenset(
     {
+        # VCS metadata
         ".git",
         ".hg",
         ".svn",
+        # environments and interpreter caches
         ".cache",
         ".venv",
         "venv",
         "Library",
         "__pycache__",
+        ".direnv",
+        ".eggs",
+        # package manager stores
+        ".npm",
+        ".yarn",
+        ".pnpm-store",
+        ".node-gyp",
+        ".bundle",
+        # build output and tool caches
+        ".terraform",
+        ".terragrunt-cache",
+        ".next",
+        ".nuxt",
+        ".svelte-kit",
+        ".angular",
+        ".turbo",
+        ".parcel-cache",
+        ".gradle",
+        ".dart_tool",
+        ".serverless",
+        # linter and test caches
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".nyc_output",
+        # system
+        ".Trash",
     }
 )
 _LOCKFILES = (
@@ -148,7 +181,7 @@ def _walkable_child(
     artifact_names: frozenset[str],
     root_dev: int,
 ) -> bool:
-    if name in _PRUNE_DIRS or name in artifact_names or name.startswith("."):
+    if name in _PRUNE_DIRS or name in artifact_names:
         return False
     try:
         metadata = (project / name).lstat()
