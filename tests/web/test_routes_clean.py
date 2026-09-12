@@ -16,7 +16,9 @@ from tests.conftest import FakeShell
 
 def _build(tmp_path: Path, monkeypatch, *, extra_hosts: set[str] | None = None):
     yaml = tmp_path / "paths.yaml"
-    # A single PathProvider whose path exists -> one Entry in the scan.
+    # A PathProvider whose path exists -> one Entry in the scan. The recipe must
+    # be a real "rm -rf {path}" so it resolves to a DeletePathAction: any other
+    # command is parsed as advice and never emits execute_start.
     (tmp_path / "cache").mkdir()
     (tmp_path / "cache" / "f").write_bytes(b"x" * 100)
     yaml.write_text(
@@ -25,7 +27,7 @@ def _build(tmp_path: Path, monkeypatch, *, extra_hosts: set[str] | None = None):
         "  risk: safe\n"
         "  platforms: [darwin, linux]\n"
         f"  paths: [{tmp_path}/cache]\n"
-        "  recipe: 'echo cleaning {path}'\n"
+        "  recipe: 'rm -rf {path}'\n"
     )
     monkeypatch.setenv("DEVDOCTOR_PATHS_YAML", str(yaml))
     (tmp_path / "index.html").write_text("<!doctype html><title>t</title>")
@@ -152,7 +154,7 @@ async def test_second_concurrent_job_returns_409(tmp_path, monkeypatch):
         assert r1.status_code in (400, 200)
 
         r = await client.get("/api/scan", headers={"Host": "testserver"})
-        entry_id = r.json()["entries"][0]["id"]
+        entry_id = next(e["id"] for e in r.json()["entries"] if e["provider"] == "t")
         r2 = await client.post(
             "/api/clean/jobs",
             json={"entry_ids": [entry_id]},

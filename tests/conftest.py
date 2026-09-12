@@ -10,15 +10,25 @@ from devdoctor.types import ShellResult
 
 
 @pytest.fixture(autouse=True)
-def _isolate_xdg_data_home(tmp_path: Path, monkeypatch):
-    """Pin XDG_DATA_HOME to a fresh tmp dir for every test so snapshot and
-    audit writes (e.g. CleanupRunner's audit log) never touch the real
-    ~/.local/share/devdoctor."""
+def _isolate_home_and_xdg_dirs(tmp_path: Path, monkeypatch):
+    """Keep every test off the developer's real home directory.
+
+    Pins XDG_DATA_HOME so snapshot and audit writes (e.g. CleanupRunner's audit
+    log) never touch ~/.local/share/devdoctor, and pins HOME so filesystem-walking
+    providers scan a fixture tree rather than the machine running the suite.
+    """
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     # Keep project-artifact scans hermetic. Provider-specific tests override
     # this with an explicit fixture tree.
     monkeypatch.setenv("DEVDOCTOR_PROJECT_ROOTS", str(tmp_path / "projects"))
+    # Providers that resolve their own roots from $HOME (venv, large-files) would
+    # otherwise walk the developer's real home directory: slow, and the results
+    # depend on whose machine the suite runs on. Provider tests that need a home
+    # tree set HOME themselves.
+    # Not created: tests that want a home tree make it themselves, and a
+    # non-existent HOME is exactly what a provider should tolerate.
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
 
 
 @dataclass

@@ -7,27 +7,18 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from devdoctor.ports import Shell
-from devdoctor.providers._walk import PRUNE_DIR_NAMES
+from devdoctor.providers._walk import (
+    PROJECT_MARKER_FILES,
+    PROJECT_ROOTS,
+    PRUNE_DIR_NAMES,
+    DepthBudget,
+)
 from devdoctor.providers.base import Provider, _stat_kwargs
 from devdoctor.sizer import size_path_detailed
 from devdoctor.types import AdviceAction, DeletePathAction, DiskUsage, Entry, Risk
 
-_MAX_DEPTH = 6
-_PROJECT_ROOTS = (
-    "~/projects",
-    "~/Projects",
-    "~/code",
-    "~/Code",
-    "~/src",
-    "~/dev",
-    "~/Development",
-    "~/work",
-    "~/Work",
-    "~/repos",
-    "~/Repos",
-    "~/github",
-    "~/workspace",
-)
+_PROJECT_ROOTS = PROJECT_ROOTS
+
 # Pruning policy lives in _walk.PRUNE_DIR_NAMES; dot-directories are not
 # skipped as a class so agent and git worktrees stay visible. ``.tox``/``.nox``
 # are pruned there and still discovered here, because artifacts are resolved by
@@ -95,15 +86,14 @@ def _index_projects() -> dict[str, tuple[tuple[Path, Path], ...]]:
     matches: dict[str, list[tuple[Path, Path]]] = {query: [] for query in _PROJECT_QUERIES}
     seen_artifacts: set[tuple[int, int]] = set()
     for root in _roots():
-        root_depth = len(root.parts)
         try:
             root_dev = root.lstat().st_dev
         except OSError:
             continue
+        budget = DepthBudget(root)
         for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
             project = Path(dirpath)
-            depth = len(project.parts) - root_depth
-            if depth >= _MAX_DEPTH:
+            if not budget.allows(dirpath, len(project.parts)):
                 dirnames[:] = []
                 continue
 
@@ -120,6 +110,7 @@ def _index_projects() -> dict[str, tuple[tuple[Path, Path], ...]]:
                 for name in dirnames
                 if _walkable_child(project, name, _ALL_ARTIFACT_NAMES, root_dev)
             ]
+            budget.descend(dirpath, dirnames, reset=bool(PROJECT_MARKER_FILES & names))
     return {query: tuple(rows) for query, rows in matches.items()}
 
 

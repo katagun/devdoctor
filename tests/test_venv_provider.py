@@ -136,3 +136,21 @@ def test_never_walks_into_vcs_metadata_or_tool_caches(tmp_path, monkeypatch):
     _mk_venv(home / "projects" / "repo" / ".terraform" / "vendored" / ".venv")
 
     assert VenvProvider(FakeShell()).discover() == []
+
+
+def test_discovers_venvs_nested_below_a_project_marker(tmp_path, monkeypatch):
+    """21 of 27 real venvs on a test machine sat at depth 7, beyond the flat cap."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr("sys.platform", "darwin")
+
+    repo = home / "projects" / "github" / "org" / "repo"
+    repo.mkdir(parents=True)
+    (repo / "pyproject.toml").write_text("[project]\nname='x'\n")
+
+    _mk_venv(repo / ".worktrees" / "feature" / "services" / "api" / ".venv")
+
+    labels = {e.label for e in VenvProvider(FakeShell()).discover()}
+
+    assert "api/.venv" in labels

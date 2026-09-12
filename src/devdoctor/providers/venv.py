@@ -24,7 +24,12 @@ import os
 import shlex
 from pathlib import Path
 
-from devdoctor.providers._walk import PRUNE_DIR_NAMES
+from devdoctor.providers._walk import (
+    PROJECT_MARKER_FILES,
+    PROJECT_ROOTS,
+    PRUNE_DIR_NAMES,
+    DepthBudget,
+)
 from devdoctor.providers.base import Provider, _stat_kwargs
 from devdoctor.sizer import size_path_detailed
 from devdoctor.types import DeletePathAction, DiskUsage, Entry, Risk
@@ -33,10 +38,6 @@ from devdoctor.types import DeletePathAction, DiskUsage, Entry, Risk
 # venv if it also contains a ``pyvenv.cfg`` file, which is the PEP 405
 # marker file written by both ``python -m venv`` and ``uv venv``.
 _VENV_BASENAMES = frozenset({".venv", "venv", "env", ".env"})
-
-# How deep we walk from each scan root. Project trees rarely nest deeper;
-# capping keeps the walk O(tractable) on busy home directories.
-_MAX_DEPTH = 6
 
 # Names we never recurse into — managed by another provider, too noisy to be
 # interesting, or too expensive to walk. Dot-directories are NOT skipped as a
@@ -48,25 +49,8 @@ _SKIP_DIR_NAMES = PRUNE_DIR_NAMES | {
     "target",  # Rust / Java
 }
 
-# Where to look for projects. Users structure home differently; these are
-# the top-level directories most likely to hold code. We never scan the full
-# $HOME recursively — too slow and too many false-positive directories.
-_SCAN_ROOTS = (
-    "~/projects",
-    "~/Projects",
-    "~/code",
-    "~/Code",
-    "~/src",
-    "~/dev",
-    "~/Development",
-    "~/work",
-    "~/Work",
-    "~/repos",
-    "~/Repos",
-    "~/github",
-    "~/workspace",
-    "~/Documents",  # some users keep projects here
-)
+# Where to look for projects; shared with the other project-walking providers.
+_SCAN_ROOTS = (*PROJECT_ROOTS, "~/Documents")
 
 
 class VenvProvider(Provider):
@@ -144,7 +128,7 @@ class VenvProvider(Provider):
 
 
 def _find_venvs(root: Path, root_dev: int) -> list[Path]:
-    """Walk `root` up to _MAX_DEPTH levels, yielding venv directories.
+    """Walk `root` under a marker-anchored depth budget, yielding venv dirs.
 
     Does not follow symlinks (callers resolve them explicitly for dedup).
     Prunes aggressively: skips known-irrelevant dirs, skips across device
@@ -156,12 +140,11 @@ def _find_venvs(root: Path, root_dev: int) -> list[Path]:
     def on_error(_err: OSError) -> None:
         return None
 
-    root_depth = len(root.parts)
+    budget = DepthBudget(root)
 
-    for dirpath, dirnames, _filenames in os.walk(root, followlinks=False, onerror=on_error):
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False, onerror=on_error):
         dp = Path(dirpath)
-        depth = len(dp.parts) - root_depth
-        if depth >= _MAX_DEPTH:
+        if not budget.allows(dirpath, len(dp.parts)):
             dirnames[:] = []
             continue
 
@@ -181,6 +164,7 @@ def _find_venvs(root: Path, root_dev: int) -> list[Path]:
                 continue
             keep.append(name)
         dirnames[:] = keep
+        budget.descend(dirpath, keep, reset=bool(PROJECT_MARKER_FILES & set(filenames)))
 
     return hits
 
