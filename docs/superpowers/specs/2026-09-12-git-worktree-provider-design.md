@@ -3,7 +3,7 @@
 - **Status:** Approved design, 2026-09-12. Implementation not started.
 - **Issue:** #79
 - **Builds on:** #78 (merged in #93), #80 (merged in #94)
-- **Related:** #89 (age filtering), #91 (marketing site), #92 (sizing cost)
+- **Related:** #89 (age filtering), #91 (marketing site), #92 (sizing cost), #97 (web display of unmeasured sizes)
 
 ## 1. Problem
 
@@ -475,7 +475,7 @@ same PR that introduces containment.
 | 4. Documentation and site | README provider list; then #91 | yes |
 
 Alongside this spec, issues #79 and #91 are corrected to the measured figures in
-§1, and a follow-up issue covers the web UI rendering an unmeasured footprint as
+§1, and #97 covers the web UI rendering an unmeasured footprint as
 "0 B" (`web/src/hooks/useScan.ts` maps `footprint_bytes ?? size_bytes`); it
 should land no later than PR 3.
 
