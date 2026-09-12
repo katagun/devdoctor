@@ -7,7 +7,7 @@ living backlog lives in [GitHub Issues](https://github.com/katagun/devdoctor/iss
 ## Recently shipped
 
 - **Public launch** — renamed to `devdoctor`, MIT-licensed, a public
-  [landing page](https://katagun.github.io/devdoctor/), and community docs
+  [landing page](https://sysaidmin.com/), and community docs
   (CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, issue/PR templates).
 - **Security & architecture review** — fixed a snapshot path traversal,
   command injection into the generated cleanup script, terminal-escape

@@ -9,7 +9,7 @@ Today it includes the original devdoctor workflow: repeatable disk-cache
 analysis and interactive cleanup for macOS and Linux. The current installable
 Python package and CLI remain named `devdoctor` during the transition.
 
-**[See what it does → katagun.github.io/devdoctor](https://katagun.github.io/devdoctor/)**
+**[See what it does → sysaidmin.com](https://sysaidmin.com/)**
 
 ## Install
 
