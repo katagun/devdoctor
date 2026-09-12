@@ -156,3 +156,41 @@ def test_project_index_never_walks_into_pruned_tool_caches(
         _payload(buried / "node_modules" / "pkg" / "index.js")
 
     assert NodeModulesProvider(FakeShell()).discover() == []
+
+
+def test_project_index_finds_projects_nested_below_a_marker(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A marker resets the depth budget, so monorepos inside worktrees stay reachable."""
+    root = tmp_path / "projects"
+    monkeypatch.setenv("DEVDOCTOR_PROJECT_ROOTS", str(root))
+
+    repo = root / "github" / "org" / "repo"
+    _payload(repo / "package.json")
+
+    # absolute depth 7 — beyond the old flat cap of 6, but only 4 below `repo`
+    nested = repo / ".worktrees" / "feature" / "apps" / "web"
+    _payload(nested / "package.json")
+    _payload(nested / "package-lock.json")
+    _payload(nested / "node_modules" / "pkg" / "index.js")
+
+    found = {entry.path for entry in NodeModulesProvider(FakeShell()).discover()}
+
+    assert nested / "node_modules" in found
+
+
+def test_project_index_still_bounds_unmarked_depth(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Without markers to reset it, the walk stays bounded."""
+    root = tmp_path / "projects"
+    monkeypatch.setenv("DEVDOCTOR_PROJECT_ROOTS", str(root))
+
+    buried = root.joinpath(*[f"level{n}" for n in range(9)])
+    _payload(buried / "package.json")
+    _payload(buried / "package-lock.json")
+    _payload(buried / "node_modules" / "pkg" / "index.js")
+
+    assert NodeModulesProvider(FakeShell()).discover() == []

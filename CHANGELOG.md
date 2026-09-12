@@ -14,6 +14,22 @@ entries under a versioned heading as described in
 
 ### Changed
 
+- **Project scans follow a marker-anchored depth budget instead of a flat cap.**
+  Both project-walking providers measured depth from the scan root and stopped at
+  six levels, which a normal monorepo inside a worktree exhausts immediately
+  (`~/projects/github/org/repo/.worktrees/branch/apps/web`). Depth is now counted
+  from the nearest enclosing project marker (`package.json`, `pyproject.toml`,
+  `Cargo.toml`, and similar) under a hard absolute ceiling, so deep-but-legitimate
+  layouts stay reachable while pathological trees remain bounded.
+
+  Scan roots now also include the homes agent tools keep their scratch checkouts
+  in (`~/.claude-worktrees`, `~/.codex/worktrees`, `~/.cursor/worktrees`) and
+  `~/Documents/projects`. Roots, markers, depth policy and the prune list are
+  shared across providers in `devdoctor.providers._walk`.
+
+  On one real machine: `node_modules` 20.2 GB -> **32.1 GB** across 117
+  directories, and `python-venvs` 195 MB -> **2.6 GB** across 31 (21 of that
+  machine's 27 virtualenvs sat at depth 7 and had never been visible).
 - **Scanning no longer skips dot-directories.** Three independent walkers — the
   project index, the virtualenv provider, and the large-file provider — each
   refused to descend into any directory starting with `.`, so anything inside an
