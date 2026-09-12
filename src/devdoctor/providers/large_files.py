@@ -14,6 +14,7 @@ import os
 import shlex
 from pathlib import Path
 
+from devdoctor.providers._walk import PRUNE_DIR_NAMES
 from devdoctor.providers.base import Provider, _stat_kwargs
 from devdoctor.types import AdviceAction, DiskUsage, Entry, HardlinkRecord, Risk
 
@@ -30,19 +31,12 @@ _DEFAULT_ROOTS = ("~/Desktop", "~/Documents", "~/Movies", "~/Pictures")
 # Don't descend into directories known to belong to other providers or to
 # system state — keeps the walk fast and the results meaningful. Names only;
 # the skip applies at any depth by comparing the dirname.
-_SKIP_DIR_NAMES = frozenset(
-    {
-        "node_modules",
-        ".git",
-        "__pycache__",
-        ".venv",
-        "venv",
-        ".tox",
-        ".cache",
-        "Caches",
-        "Library",  # on macOS ~/Library is enormous and covered elsewhere
-    }
-)
+# Dot-directories are not skipped as a class — a forgotten export can sit in
+# ~/Documents/.archive just as easily as anywhere else.
+_SKIP_DIR_NAMES = PRUNE_DIR_NAMES | {
+    "node_modules",
+    "Caches",
+}
 
 
 class LargeFilesProvider(Provider):
@@ -124,7 +118,7 @@ def _walk_for_large_files(
         # Prune by name (node_modules, etc.) and by device boundary.
         keep: list[str] = []
         for name in dirnames:
-            if name in _SKIP_DIR_NAMES or name.startswith("."):
+            if name in _SKIP_DIR_NAMES:
                 continue
             sub = dp / name
             try:

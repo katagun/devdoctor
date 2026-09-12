@@ -24,6 +24,7 @@ import os
 import shlex
 from pathlib import Path
 
+from devdoctor.providers._walk import PRUNE_DIR_NAMES
 from devdoctor.providers.base import Provider, _stat_kwargs
 from devdoctor.sizer import size_path_detailed
 from devdoctor.types import DeletePathAction, DiskUsage, Entry, Risk
@@ -37,27 +38,15 @@ _VENV_BASENAMES = frozenset({".venv", "venv", "env", ".env"})
 # capping keeps the walk O(tractable) on busy home directories.
 _MAX_DEPTH = 6
 
-# Names we never recurse into — either managed by another provider, too
-# noisy to be interesting, or simply too expensive to walk.
-_SKIP_DIR_NAMES = frozenset(
-    {
-        "node_modules",
-        ".git",
-        ".hg",
-        ".svn",
-        "Library",  # macOS — system-owned, not a project tree
-        ".cache",
-        "__pycache__",
-        ".tox",
-        ".nox",
-        ".pytest_cache",
-        ".mypy_cache",
-        ".ruff_cache",
-        "dist",
-        "build",
-        "target",  # Rust / Java
-    }
-)
+# Names we never recurse into — managed by another provider, too noisy to be
+# interesting, or too expensive to walk. Dot-directories are NOT skipped as a
+# class: agent and git worktrees (.worktrees/, .claude/worktrees/) hold venvs.
+_SKIP_DIR_NAMES = PRUNE_DIR_NAMES | {
+    "node_modules",
+    "dist",
+    "build",
+    "target",  # Rust / Java
+}
 
 # Where to look for projects. Users structure home differently; these are
 # the top-level directories most likely to hold code. We never scan the full
@@ -184,11 +173,6 @@ def _find_venvs(root: Path, root_dev: int) -> list[Path]:
                 hits.append(sub)
                 continue  # don't descend into the venv itself
             if name in _SKIP_DIR_NAMES:
-                continue
-            if name.startswith("."):
-                # Hidden dirs other than venv basenames are usually noise
-                # (.vscode, .idea, .github, etc.). .venv itself is caught
-                # by the check above.
                 continue
             try:
                 if sub.lstat().st_dev != root_dev:

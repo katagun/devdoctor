@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from devdoctor.ports import Shell
+from devdoctor.providers._walk import PRUNE_DIR_NAMES
 from devdoctor.providers.base import Provider, _stat_kwargs
 from devdoctor.sizer import size_path_detailed
 from devdoctor.types import AdviceAction, DeletePathAction, DiskUsage, Entry, Risk
@@ -27,18 +28,12 @@ _PROJECT_ROOTS = (
     "~/github",
     "~/workspace",
 )
-_PRUNE_DIRS = frozenset(
-    {
-        ".git",
-        ".hg",
-        ".svn",
-        ".cache",
-        ".venv",
-        "venv",
-        "Library",
-        "__pycache__",
-    }
-)
+# Pruning policy lives in _walk.PRUNE_DIR_NAMES; dot-directories are not
+# skipped as a class so agent and git worktrees stay visible. ``.tox``/``.nox``
+# are pruned there and still discovered here, because artifacts are resolved by
+# direct lstat rather than by walking into them.
+_PRUNE_DIRS = PRUNE_DIR_NAMES
+
 _LOCKFILES = (
     "bun.lock",
     "bun.lockb",
@@ -148,7 +143,7 @@ def _walkable_child(
     artifact_names: frozenset[str],
     root_dev: int,
 ) -> bool:
-    if name in _PRUNE_DIRS or name in artifact_names or name.startswith("."):
+    if name in _PRUNE_DIRS or name in artifact_names:
         return False
     try:
         metadata = (project / name).lstat()
