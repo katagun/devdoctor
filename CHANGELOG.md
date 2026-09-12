@@ -14,14 +14,23 @@ entries under a versioned heading as described in
 
 ### Changed
 
-- **Project scanning no longer skips dot-directories.** The walker refused to
-  descend into any directory starting with `.`, so projects inside agent and
-  git worktrees (`.worktrees/`, `.claude/worktrees/`, `.codex/`) were invisible.
-  Pruning is now driven solely by an explicit, auditable skip list, which also
-  gained the build and tool caches that list was implicitly relying on
-  (`.terraform`, `.next`, `.gradle`, `.mypy_cache`, and similar). On one real
-  machine this took surfaced `node_modules` from 4.6 GB across 33 directories to
-  20.2 GB across 75.
+- **Scanning no longer skips dot-directories.** Three independent walkers — the
+  project index, the virtualenv provider, and the large-file provider — each
+  refused to descend into any directory starting with `.`, so anything inside an
+  agent or git worktree (`.worktrees/`, `.claude/worktrees/`, `.codex/`) was
+  structurally invisible. Pruning is now driven by an explicit, auditable list of
+  names shared across all three (`devdoctor.providers._walk.PRUNE_DIR_NAMES`),
+  which also gained the build and tool caches the dot-rule was implicitly
+  covering (`.terraform`, `.next`, `.gradle`, `.mypy_cache`, and similar).
+
+  On one real machine, surfaced `node_modules` went from 4.6 GB across 33
+  directories to 20.2 GB across 75. Large files in hidden directories such as
+  `~/Documents/.archive` are now reported. Virtualenvs inside worktrees are now
+  reachable in principle, though most remain hidden behind the virtualenv
+  provider's own depth cap until that is addressed separately.
+
+  Behaviour change worth calling out: `large-files` previously skipped hidden
+  directories by design, and no longer does.
 - **Migrated the web and desktop toolchain from npm to Bun** — local scripts,
   CI, release builds, Electron packaging, dependency updates, and contributor
   docs now use the pinned Bun version and committed text lockfile.

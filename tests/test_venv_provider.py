@@ -109,3 +109,30 @@ def test_does_not_descend_into_venvs(tmp_path, monkeypatch):
     # Exactly one entry for the outer project; the nested one is pruned.
     assert len(entries) == 1
     assert entries[0].label == "foo/.venv"
+
+
+def test_discovers_venvs_inside_dot_directories(tmp_path, monkeypatch):
+    """Agent and git worktrees live behind dot-directories and hold real venvs."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr("sys.platform", "darwin")
+
+    _mk_venv(home / "projects" / "repo" / ".worktrees" / "feature" / ".venv")
+    _mk_venv(home / "projects" / "repo" / ".claude" / "worktrees" / "task" / ".venv")
+
+    labels = {e.label for e in VenvProvider(FakeShell()).discover()}
+
+    assert labels == {"feature/.venv", "task/.venv"}
+
+
+def test_never_walks_into_vcs_metadata_or_tool_caches(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr("sys.platform", "darwin")
+
+    _mk_venv(home / "projects" / "repo" / ".git" / "modules" / "sub" / ".venv")
+    _mk_venv(home / "projects" / "repo" / ".terraform" / "vendored" / ".venv")
+
+    assert VenvProvider(FakeShell()).discover() == []

@@ -37,7 +37,7 @@ def test_surfaces_files_over_threshold(tmp_path, monkeypatch):
     assert big_entry.recipe[0].rstrip().endswith("'")
 
 
-def test_prunes_library_and_hidden_dirs(tmp_path, monkeypatch):
+def test_prunes_library_dirs(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
@@ -45,7 +45,6 @@ def test_prunes_library_and_hidden_dirs(tmp_path, monkeypatch):
     monkeypatch.setattr("devdoctor.providers.large_files._MIN_BYTES", _TEST_THRESHOLD)
 
     _mk_file(home / "Library" / "Caches" / "big.bin", 2 * _TEST_THRESHOLD)
-    _mk_file(home / "Documents" / ".hidden" / "big.bin", 2 * _TEST_THRESHOLD)
     control = home / "Documents" / "visible.iso"
     _mk_file(control, 2 * _TEST_THRESHOLD)
 
@@ -53,7 +52,6 @@ def test_prunes_library_and_hidden_dirs(tmp_path, monkeypatch):
     ids = {e.id for e in entries}
     assert str(control) in ids
     assert not any("/Library/" in i for i in ids)
-    assert not any("/.hidden/" in i for i in ids)
 
 
 def test_recipe_survives_adversarial_filename(tmp_path, monkeypatch):
@@ -85,3 +83,33 @@ def test_returns_empty_when_roots_missing(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setattr("sys.platform", "darwin")
     assert LargeFilesProvider(FakeShell()).discover() == []
+
+
+def test_surfaces_large_files_inside_dot_directories(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setattr("devdoctor.providers.large_files._MIN_BYTES", _TEST_THRESHOLD)
+
+    hidden = home / "Documents" / ".archive" / "old-export.zip"
+    _mk_file(hidden, 2 * _TEST_THRESHOLD)
+
+    ids = {e.id for e in LargeFilesProvider(FakeShell()).discover()}
+
+    assert str(hidden) in ids
+
+
+def test_never_walks_into_vcs_metadata(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setattr("devdoctor.providers.large_files._MIN_BYTES", _TEST_THRESHOLD)
+
+    buried = home / "Documents" / "repo" / ".git" / "objects" / "pack.bin"
+    _mk_file(buried, 2 * _TEST_THRESHOLD)
+
+    ids = {e.id for e in LargeFilesProvider(FakeShell()).discover()}
+
+    assert str(buried) not in ids

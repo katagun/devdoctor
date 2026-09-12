@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from devdoctor.ports import Shell
+from devdoctor.providers._walk import PRUNE_DIR_NAMES
 from devdoctor.providers.base import Provider, _stat_kwargs
 from devdoctor.sizer import size_path_detailed
 from devdoctor.types import AdviceAction, DeletePathAction, DiskUsage, Entry, Risk
@@ -27,51 +28,12 @@ _PROJECT_ROOTS = (
     "~/github",
     "~/workspace",
 )
-# Directories we never descend into. This is the single source of truth for walk
-# pruning: dot-directories are NOT skipped as a class, because modern agent and
-# git worktrees (".worktrees", ".claude/worktrees", ".codex") hold real projects.
-# Anything listed here owns no projects of its own and is expensive to walk.
-_PRUNE_DIRS = frozenset(
-    {
-        # VCS metadata
-        ".git",
-        ".hg",
-        ".svn",
-        # environments and interpreter caches
-        ".cache",
-        ".venv",
-        "venv",
-        "Library",
-        "__pycache__",
-        ".direnv",
-        ".eggs",
-        # package manager stores
-        ".npm",
-        ".yarn",
-        ".pnpm-store",
-        ".node-gyp",
-        ".bundle",
-        # build output and tool caches
-        ".terraform",
-        ".terragrunt-cache",
-        ".next",
-        ".nuxt",
-        ".svelte-kit",
-        ".angular",
-        ".turbo",
-        ".parcel-cache",
-        ".gradle",
-        ".dart_tool",
-        ".serverless",
-        # linter and test caches
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-        ".nyc_output",
-        # system
-        ".Trash",
-    }
-)
+# Pruning policy lives in _walk.PRUNE_DIR_NAMES; dot-directories are not
+# skipped as a class so agent and git worktrees stay visible. ``.tox``/``.nox``
+# are pruned there and still discovered here, because artifacts are resolved by
+# direct lstat rather than by walking into them.
+_PRUNE_DIRS = PRUNE_DIR_NAMES
+
 _LOCKFILES = (
     "bun.lock",
     "bun.lockb",
