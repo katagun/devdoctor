@@ -114,8 +114,9 @@ Per scan:
    lock reasons that contain newlines intact, with no quoting to undo.
 3. **Per-repository facts, computed once:** the default branch and its tree
    (§4.4); whether the repository is a partial clone (`remote.*.promisor` or
-   `extensions.partialClone` set); when merge-tree is in use, the absolute common
-   git directory (`rev-parse --path-format=absolute --git-common-dir`); and HEAD
+   `extensions.partialClone` set); the absolute common git directory
+   (`rev-parse --path-format=absolute --git-common-dir`), used by the ownership
+   check (§5.1 state 3) and by merge-tree; and HEAD
    commit times for all its worktrees from one
    `git log --no-walk=unsorted --format='%H %ct' <sha>…`, chunked at 500 SHAs.
 4. **Per-worktree classification** (§5) runs on a pool of 4 worker threads inside
@@ -188,8 +189,11 @@ On the eight real repositories, merge-tree found 59 integrated worktrees; 7 of
 them are invisible to `is-ancestor`.
 
 **Default branch:** `symbolic-ref refs/remotes/origin/HEAD`, then `origin/main`,
-then `origin/master`. If none resolves, every worktree in that repository is
-advice-only. All eight measured repositories resolved through `origin/HEAD`.
+then `origin/master`. Each is read as an exact `refs/remotes/` ref
+(`show-ref --verify`), so a tag or local branch named `origin/main` cannot stand
+in for it, and later calls use the commit id it resolved to, never the name. If
+none resolves, every worktree in that repository is advice-only. All eight
+measured repositories resolved through `origin/HEAD`.
 
 **Staleness errs safe.** The provider never fetches, so the local default-branch
 ref may lag the remote. A lagging ref can only make an integrated worktree look
@@ -211,7 +215,7 @@ path.
 | Work | Measured or estimated |
 |---|---|
 | `worktree list --porcelain -z` | 8 calls |
-| `show-toplevel`, `merge-tree`, `status` per worktree | 138 × 3 calls: ~20 s serial, ~5 s on 4 workers (merge-tree median 69 ms, max 792 ms) |
+| ownership `rev-parse`, `merge-tree`, `status` per worktree | 138 × 3 calls: ~20 s serial, ~5 s on 4 workers (merge-tree median 69 ms, max 792 ms) |
 | Sizing | Reclaimable worktrees only: 10.7 GB, ~30 s at the sizer's measured ~0.34 GB/s |
 
 Sizing dominates and is tracked in #92. Advice entries are never sized.
@@ -226,10 +230,10 @@ Registered worktrees are checked in order, and the first match wins.
 |---|---|---|---|
 | 1 | Primary worktree | first porcelain record | none |
 | 2 | Missing, prunable or bare | porcelain `prunable` or `bare`, or the directory is absent | none; one diagnostic per repository suggesting `git -C <repo> worktree prune` |
-| 3 | Broken pointer | `rev-parse --show-toplevel` fails, or resolves to a different path | advice |
+| 3 | Broken pointer | the directory no longer belongs to this worktree: `<worktree>/.git` is missing or is not a worktree pointer; the pointer's gitdir does not exist; the gitdir is not inside the repository's common git dir, or its `gitdir` file does not name `<worktree>/.git`; or `rev-parse --path-format=absolute --show-toplevel --git-common-dir` in the worktree names a different toplevel or common dir. Paths compare after resolving symlinks. If that `rev-parse` fails or times out with the pointer intact, the worktree is state 6 instead | advice |
 | 4 | Locked | porcelain `locked [reason]` | advice |
 | 5 | Default branch unresolvable | §4.4 | advice |
-| 6 | git error | a later call (`merge-tree`, `status`) exits non-zero or times out | advice |
+| 6 | git error | the state 3 `rev-parse` (pointer intact), `--git-common-dir` for the repository, or a later call (`merge-tree`, `status`) exits non-zero or times out | advice |
 | 7 | Not integrated | §4.4 | advice |
 | 8 | Integrated, dirty | `status --porcelain --untracked-files=normal` produces output | advice |
 | 9 | Integrated, clean | all checks pass | **reclaimable** |
@@ -290,7 +294,8 @@ The `<state>` text in labels:
 
 | State | Advice message |
 |---|---|
-| Broken pointer | `This worktree's .git file points to <gitdir>, which does not exist; the repository was probably moved. Run "git -C <repo> worktree repair", then rescan.` |
+| Broken pointer, gitdir missing | `This worktree's .git file points to <gitdir>, which does not exist; the repository was probably moved. Run "git -C <repo> worktree repair", then rescan.` |
+| Broken pointer, any other cause | `This worktree's .git does not point back to <repo>. Run "git -C <repo> worktree repair", then rescan.` |
 | Locked | `Locked by git: <reason>.`, or `Locked by git.` without a reason |
 | Default branch unresolvable | `Cannot determine the default branch of <repo>: no origin/HEAD, origin/main or origin/master.` |
 | git error | `git failed while checking this worktree: <first stderr line, or "timed out after 30 s">.` |
@@ -404,7 +409,8 @@ containment rules.
 |---|---|
 | `git` not on `PATH` | provider unavailable, via `required_binary` |
 | `git` older than 2.36 (no `worktree list -z`) | no worktree entries; one diagnostic naming the installed version |
-| A per-worktree git call exits non-zero or times out | that worktree takes the matching advice state (§5.1: 3 or 6); the provider continues |
+| A per-worktree git call exits non-zero or times out | that worktree is a git error (§5.1 state 6), including the ownership `rev-parse` when its `.git` pointer is intact; a worktree whose ownership fails the pointer checks is a broken pointer (state 3) without that call; the provider continues |
+| A repository's `rev-parse --git-common-dir` fails | every worktree of that repository is a git error with that failure; no integration or status check runs for them |
 | A repository's `worktree list` fails | one diagnostic for that repository; its worktrees are not reported |
 | A repository's batched HEAD-time `git log` fails | `mtime` is `None` for its worktrees; one diagnostic |
 | The temporary object directory cannot be created | merge-tree is skipped for the scan, classification falls back to `is-ancestor`, and one diagnostic is recorded |
@@ -535,6 +541,10 @@ should land no later than PR 3.
 - **Double sizing.** Contents of a reclaimable worktree are sized by their own
   providers and again as part of the worktree before containment removes them
   (#92).
+- **Commits made between classification and cleanup.** Integration is checked
+  against the HEAD read at scan time; if an agent commits in a detached,
+  integrated worktree before `git worktree remove` runs, the worktree still
+  removes cleanly and those commits become unreferenced.
 
 ## Appendix: measurement method
 
