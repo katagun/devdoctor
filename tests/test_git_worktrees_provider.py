@@ -726,3 +726,103 @@ def test_repository_reached_by_the_walk_and_a_pointer_is_listed_once(app, projec
 
     listings = [argv for argv, _ in shell.calls if argv[4:6] == ("worktree", "list")]
     assert len(listings) == 1
+
+
+def _nested_advice(relative):
+    return (
+        f"Contains another git repository or worktree at {relative}. git worktree remove "
+        "would delete it, including uncommitted work. Move or remove it first."
+    )
+
+
+def test_integrated_worktree_holding_an_ignored_nested_worktree_is_advice(app, projects):
+    app.commit("Ignore worktrees", {".gitignore": ".worktrees/\n"})
+    outer = app.add_worktree(projects / "wt" / "outer", "outer")
+    _merge(app, outer, branch="outer")
+    app.publish()
+    inner = outer.add_worktree(outer.path / ".worktrees" / "inner", "inner")
+    (inner.path / "staged.txt").write_text("staged work\n")
+    inner.git("add", "staged.txt")
+
+    entries, _ = _discover()
+
+    entry = _entry(entries, outer.path)
+    assert entry.label == "app/outer · contains nested repository"
+    assert entry.risk is not Risk.RECLAIMABLE
+    _assert_advice_shape(entry)
+    assert _advice(entry) == _nested_advice(".worktrees/inner")
+
+
+def test_integrated_worktree_holding_an_ignored_nested_repository_is_advice(
+    git_fixture, app, tmp_path
+):
+    app.commit("Ignore vendored code", {".gitignore": "vendor/\n"})
+    # Outside every scan root, so only the walk inside the worktree can find the repository.
+    outer = app.add_worktree(tmp_path / "elsewhere" / "outer", "outer")
+    _merge(app, outer, branch="outer")
+    app.publish()
+    vendored = git_fixture.repository(outer.path / "vendor" / "lib")
+    (vendored.path / "uncommitted.txt").write_text("uncommitted\n")
+
+    entry = _entry(_discover()[0], outer.path)
+
+    assert entry.label == "app/outer · contains nested repository"
+    _assert_advice_shape(entry)
+    assert _advice(entry) == _nested_advice("vendor/lib")
+
+
+def test_integrated_worktree_with_ignored_dependencies_and_no_nested_git_is_reclaimable(
+    app, projects
+):
+    app.commit("Ignore dependencies", {".gitignore": "node_modules/\n"})
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    (worktree.path / "node_modules" / "pkg" / "lib").mkdir(parents=True)
+    (worktree.path / "node_modules" / "pkg" / "lib" / "index.js").write_text("x\n")
+    _merge(app, worktree)
+    app.publish()
+
+    entry = _entry(_discover()[0], worktree.path)
+
+    assert entry.label == "app/feature · integrated"
+    assert entry.risk is Risk.RECLAIMABLE
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores permissions")
+def test_unreadable_directory_in_an_integrated_worktree_is_advice(app, projects):
+    app.commit("Ignore sealed", {".gitignore": "sealed/\n"})
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    _merge(app, worktree)
+    app.publish()
+    sealed = worktree.path / "sealed" / "inner"
+    sealed.mkdir(parents=True)
+    sealed.chmod(0o000)
+    try:
+        entry = _entry(_discover()[0], worktree.path)
+    finally:
+        sealed.chmod(0o755)
+
+    assert entry.label == "app/feature · contains nested repository"
+    _assert_advice_shape(entry)
+    assert _advice(entry) == (
+        "Could not read sealed/inner inside this worktree, so DevDoctor cannot rule out a "
+        "nested repository that git worktree remove would delete."
+    )
+
+
+def test_no_offered_command_deletes_a_nested_worktree(app, projects):
+    app.commit("Ignore worktrees", {".gitignore": ".worktrees/\n"})
+    outer = app.add_worktree(projects / "wt" / "outer", "outer")
+    _merge(app, outer, branch="outer")
+    app.publish()
+    inner = outer.add_worktree(outer.path / ".worktrees" / "inner", "inner")
+    staged = inner.path / "staged.txt"
+    staged.write_text("staged work\n")
+    inner.git("add", "staged.txt")
+
+    entries, _ = _discover()
+
+    for entry in entries:
+        for action in entry.actions:
+            if isinstance(action, CommandAction):
+                subprocess.run(action.argv, capture_output=True, check=False)
+    assert staged.read_text() == "staged work\n"

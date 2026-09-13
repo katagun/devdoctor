@@ -217,6 +217,7 @@ path.
 | `worktree list --porcelain -z` | 8 calls |
 | ownership `rev-parse`, `merge-tree`, `status` per worktree | 138 × 3 calls: ~20 s serial, ~5 s on 4 workers (merge-tree median 69 ms, max 792 ms) |
 | Sizing | Reclaimable worktrees only: 10.7 GB, ~30 s at the sizer's measured ~0.34 GB/s |
+| Nested-repository walk | Integrated, clean worktrees only: one more walk of the tree (§5.1 state 9), stopping at the first finding, before sizing walks it again |
 
 Sizing dominates and is tracked in #92. Advice entries are never sized.
 
@@ -236,7 +237,8 @@ Registered worktrees are checked in order, and the first match wins.
 | 6 | git error | the state 3 `rev-parse` (pointer intact), `--git-common-dir` for the repository, or a later call (`merge-tree` or `merge-base --is-ancestor`, `status`) exits non-zero or times out | advice |
 | 7 | Not integrated | §4.4 | advice |
 | 8 | Integrated, dirty | `status --porcelain --untracked-files=normal` produces output | advice |
-| 9 | Integrated, clean | all checks pass | **reclaimable** |
+| 9 | Integrated, contains nested repository | the worktree's tree, walked without following symlinks and without descending into `<worktree>/.git`, contains an entry named `.git` (file or directory) other than `<worktree>/.git`; or the resolved path of a worktree registered by any repository listed in this scan lies strictly inside it; or a directory inside cannot be read during that walk, so neither can be ruled out. The walk stops at the first finding. `git status` does not see ignored paths, and `git worktree remove` deletes ignored nested repositories and worktrees (§5.3) | advice |
+| 10 | Integrated, clean | all checks pass | **reclaimable** |
 
 One further advice state covers directories that are not registered at all (§4.2
 step 5): **unverifiable directory**.
@@ -270,6 +272,7 @@ The `<state>` text in labels:
 |---|---|
 | Integrated, clean | `integrated` |
 | Integrated, dirty | `integrated, uncommitted changes` |
+| Integrated, contains nested repository | `contains nested repository` |
 | Not integrated | `not integrated` |
 | Broken pointer | `broken pointer` |
 | Locked | `locked` |
@@ -277,7 +280,7 @@ The `<state>` text in labels:
 | git error | `git error` |
 | Unverifiable directory | `unverifiable` |
 
-**Reclaimable** (state 9):
+**Reclaimable** (state 10):
 
 - `risk = Risk.RECLAIMABLE`
 - sized with `size_path_detailed`; `usage = DiskUsage(size, size)`
@@ -301,6 +304,8 @@ The `<state>` text in labels:
 | git error | `git failed while checking this worktree: <first stderr line, or "timed out after 30 s">.` |
 | Not integrated | `Not integrated into <default>. Anything inside it that other providers report can still be cleaned individually.` |
 | Integrated, dirty | `Integrated into <default>, but has <n> modified and <m> untracked files. Commit, stash or discard them first.` |
+| Integrated, contains nested repository | `Contains another git repository or worktree at <relative path>. git worktree remove would delete it, including uncommitted work. Move or remove it first.` `<relative path>` is relative to the worktree (for example `.worktrees/inner`): the registered worktree found inside, or the directory holding the first nested `.git` in sorted walk order |
+| Integrated, nested check could not read a directory | `Could not read <relative path> inside this worktree, so DevDoctor cannot rule out a nested repository that git worktree remove would delete.` |
 | Unverifiable directory | `Inside a worktree folder, but not a registered git worktree. DevDoctor cannot verify what it contains.` |
 
 The broken-pointer command is repository-level on purpose: `git worktree repair`
@@ -316,7 +321,8 @@ repairs every broken worktree of that repository in one run.
 | Untracked file | refused |
 | Modified tracked file | refused |
 | Staged change | refused |
-| Nested repository | refused |
+| Nested repository, not ignored | refused |
+| Nested repository or worktree under an ignored path | removed; the nested repository or worktree is deleted with it, uncommitted and staged work included. `git status` does not show it, which is why §5.1 state 9 checks for it |
 | Locked | refused, citing the lock reason |
 | Broken `.git` pointer (repository moved) | refused: validation failed |
 | Only a stash | removed; the stash survives, because it lives in the repository |
@@ -417,6 +423,7 @@ containment rules.
 | The temporary object directory cannot be created | merge-tree is skipped for the scan, classification falls back to `is-ancestor`, and one diagnostic is recorded |
 | The temporary object directory cannot be removed | one diagnostic naming the path |
 | Sizing skips unreadable paths | the existing `_note_skipped` diagnostics |
+| A directory inside an integrated, clean worktree cannot be read during the nested-repository walk | that worktree is state 9 with the "Could not read" advice (§5.2); it is never reclaimable |
 
 ## 8. Testing
 

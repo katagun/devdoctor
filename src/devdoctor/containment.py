@@ -5,6 +5,10 @@ A reclaimable git worktree's removal deletes everything inside it, including
 their own. Without containment those bytes would be counted twice and offered
 for cleanup twice.
 
+``git-worktrees`` entries themselves are never contained. A reclaimable worktree
+never contains another repository or worktree: the provider classifies one that
+does as advice, because ``git worktree remove`` would delete it (spec §5.1).
+
 Spec: docs/superpowers/specs/2026-09-12-git-worktree-provider-design.md §6
 """
 

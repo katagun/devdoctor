@@ -17,6 +17,7 @@ class WorktreeState(StrEnum):
 
     INTEGRATED = "integrated"
     DIRTY = "integrated, uncommitted changes"
+    NESTED_REPOSITORY = "contains nested repository"
     NOT_INTEGRATED = "not integrated"
     BROKEN_POINTER = "broken pointer"
     LOCKED = "locked"
@@ -31,13 +32,31 @@ class Integration(Enum):
 
 
 @dataclass(frozen=True)
+class NestedCheck:
+    """What a look inside an integrated, clean worktree found (spec §5.1, state 9).
+
+    ``git worktree remove`` deletes ignored nested repositories and worktrees, so a
+    worktree holding one is never reclaimable. Paths are relative to the worktree.
+    """
+
+    # A nested ``.git`` entry's directory, or a registered worktree inside this one.
+    nested: str | None = None
+    # A directory that could not be read, so a nested repository cannot be ruled out.
+    unreadable: str | None = None
+
+    @property
+    def found_nothing(self) -> bool:
+        return self.nested is None and self.unreadable is None
+
+
+@dataclass(frozen=True)
 class WorktreeFacts:
     """What is known so far about one registered, present worktree.
 
     Facts are gathered in spec §5.1 order and later ones stay ``None`` until needed:
-    ``integration`` is only checked once the default branch is known, and
-    ``status`` only once the worktree is known to be integrated. ``failure`` records
-    the first git call that failed.
+    ``integration`` is only checked once the default branch is known, ``status``
+    only once the worktree is known to be integrated, and ``nesting`` only once it
+    is also clean. ``failure`` records the first git call that failed.
 
     ``ownership_ok`` is whether the directory was shown to still belong to its
     registered worktree. When it is false, ``failure`` says whether git could not
@@ -50,6 +69,7 @@ class WorktreeFacts:
     failure: str | None = None
     integration: Integration | None = None
     status: StatusCounts | None = None
+    nesting: NestedCheck | None = None
 
 
 # One return per state keeps the code in the spec's first-match order.
@@ -69,7 +89,13 @@ def classify(facts: WorktreeFacts) -> WorktreeState | None:  # noqa: PLR0911
         return WorktreeState.NOT_INTEGRATED
     if facts.status is None:
         return None
-    return WorktreeState.INTEGRATED if facts.status.is_clean else WorktreeState.DIRTY
+    if not facts.status.is_clean:
+        return WorktreeState.DIRTY
+    if facts.nesting is None:
+        return None
+    if not facts.nesting.found_nothing:
+        return WorktreeState.NESTED_REPOSITORY
+    return WorktreeState.INTEGRATED
 
 
 def worktree_label(
@@ -100,6 +126,7 @@ def advice_message(
     default_branch: str | None = None,
     failure: str | None = None,
     status: StatusCounts | None = None,
+    nesting: NestedCheck | None = None,
 ) -> str:
     """The advice text for an advice-only state (spec §5.2).
 
@@ -138,6 +165,8 @@ def advice_message(
             f"Integrated into {default_branch}, but has {status.modified} modified and "
             f"{status.untracked} untracked files. Commit, stash or discard them first."
         )
+    elif state is WorktreeState.NESTED_REPOSITORY:
+        message = _nested_message(nesting)
     elif state is WorktreeState.UNVERIFIABLE:
         message = (
             "Inside a worktree folder, but not a registered git worktree. DevDoctor "
@@ -146,3 +175,17 @@ def advice_message(
     else:
         raise ValueError(f"{state.value} is not an advice state")
     return message
+
+
+def _nested_message(nesting: NestedCheck | None) -> str:
+    if nesting is not None and nesting.nested is not None:
+        return (
+            f"Contains another git repository or worktree at {nesting.nested}. git worktree "
+            "remove would delete it, including uncommitted work. Move or remove it first."
+        )
+    if nesting is not None and nesting.unreadable is not None:
+        return (
+            f"Could not read {nesting.unreadable} inside this worktree, so DevDoctor cannot "
+            "rule out a nested repository that git worktree remove would delete."
+        )
+    raise ValueError("advice for a nested repository needs what the nested check found")

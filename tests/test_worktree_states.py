@@ -5,6 +5,7 @@ import pytest
 from devdoctor.providers._git import StatusCounts
 from devdoctor.providers._worktree_states import (
     Integration,
+    NestedCheck,
     WorktreeFacts,
     WorktreeState,
     advice_message,
@@ -14,6 +15,9 @@ from devdoctor.providers._worktree_states import (
 
 CLEAN = StatusCounts(modified=0, untracked=0)
 DIRTY = StatusCounts(modified=7, untracked=3)
+NOTHING_NESTED = NestedCheck()
+NESTED = NestedCheck(nested=".worktrees/inner")
+UNREADABLE = NestedCheck(unreadable="node_modules/.cache")
 
 
 @pytest.mark.parametrize(
@@ -95,7 +99,55 @@ DIRTY = StatusCounts(modified=7, untracked=3)
                 locked=False,
                 default_branch="origin/main",
                 integration=Integration.INTEGRATED,
+                status=DIRTY,
+                nesting=NESTED,
+            ),
+            WorktreeState.DIRTY,
+            id="dirty-wins-over-nested-repository",
+        ),
+        pytest.param(
+            WorktreeFacts(
+                ownership_ok=True,
+                locked=False,
+                default_branch="origin/main",
+                integration=Integration.INTEGRATED,
                 status=CLEAN,
+            ),
+            None,
+            id="nesting-check-still-needed",
+        ),
+        pytest.param(
+            WorktreeFacts(
+                ownership_ok=True,
+                locked=False,
+                default_branch="origin/main",
+                integration=Integration.INTEGRATED,
+                status=CLEAN,
+                nesting=NESTED,
+            ),
+            WorktreeState.NESTED_REPOSITORY,
+            id="nested-repository-wins-over-integrated",
+        ),
+        pytest.param(
+            WorktreeFacts(
+                ownership_ok=True,
+                locked=False,
+                default_branch="origin/main",
+                integration=Integration.INTEGRATED,
+                status=CLEAN,
+                nesting=UNREADABLE,
+            ),
+            WorktreeState.NESTED_REPOSITORY,
+            id="unreadable-directory-cannot-be-verified",
+        ),
+        pytest.param(
+            WorktreeFacts(
+                ownership_ok=True,
+                locked=False,
+                default_branch="origin/main",
+                integration=Integration.INTEGRATED,
+                status=CLEAN,
+                nesting=NOTHING_NESTED,
             ),
             WorktreeState.INTEGRATED,
             id="integrated-and-clean",
@@ -137,6 +189,7 @@ def test_state_values_are_the_label_texts_from_the_spec():
     assert [state.value for state in WorktreeState] == [
         "integrated",
         "integrated, uncommitted changes",
+        "contains nested repository",
         "not integrated",
         "broken pointer",
         "locked",
@@ -202,6 +255,20 @@ REPO = Path("/p/indexcat")
             id="integrated-dirty",
         ),
         pytest.param(
+            WorktreeState.NESTED_REPOSITORY,
+            {"nesting": NESTED},
+            "Contains another git repository or worktree at .worktrees/inner. git worktree "
+            "remove would delete it, including uncommitted work. Move or remove it first.",
+            id="nested-repository",
+        ),
+        pytest.param(
+            WorktreeState.NESTED_REPOSITORY,
+            {"nesting": UNREADABLE},
+            "Could not read node_modules/.cache inside this worktree, so DevDoctor cannot rule "
+            "out a nested repository that git worktree remove would delete.",
+            id="nested-repository-unverifiable",
+        ),
+        pytest.param(
             WorktreeState.UNVERIFIABLE,
             {},
             "Inside a worktree folder, but not a registered git worktree. DevDoctor cannot "
@@ -222,3 +289,9 @@ def test_integrated_has_no_advice():
 def test_dirty_advice_needs_the_status_counts():
     with pytest.raises(ValueError, match="status counts"):
         advice_message(WorktreeState.DIRTY, repository=REPO, default_branch="origin/main")
+
+
+@pytest.mark.parametrize("nesting", [None, NOTHING_NESTED], ids=["unchecked", "nothing-found"])
+def test_nested_repository_advice_needs_what_was_found(nesting):
+    with pytest.raises(ValueError, match="nested"):
+        advice_message(WorktreeState.NESTED_REPOSITORY, repository=REPO, nesting=nesting)
