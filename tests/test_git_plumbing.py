@@ -1,16 +1,27 @@
+import shutil
+import subprocess
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
 
+from devdoctor.ports import RealShell
 from devdoctor.providers._git import (
+    GIT_CALL_TIMEOUT_S,
     MERGE_TREE_MIN_VERSION,
+    GitResult,
+    GitRunner,
     StatusCounts,
     WorktreeRecord,
+    git_env,
+    merge_tree_env,
     parse_git_version,
     parse_status_porcelain,
     parse_worktree_porcelain,
     supports_merge_tree_write_tree,
 )
+from devdoctor.types import ShellResult
+from tests.conftest import FakeShell
 
 SHA = "39014f227ec96b48d94c59dd54e6a5dc15566be4"
 
@@ -185,3 +196,128 @@ def test_parse_git_version(output, expected):
 )
 def test_supports_merge_tree_write_tree(version, expected):
     assert supports_merge_tree_write_tree(version) is expected
+
+
+OFFLINE_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_NO_LAZY_FETCH": "1"}
+STATUS_ARGV = ("git", "--no-optional-locks", "-C", "/repo", "status", "--porcelain")
+
+
+@dataclass
+class _ScriptedShell:
+    """Shell double that records timeouts and can raise, which FakeShell cannot."""
+
+    result: ShellResult = field(
+        default_factory=lambda: ShellResult(returncode=0, stdout="", stderr="")
+    )
+    raises: BaseException | None = None
+    timeouts: list[float | None] = field(default_factory=list)
+
+    def run(self, argv, *, check=False, timeout=None, env=None):
+        self.timeouts.append(timeout)
+        if self.raises is not None:
+            raise self.raises
+        return self.result
+
+    def which(self, binary):
+        return None
+
+
+def test_runner_uses_no_optional_locks_and_the_directory():
+    shell = FakeShell(responses={STATUS_ARGV: ShellResult(returncode=0, stdout="", stderr="")})
+    GitRunner(shell).run(Path("/repo"), ["status", "--porcelain"])
+    assert shell.calls == [STATUS_ARGV]
+
+
+def test_runner_sets_offline_guards_on_every_call():
+    shell = FakeShell(responses={STATUS_ARGV: ShellResult(returncode=0, stdout="", stderr="")})
+    runner = GitRunner(shell)
+    runner.run(Path("/repo"), ["status", "--porcelain"])
+    runner.run(Path("/repo"), ["status", "--porcelain"])
+    assert shell.envs == [OFFLINE_ENV, OFFLINE_ENV]
+
+
+def test_runner_adds_extra_env_to_the_offline_guards():
+    shell = FakeShell(responses={STATUS_ARGV: ShellResult(returncode=0, stdout="", stderr="")})
+    GitRunner(shell).run(
+        Path("/repo"), ["status", "--porcelain"], extra_env={"GIT_OBJECT_DIRECTORY": "/tmp/o"}
+    )
+    assert shell.envs == [{**OFFLINE_ENV, "GIT_OBJECT_DIRECTORY": "/tmp/o"}]
+
+
+def test_offline_guards_cannot_be_overridden():
+    assert git_env({"GIT_TERMINAL_PROMPT": "1", "GIT_NO_LAZY_FETCH": "0"}) == OFFLINE_ENV
+
+
+def test_runner_default_timeout_is_30_seconds():
+    shell = _ScriptedShell()
+    GitRunner(shell).run(Path("/repo"), ["status"])
+    assert GIT_CALL_TIMEOUT_S == 30.0
+    assert shell.timeouts == [30.0]
+
+
+def test_runner_success_is_a_result():
+    shell = _ScriptedShell(result=ShellResult(returncode=0, stdout="out\n", stderr=""))
+    result = GitRunner(shell).run(Path("/repo"), ["status"])
+    assert result == GitResult(
+        returncode=0, stdout="out\n", stderr="", timed_out=False, timeout_s=30.0
+    )
+    assert result.ok is True
+
+
+def test_runner_non_zero_exit_is_a_result_with_the_first_stderr_line():
+    stderr = "fatal: not a git repository: /x\nhint: something else\n"
+    shell = _ScriptedShell(result=ShellResult(returncode=128, stdout="", stderr=stderr))
+    result = GitRunner(shell).run(Path("/x"), ["rev-parse", "--show-toplevel"])
+    assert result.ok is False
+    assert result.failure_summary() == "fatal: not a git repository: /x"
+
+
+def test_runner_timeout_is_a_result_not_an_exception():
+    shell = _ScriptedShell(raises=subprocess.TimeoutExpired(cmd=["git"], timeout=30.0))
+    result = GitRunner(shell).run(Path("/repo"), ["merge-tree", "--write-tree", "main", "HEAD"])
+    assert result.timed_out is True
+    assert result.ok is False
+    assert result.returncode is None
+    assert result.failure_summary() == "timed out after 30 s"
+
+
+def test_runner_launch_failure_is_a_result_not_an_exception():
+    shell = _ScriptedShell(raises=FileNotFoundError(2, "No such file or directory", "git"))
+    result = GitRunner(shell).run(Path("/repo"), ["status"])
+    assert result.ok is False
+    assert result.timed_out is False
+    assert "No such file or directory" in result.failure_summary()
+
+
+def test_failure_summary_without_stderr_names_the_exit_code():
+    shell = _ScriptedShell(result=ShellResult(returncode=1, stdout="", stderr=""))
+    result = GitRunner(shell).run(Path("/repo"), ["merge-base", "--is-ancestor", "a", "b"])
+    assert result.failure_summary() == "exit 1"
+
+
+def test_merge_tree_env_redirects_object_writes_and_reads_the_real_store():
+    assert merge_tree_env(Path("/tmp/objects"), Path("/repo/.git")) == {
+        "GIT_OBJECT_DIRECTORY": "/tmp/objects",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES": "/repo/.git/objects",
+    }
+
+
+def test_version_is_read_through_the_contract():
+    argv = ("git", "--no-optional-locks", "-C", "/", "version")
+    ok = ShellResult(returncode=0, stdout="git version 2.50.1 (Apple Git-155)\n", stderr="")
+    shell = FakeShell(responses={argv: ok})
+    assert GitRunner(shell).version() == (2, 50, 1)
+    assert shell.envs == [OFFLINE_ENV]
+
+
+def test_version_is_none_when_git_fails():
+    shell = _ScriptedShell(result=ShellResult(returncode=1, stdout="", stderr="boom"))
+    assert GitRunner(shell).version() is None
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_real_git_accepts_the_invocation_contract():
+    # Smoke test: the global options and environment are valid for the git on this machine.
+    version = GitRunner(RealShell()).version()
+    assert version is not None
+    assert version >= (2, 0, 0)
