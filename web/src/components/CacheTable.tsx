@@ -49,8 +49,13 @@ function makeComparator(
   const sign = dir === "asc" ? 1 : -1;
   return (a, b) => {
     switch (key) {
-      case "size":
+      case "size": {
+        // Unmeasured rows sort after measured ones in either direction.
+        const aUnmeasured = a.footprint_bytes === null;
+        const bUnmeasured = b.footprint_bytes === null;
+        if (aUnmeasured !== bUnmeasured) return aUnmeasured ? 1 : -1;
         return sign * (a.size_bytes - b.size_bytes);
+      }
       case "provider":
         return (
           sign * (a.provider.localeCompare(b.provider) || a.label.localeCompare(b.label))
@@ -305,7 +310,13 @@ function Cell({
     case "size":
       return (
         <div className="text-right tabular-nums font-medium">
-          {humanBytes(row.size_bytes)}
+          {row.footprint_bytes === null ? (
+            <span className="text-text-muted" title="Not measured">
+              —
+            </span>
+          ) : (
+            humanBytes(row.size_bytes)
+          )}
         </div>
       );
     case "risk":

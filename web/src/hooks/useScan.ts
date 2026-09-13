@@ -80,7 +80,11 @@ export function useScan(params: UseScanOptions = {}) {
       const query = qs.toString() ? `?${qs}` : "";
       const raw = await apiFetch<ScanResponse>(`/scan${query}`);
       const rows: CacheTableRow[] = raw.entries.map((e) => {
-        const footprint = e.footprint_bytes ?? e.size_bytes;
+        // null means the provider deliberately left the entry unmeasured (for
+        // example an advice-only git worktree); only a missing field falls back
+        // to size_bytes, for providers that predate explicit usage.
+        const footprint =
+          e.footprint_bytes === undefined ? e.size_bytes : e.footprint_bytes;
         const reclaimable =
           e.reclaimable_bytes !== undefined
             ? e.reclaimable_bytes
@@ -92,7 +96,7 @@ export function useScan(params: UseScanOptions = {}) {
           provider: e.provider,
           label: e.label,
           path: e.path ?? "—",
-          size_bytes: footprint,
+          size_bytes: footprint ?? 0,
           footprint_bytes: footprint,
           reclaimable_bytes: reclaimable,
           shared_bytes: e.shared_bytes ?? 0,
