@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -7,7 +8,9 @@ from pathlib import Path
 
 import pytest
 
+from devdoctor.providers._git import LOCAL_ENV_VARS
 from devdoctor.types import ShellResult
+from tests.git_fixture import GitFixture
 
 
 @pytest.fixture(autouse=True)
@@ -30,6 +33,21 @@ def _isolate_home_and_xdg_dirs(tmp_path: Path, monkeypatch):
     # Not created: tests that want a home tree make it themselves, and a
     # non-existent HOME is exactly what a provider should tolerate.
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+
+@pytest.fixture
+def git_fixture(tmp_path: Path, monkeypatch) -> GitFixture:
+    """Real git, isolated from the developer's configuration and enclosing repositories."""
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+    for name in ("GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"):
+        monkeypatch.setenv(name, "t")
+    for name in ("GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.setenv(name, "t@t")
+    for name in LOCAL_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+    return GitFixture(tmp_path)
 
 
 @dataclass
