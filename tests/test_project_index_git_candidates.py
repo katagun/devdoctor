@@ -1,4 +1,7 @@
+import os
 from pathlib import Path
+
+import pytest
 
 from devdoctor.providers import project_artifacts
 from devdoctor.providers._git import WorktreePointer
@@ -100,3 +103,20 @@ def test_git_candidates_and_artifact_queries_share_one_walk(tmp_path, monkeypatc
     index.git_candidates()
     index.candidates("node")
     assert len(calls) == 1
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores permissions")
+def test_pointer_into_an_unreadable_directory_is_broken_not_an_error(tmp_path, monkeypatch):
+    root = tmp_path / "projects"
+    sealed = tmp_path / "sealed" / "repo" / ".git" / "worktrees" / "feature"
+    sealed.mkdir(parents=True)
+    worktree = _pointer(root / "wt" / "feature", str(sealed))
+    sealed_dir = tmp_path / "sealed"
+    sealed_dir.chmod(0o000)
+    try:
+        candidates = _git_candidates(root, monkeypatch)
+        [pointer] = candidates.pointers
+        assert pointer.path == worktree
+        assert pointer.broken is True
+    finally:
+        sealed_dir.chmod(0o755)

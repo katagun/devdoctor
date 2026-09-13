@@ -458,3 +458,25 @@ def test_failed_head_times_leave_mtime_unknown(app, projects):
     assert provider.diagnostics == [
         f"git-worktrees: could not read HEAD commit times for {app.path}: fatal: bad object"
     ]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores permissions")
+def test_inaccessible_worktree_is_a_diagnostic_and_the_others_classify(app, projects, tmp_path):
+    accessible = app.add_worktree(projects / "wt" / "feature", "feature")
+    _merge(app, accessible)
+    hidden = app.add_worktree(tmp_path / "sealed" / "hidden", "hidden")
+    _merge(app, hidden, branch="hidden")
+    app.publish()
+    sealed_dir = tmp_path / "sealed"
+    sealed_dir.chmod(0o000)
+    try:
+        entries, provider = _discover()
+
+        assert _entry(entries, accessible.path).risk is Risk.RECLAIMABLE
+        assert not any(e.path == hidden.path for e in entries)
+        assert provider.diagnostics == [
+            f"git-worktrees: could not access registered worktree {hidden.path} "
+            "(Permission denied); not reported"
+        ]
+    finally:
+        sealed_dir.chmod(0o755)

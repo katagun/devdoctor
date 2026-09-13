@@ -144,7 +144,7 @@ def read_worktree_pointer(directory: Path) -> WorktreePointer | None:
         path=directory,
         gitdir=gitdir,
         repository=repository,
-        broken=not gitdir.is_dir(),
+        broken=not os.path.isdir(gitdir),
     )
 
 

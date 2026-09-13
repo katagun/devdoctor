@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
@@ -135,7 +136,17 @@ class GitWorktreeProvider(Provider):
         for record in records[1:]:
             if record.bare:
                 continue
-            if record.prunable or not record.path.is_dir():
+            try:
+                is_dir = stat.S_ISDIR(record.path.stat().st_mode)
+            except (FileNotFoundError, NotADirectoryError):
+                is_dir = False
+            except OSError as exc:
+                self.diagnostics.append(
+                    f"git-worktrees: could not access registered worktree {record.path} "
+                    f"({exc.strerror}); not reported"
+                )
+                continue
+            if record.prunable or not is_dir:
                 stale += 1
                 continue
             linked.append(record)
