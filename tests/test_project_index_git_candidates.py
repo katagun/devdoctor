@@ -127,3 +127,16 @@ def test_ignores_a_git_file_whose_gitdir_contains_a_nul_byte(tmp_path, monkeypat
     odd = _mkdir(root / "odd")
     (odd / ".git").write_text("gitdir: /tmp/a\0b/.git/worktrees/x\n")
     assert _git_candidates(root, monkeypatch).pointers == ()
+
+
+def test_symlinked_git_directories_and_folder_children_are_not_recorded(tmp_path, monkeypatch):
+    root = tmp_path / "projects"
+    linked = _mkdir(root / "linked")
+    (linked / ".git").symlink_to(_mkdir(tmp_path / "elsewhere" / ".git"))
+    folder = _mkdir(root / "repo" / ".worktrees")
+    (folder / "linked-child").symlink_to(_mkdir(tmp_path / "elsewhere" / "child"))
+
+    candidates = _git_candidates(root, monkeypatch)
+
+    assert linked not in candidates.repositories
+    assert candidates.folder_children == ()

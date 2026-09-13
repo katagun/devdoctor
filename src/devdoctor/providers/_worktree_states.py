@@ -39,12 +39,12 @@ class WorktreeFacts:
     ``status`` only once the worktree is known to be integrated. ``failure`` records
     the first git call that failed.
 
-    ``toplevel_ok`` is whether the directory was shown to still belong to its
+    ``ownership_ok`` is whether the directory was shown to still belong to its
     registered worktree. When it is false, ``failure`` says whether git could not
     answer (a git error) or answered that it does not (a broken pointer).
     """
 
-    toplevel_ok: bool
+    ownership_ok: bool
     locked: bool
     default_branch: str | None
     failure: str | None = None
@@ -55,7 +55,7 @@ class WorktreeFacts:
 # One return per state keeps the code in the spec's first-match order.
 def classify(facts: WorktreeFacts) -> WorktreeState | None:  # noqa: PLR0911
     """Return the first matching state (spec §5.1), or ``None`` if more facts are needed."""
-    if not facts.toplevel_ok:
+    if not facts.ownership_ok:
         return WorktreeState.BROKEN_POINTER if facts.failure is None else WorktreeState.GIT_ERROR
     if facts.locked:
         return WorktreeState.LOCKED
@@ -132,11 +132,11 @@ def advice_message(
             "providers report can still be cleaned individually."
         )
     elif state is WorktreeState.DIRTY:
-        modified = status.modified if status else 0
-        untracked = status.untracked if status else 0
+        if status is None:
+            raise ValueError("advice for uncommitted changes needs the status counts")
         message = (
-            f"Integrated into {default_branch}, but has {modified} modified and "
-            f"{untracked} untracked files. Commit, stash or discard them first."
+            f"Integrated into {default_branch}, but has {status.modified} modified and "
+            f"{status.untracked} untracked files. Commit, stash or discard them first."
         )
     elif state is WorktreeState.UNVERIFIABLE:
         message = (

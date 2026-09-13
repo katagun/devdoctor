@@ -230,10 +230,10 @@ Registered worktrees are checked in order, and the first match wins.
 |---|---|---|---|
 | 1 | Primary worktree | first porcelain record | none |
 | 2 | Missing, prunable or bare | porcelain `prunable` or `bare`, or the directory is absent | none; one diagnostic per repository suggesting `git -C <repo> worktree prune` |
-| 3 | Broken pointer | the directory no longer belongs to this worktree: `<worktree>/.git` is missing or is not a worktree pointer; the pointer's gitdir does not exist; the gitdir is not inside the repository's common git dir, or its `gitdir` file does not name `<worktree>/.git`; or `rev-parse --path-format=absolute --show-toplevel --git-common-dir` in the worktree names a different toplevel or common dir. Paths compare after resolving symlinks. If that `rev-parse` fails or times out with the pointer intact, the worktree is state 6 instead | advice |
+| 3 | Broken pointer | the directory no longer belongs to this worktree: `<worktree>/.git` is missing or is not a worktree pointer; the pointer's gitdir does not exist; the gitdir is not `<common git dir>/worktrees/<name>`, or its `gitdir` file does not name `<worktree>/.git`; or `rev-parse --path-format=absolute --show-toplevel --git-common-dir` in the worktree names a different toplevel or common dir. Paths compare after resolving symlinks. If that `rev-parse` fails or times out with the pointer intact, the worktree is state 6 instead | advice |
 | 4 | Locked | porcelain `locked [reason]` | advice |
 | 5 | Default branch unresolvable | §4.4 | advice |
-| 6 | git error | the state 3 `rev-parse` (pointer intact), `--git-common-dir` for the repository, or a later call (`merge-tree`, `status`) exits non-zero or times out | advice |
+| 6 | git error | the state 3 `rev-parse` (pointer intact), `--git-common-dir` for the repository, or a later call (`merge-tree` or `merge-base --is-ancestor`, `status`) exits non-zero or times out | advice |
 | 7 | Not integrated | §4.4 | advice |
 | 8 | Integrated, dirty | `status --porcelain --untracked-files=normal` produces output | advice |
 | 9 | Integrated, clean | all checks pass | **reclaimable** |
@@ -409,6 +409,7 @@ containment rules.
 |---|---|
 | `git` not on `PATH` | provider unavailable, via `required_binary` |
 | `git` older than 2.36 (no `worktree list -z`) | no worktree entries; one diagnostic naming the installed version |
+| The `git` version cannot be determined | no worktree entries; one diagnostic |
 | A per-worktree git call exits non-zero or times out | that worktree is a git error (§5.1 state 6), including the ownership `rev-parse` when its `.git` pointer is intact; a worktree whose ownership fails the pointer checks is a broken pointer (state 3) without that call; the provider continues |
 | A repository's `rev-parse --git-common-dir` fails | every worktree of that repository is a git error with that failure; no integration or status check runs for them |
 | A repository's `worktree list` fails | one diagnostic for that repository; its worktrees are not reported |
@@ -541,6 +542,14 @@ should land no later than PR 3.
 - **Double sizing.** Contents of a reclaimable worktree are sized by their own
   providers and again as part of the worktree before containment removes them
   (#92).
+- **Worktree paths containing a newline.** The ownership `rev-parse` prints one
+  path per line, so such a worktree reads as a broken pointer with the "does not
+  point back" advice even when its pointer is intact. It is never reclaimable.
+- **Relative pointers under symlinked directories.** A relative `gitdir:` line is
+  normalised without resolving symlinks, so a pointer under a symlinked scan root
+  can name a repository that does not exist, and its worktree is reported as
+  unverifiable instead of classified. Worktrees are still classified, and removed,
+  only through the repository that registers them.
 - **Commits made between classification and cleanup.** Integration is checked
   against the HEAD read at scan time; if an agent commits in a detached,
   integrated worktree before `git worktree remove` runs, the worktree still

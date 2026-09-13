@@ -258,8 +258,8 @@ def test_missing_worktree_has_no_entry_and_suggests_prune(app, projects):
 
     assert entries == []
     assert provider.diagnostics == [
-        f"git-worktrees: 1 registered worktree(s) of {app.path} no longer exist; "
-        f'run "git -C {app.path} worktree prune"'
+        f"git-worktrees: 1 registered worktree(s) of {app.path} are missing or no longer "
+        f'valid; run "git -C {app.path} worktree prune"'
     ]
 
 
@@ -376,8 +376,17 @@ def test_git_before_2_36_reports_nothing():
     entries, provider = _discover(shell)
     assert entries == []
     assert provider.diagnostics == [
-        "git-worktrees: worktree listing needs git 2.36 and git 2.35.8 could not be "
-        "confirmed to support it; no worktrees reported"
+        "git-worktrees: worktree listing needs git 2.36, found git 2.35.8; no worktrees reported"
+    ]
+
+
+def test_unknown_git_version_reports_nothing():
+    version = ("git", "--no-optional-locks", "-C", "/", "version")
+    shell = FakeShell(responses={version: ShellResult(1, "", "boom\n")})
+    entries, provider = _discover(shell)
+    assert entries == []
+    assert provider.diagnostics == [
+        "git-worktrees: could not determine the git version; no worktrees reported"
     ]
 
 
@@ -657,3 +666,63 @@ def test_discovery_runs_no_writing_command(app, projects):
         assert env is not None
         if env.get("GIT_OBJECT_DIRECTORY") is not None:
             assert "merge-tree" in argv, argv
+
+
+def test_unregistered_broken_pointer_is_unverifiable(git_fixture, tmp_path, projects):
+    repo = git_fixture.repository(tmp_path / "elsewhere" / "app")
+    worktree = repo.add_worktree(projects / "wt" / "orphan", "orphan")
+    shutil.rmtree(repo.path)
+
+    entry = _entry(_discover()[0], worktree.path)
+
+    assert entry.label == "app/orphan · unverifiable"
+    _assert_advice_shape(entry)
+
+
+def test_worktree_of_a_bare_repository_is_classified_without_diagnostics(
+    git_fixture, tmp_path, projects
+):
+    source = git_fixture.repository(tmp_path / "source")
+    bare = projects / "bare.git"
+    subprocess.run(
+        ["git", "clone", "--bare", "-q", str(source.path), str(bare)],
+        check=True,
+        capture_output=True,
+    )
+    worktree = projects / "wt" / "feature"
+    subprocess.run(
+        ["git", "-C", str(bare), "worktree", "add", "-q", "-b", "feature", str(worktree), "main"],
+        check=True,
+        capture_output=True,
+    )
+
+    entries, provider = _discover()
+
+    assert _entry(entries, worktree).label == "bare.git/feature · no default branch"
+    assert provider.diagnostics == []
+
+
+def test_worktree_on_an_unborn_branch_is_a_git_error(app, projects):
+    version = GitRunner(RealShell()).version()
+    if version is None or version < (2, 42, 0):
+        pytest.skip("git worktree add --orphan needs git 2.42")
+    app.publish()
+    worktree = projects / "wt" / "empty"
+    app.git("worktree", "add", "-q", "--orphan", "-b", "empty", str(worktree))
+
+    entry = _entry(_discover()[0], worktree)
+
+    assert entry.label == "app/empty · git error"
+    assert entry.risk is Risk.DANGEROUS
+
+
+def test_repository_reached_by_the_walk_and_a_pointer_is_listed_once(app, projects):
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    _merge(app, worktree)
+    app.publish()
+    shell = RecordingShell()
+
+    _discover(shell)
+
+    listings = [argv for argv, _ in shell.calls if argv[4:6] == ("worktree", "list")]
+    assert len(listings) == 1

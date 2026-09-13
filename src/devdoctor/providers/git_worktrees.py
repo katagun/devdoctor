@@ -90,11 +90,16 @@ class GitWorktreeProvider(Provider):
 
     def discover(self) -> list[Entry]:
         version = self._git.version()
-        if not supports_worktree_list_z(version):
-            found = "the git version" if version is None else "git " + ".".join(map(str, version))
+        if version is None:
             self.diagnostics.append(
-                f"git-worktrees: worktree listing needs git 2.36 and {found} could not be "
-                "confirmed to support it; no worktrees reported"
+                "git-worktrees: could not determine the git version; no worktrees reported"
+            )
+            return []
+        if not supports_worktree_list_z(version):
+            found = ".".join(map(str, version))
+            self.diagnostics.append(
+                f"git-worktrees: worktree listing needs git 2.36, found git {found}; "
+                "no worktrees reported"
             )
             return []
         objects_dir = (
@@ -154,8 +159,8 @@ class GitWorktreeProvider(Provider):
             linked.append(record)
         if stale:
             self.diagnostics.append(
-                f"git-worktrees: {stale} registered worktree(s) of {repository} no longer "
-                f'exist; run "git -C {repository} worktree prune"'
+                f"git-worktrees: {stale} registered worktree(s) of {repository} are missing "
+                f'or no longer valid; run "git -C {repository} worktree prune"'
             )
         return linked
 
@@ -193,9 +198,9 @@ class GitWorktreeProvider(Provider):
     ) -> tuple[WorktreeState, WorktreeFacts]:
         """Gather facts in spec §5.1 order until one state matches."""
         default = repository.default
-        toplevel_ok, failure = self._ownership(repository, record)
+        ownership_ok, failure = self._ownership(repository, record)
         facts = WorktreeFacts(
-            toplevel_ok=toplevel_ok,
+            ownership_ok=ownership_ok,
             locked=record.locked,
             default_branch=default.name if default else None,
             failure=failure,

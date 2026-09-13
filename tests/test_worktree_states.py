@@ -20,30 +20,30 @@ DIRTY = StatusCounts(modified=7, untracked=3)
     ("facts", "expected"),
     [
         pytest.param(
-            WorktreeFacts(toplevel_ok=False, locked=True, default_branch=None),
+            WorktreeFacts(ownership_ok=False, locked=True, default_branch=None),
             WorktreeState.BROKEN_POINTER,
             id="broken-pointer-wins-over-everything",
         ),
         pytest.param(
             WorktreeFacts(
-                toplevel_ok=False, locked=True, default_branch=None, failure="timed out after 30 s"
+                ownership_ok=False, locked=True, default_branch=None, failure="timed out after 30 s"
             ),
             WorktreeState.GIT_ERROR,
             id="unverified-ownership-git-error-wins-over-locked",
         ),
         pytest.param(
-            WorktreeFacts(toplevel_ok=True, locked=True, default_branch=None),
+            WorktreeFacts(ownership_ok=True, locked=True, default_branch=None),
             WorktreeState.LOCKED,
             id="locked-wins-over-no-default-branch",
         ),
         pytest.param(
-            WorktreeFacts(toplevel_ok=True, locked=False, default_branch=None, failure="boom"),
+            WorktreeFacts(ownership_ok=True, locked=False, default_branch=None, failure="boom"),
             WorktreeState.NO_DEFAULT_BRANCH,
             id="no-default-branch-wins-over-git-error",
         ),
         pytest.param(
             WorktreeFacts(
-                toplevel_ok=True,
+                ownership_ok=True,
                 locked=False,
                 default_branch="origin/main",
                 failure="timed out after 30 s",
@@ -53,13 +53,13 @@ DIRTY = StatusCounts(modified=7, untracked=3)
             id="git-error-wins-over-not-integrated",
         ),
         pytest.param(
-            WorktreeFacts(toplevel_ok=True, locked=False, default_branch="origin/main"),
+            WorktreeFacts(ownership_ok=True, locked=False, default_branch="origin/main"),
             None,
             id="integration-still-needed",
         ),
         pytest.param(
             WorktreeFacts(
-                toplevel_ok=True,
+                ownership_ok=True,
                 locked=False,
                 default_branch="origin/main",
                 integration=Integration.NOT_INTEGRATED,
@@ -70,7 +70,7 @@ DIRTY = StatusCounts(modified=7, untracked=3)
         ),
         pytest.param(
             WorktreeFacts(
-                toplevel_ok=True,
+                ownership_ok=True,
                 locked=False,
                 default_branch="origin/main",
                 integration=Integration.INTEGRATED,
@@ -80,7 +80,7 @@ DIRTY = StatusCounts(modified=7, untracked=3)
         ),
         pytest.param(
             WorktreeFacts(
-                toplevel_ok=True,
+                ownership_ok=True,
                 locked=False,
                 default_branch="origin/main",
                 integration=Integration.INTEGRATED,
@@ -91,7 +91,7 @@ DIRTY = StatusCounts(modified=7, untracked=3)
         ),
         pytest.param(
             WorktreeFacts(
-                toplevel_ok=True,
+                ownership_ok=True,
                 locked=False,
                 default_branch="origin/main",
                 integration=Integration.INTEGRATED,
@@ -217,3 +217,8 @@ def test_advice_messages_match_the_spec(state, kwargs, expected):
 def test_integrated_has_no_advice():
     with pytest.raises(ValueError, match="not an advice state"):
         advice_message(WorktreeState.INTEGRATED, repository=REPO)
+
+
+def test_dirty_advice_needs_the_status_counts():
+    with pytest.raises(ValueError, match="status counts"):
+        advice_message(WorktreeState.DIRTY, repository=REPO, default_branch="origin/main")

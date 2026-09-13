@@ -199,6 +199,18 @@ def check_integration(
     return Integration.NOT_INTEGRATED
 
 
+def _read_backlink(path: Path) -> str | None:
+    """The first line of a worktree's ``gitdir`` file, or None if it cannot be trusted."""
+    # Only a regular file: reading a FIFO placed there would block the worker forever.
+    if not path.is_file():
+        return None
+    try:
+        line = path.read_text(encoding="utf-8", errors="replace").partition("\n")[0]
+    except OSError:
+        return None
+    return line if line and "\0" not in line else None
+
+
 def worktree_belongs_to(git: GitRunner, worktree: Path, common_dir: Path) -> bool:
     """Whether ``worktree`` is still the linked worktree of the repository at ``common_dir``.
 
@@ -215,15 +227,11 @@ def worktree_belongs_to(git: GitRunner, worktree: Path, common_dir: Path) -> boo
     common = os.path.realpath(common_dir)
     if os.path.realpath(pointer.gitdir.parent.parent) != common:
         return False
-    try:
-        back = (pointer.gitdir / "gitdir").read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return False
+    back = _read_backlink(pointer.gitdir / "gitdir")
     # git writes an absolute path, or one relative to the git directory (--relative-paths).
-    back = back.partition("\n")[0]
-    if not back or "\0" in back:
-        return False
-    if os.path.realpath(pointer.gitdir / back) != os.path.realpath(worktree / ".git"):
+    if back is None or os.path.realpath(pointer.gitdir / back) != os.path.realpath(
+        worktree / ".git"
+    ):
         return False
     result = git.run(
         worktree, ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"]
