@@ -537,7 +537,7 @@ same PR that introduces containment.
 |---|---|---|
 | 1. Foundation | `Shell.run(env=)` in all three implementations; `providers/_git.py` with parsers and the invocation contract; unit and port tests | no |
 | 2. Discovery and classification | the index records git candidates; `GitWorktreeProvider` with every §5 state and the write-free, offline contract; real-git integration tests. Not registered | no |
-| 3. Containment and registration | zero-byte exemption; `entry_matches_filters`; containment pass and provider-total recomputation; `scan(contain=)`; web cleanup `contain=False` and selection dedupe; registration; end-to-end tests; CHANGELOG | yes |
+| 3. Containment and registration | zero-byte exemption; `entry_matches_filters`; containment pass and provider-total recomputation; `scan(contain=)`; web cleanup `contain=False`; cleanup executor runs worktrees first and skips what their removal deleted; registration; end-to-end tests; CHANGELOG | yes |
 | 4. Documentation and site | README provider list; then #91 | yes |
 
 Alongside this spec, issues #79 and #91 are corrected to the measured figures in
