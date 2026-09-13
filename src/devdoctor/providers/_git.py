@@ -21,6 +21,10 @@ from devdoctor.ports import Shell
 # `merge-base --is-ancestor` (spec §4.4).
 MERGE_TREE_MIN_VERSION: tuple[int, int, int] = (2, 38, 0)
 
+# `git worktree list --porcelain -z` first shipped in git 2.36. It is the only listing
+# that represents every worktree path, so older git lists no worktrees (spec §4.4).
+WORKTREE_LIST_Z_MIN_VERSION: tuple[int, int, int] = (2, 36, 0)
+
 _VERSION_RE = re.compile(r"git version (\d+)\.(\d+)(?:\.(\d+))?")
 _BRANCH_REF_PREFIX = "refs/heads/"
 
@@ -36,6 +40,10 @@ def parse_git_version(output: str) -> tuple[int, int, int] | None:
 
 def supports_merge_tree_write_tree(version: tuple[int, int, int] | None) -> bool:
     return version is not None and version >= MERGE_TREE_MIN_VERSION
+
+
+def supports_worktree_list_z(version: tuple[int, int, int] | None) -> bool:
+    return version is not None and version >= WORKTREE_LIST_Z_MIN_VERSION
 
 
 @dataclass(frozen=True)
@@ -54,36 +62,45 @@ class WorktreeRecord:
 
 
 def parse_worktree_porcelain(output: str) -> list[WorktreeRecord]:
-    """Parse ``git worktree list --porcelain`` into records, in git's order.
+    """Parse ``git worktree list --porcelain -z`` into records, in git's order.
 
-    The first record is always the repository's primary worktree. A path follows
-    ``worktree `` verbatim, so paths containing spaces survive. Attributes this
-    parser does not know are ignored, so newer git versions keep parsing.
+    Every field ends with NUL and an empty field ends a record, so paths and lock
+    reasons that contain newlines arrive intact and unquoted. The first record is
+    always the repository's primary worktree. Attributes this parser does not know
+    are ignored, so newer git versions keep parsing.
     """
     records: list[WorktreeRecord] = []
-    for block in output.split("\n\n"):
-        fields: dict[str, str] = {}
-        for line in block.splitlines():
-            if line:
-                key, _, value = line.partition(" ")
-                fields[key] = value
-        if "worktree" not in fields:
+    fields: dict[str, str] = {}
+    for item in output.split("\0"):
+        if item:
+            key, _, value = item.partition(" ")
+            fields[key] = value
             continue
-        branch = fields.get("branch")
-        records.append(
-            WorktreeRecord(
-                path=Path(fields["worktree"]),
-                head=fields.get("HEAD"),
-                branch=branch.removeprefix(_BRANCH_REF_PREFIX) if branch else None,
-                detached="detached" in fields,
-                bare="bare" in fields,
-                locked="locked" in fields,
-                lock_reason=fields.get("locked") or None,
-                prunable="prunable" in fields,
-                prunable_reason=fields.get("prunable") or None,
-            )
-        )
+        record = _worktree_record(fields)
+        if record is not None:
+            records.append(record)
+        fields = {}
+    final = _worktree_record(fields)  # a last record whose terminator is missing
+    if final is not None:
+        records.append(final)
     return records
+
+
+def _worktree_record(fields: dict[str, str]) -> WorktreeRecord | None:
+    if "worktree" not in fields:
+        return None
+    branch = fields.get("branch")
+    return WorktreeRecord(
+        path=Path(fields["worktree"]),
+        head=fields.get("HEAD"),
+        branch=branch.removeprefix(_BRANCH_REF_PREFIX) if branch else None,
+        detached="detached" in fields,
+        bare="bare" in fields,
+        locked="locked" in fields,
+        lock_reason=fields.get("locked") or None,
+        prunable="prunable" in fields,
+        prunable_reason=fields.get("prunable") or None,
+    )
 
 
 @dataclass(frozen=True)
@@ -104,6 +121,13 @@ class StatusCounts:
 
 
 def parse_status_porcelain(output: str) -> StatusCounts:
+    """Count changes in ``git status --porcelain`` (v1) output.
+
+    Expects the default v1 format without ``-b`` or ``-z``: a ``## branch`` header
+    would be counted as a change, and NUL-terminated entries would not be split.
+    A conflicted entry such as ``UU path`` counts as modified, so a conflict never
+    reads as clean.
+    """
     modified = 0
     untracked = 0
     for line in output.splitlines():
@@ -119,14 +143,43 @@ def parse_status_porcelain(output: str) -> StatusCounts:
 # Every git call is bounded, so one hung repository cannot stall a scan (spec §4.3).
 GIT_CALL_TIMEOUT_S = 30.0
 
+# Repository-local variables, as listed by `git rev-parse --local-env-vars`. Inherited
+# values take precedence over `-C`, so every call removes them (spec §4.3). A real-git
+# test fails if the installed git lists a name missing here.
+LOCAL_ENV_VARS: tuple[str, ...] = (
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CONFIG",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_IMPLICIT_WORK_TREE",
+    "GIT_GRAFT_FILE",
+    "GIT_INDEX_FILE",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_PREFIX",
+    "GIT_SHALLOW_FILE",
+    "GIT_COMMON_DIR",
+)
+
 # Set on every git call: never prompt for credentials, and never fetch missing
 # objects from a promisor remote. Applied last, so no caller can switch them off.
+# Git honours GIT_NO_LAZY_FETCH only from 2.44; older git may still lazy-fetch in a
+# partial clone (spec §11).
 _OFFLINE_ENV: dict[str, str] = {"GIT_TERMINAL_PROMPT": "0", "GIT_NO_LAZY_FETCH": "1"}
 
 
-def git_env(extra: Mapping[str, str] | None = None) -> dict[str, str]:
-    """The environment for one git call: ``extra`` plus the offline guards, which win."""
-    return {**(extra or {}), **_OFFLINE_ENV}
+def git_env(extra: Mapping[str, str] | None = None) -> dict[str, str | None]:
+    """The environment changes for one git call, for ``Shell.run(env=...)``.
+
+    Every repository-local variable is removed (``None``), then ``extra`` is applied
+    (merge-tree uses it to restore its two object-directory variables), and the offline
+    guards are applied last, so no caller can switch them off.
+    """
+    removed: dict[str, str | None] = dict.fromkeys(LOCAL_ENV_VARS)
+    return {**removed, **(extra or {}), **_OFFLINE_ENV}
 
 
 def merge_tree_env(temp_objects_dir: Path, common_git_dir: Path) -> dict[str, str]:
@@ -137,8 +190,26 @@ def merge_tree_env(temp_objects_dir: Path, common_git_dir: Path) -> dict[str, st
     """
     return {
         "GIT_OBJECT_DIRECTORY": str(temp_objects_dir),
-        "GIT_ALTERNATE_OBJECT_DIRECTORIES": str(common_git_dir / "objects"),
+        # Git splits this variable on ":" unless an entry is C-quoted, so always quote.
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES": _c_quote(str(common_git_dir / "objects")),
     }
+
+
+def _c_quote(value: str) -> str:
+    """Quote ``value`` the way git unquotes an entry in a path-list variable."""
+    escaped: list[str] = []
+    for char in value:
+        if char in ('"', "\\"):
+            escaped.append("\\" + char)
+        elif char == "\n":
+            escaped.append("\\n")
+        elif char == "\t":
+            escaped.append("\\t")
+        elif char < " " or char == "\x7f":
+            escaped.append(f"\\{ord(char):03o}")
+        else:
+            escaped.append(char)
+    return '"' + "".join(escaped) + '"'
 
 
 @dataclass(frozen=True)
@@ -179,6 +250,12 @@ class GitRunner:
         *,
         extra_env: Mapping[str, str] | None = None,
     ) -> GitResult:
+        """Run ``git --no-optional-locks -C <directory> <args>`` under the contract.
+
+        Repository-local variables inherited from the caller are removed, ``extra_env``
+        is applied, and the offline guards win. Timeouts, launch failures and non-zero
+        exits come back as ``GitResult`` values; this method never raises for them.
+        """
         argv = ["git", "--no-optional-locks", "-C", str(directory), *args]
         try:
             result = self._shell.run(
