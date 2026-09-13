@@ -170,3 +170,22 @@ def test_scan_with_snapshot_flag_prunes_to_retention(tmp_path, monkeypatch) -> N
     remaining = sorted(p.name for p in snapshot_dir.glob("*--auto.json"))
     # 5 seeded + 1 new = 6; prune(keep=3) leaves 3.
     assert len(remaining) == 3
+
+
+def test_filtered_scans_never_write_an_auto_snapshot(tmp_path, monkeypatch) -> None:
+    """A filtered report covers part of the disk; storing it reads as a drop (#103)."""
+    from devdoctor import history
+
+    client = _client(tmp_path, monkeypatch)
+    snapshot_dir = history.default_snapshot_dir()
+    for query in ("risk=safe", "min_size=100M", "provider=ollama"):
+        resp = client.get(
+            f"/api/scan?snapshot=true&snapshot_min_interval_ms=0&{query}",
+            headers={"Host": "testserver"},
+        )
+        assert resp.status_code == 200
+    assert not snapshot_dir.exists() or list(snapshot_dir.glob("*.json")) == []
+
+    resp = client.get("/api/scan?snapshot=true", headers={"Host": "testserver"})
+    assert resp.status_code == 200
+    assert len(list(snapshot_dir.glob("*--auto.json"))) == 1

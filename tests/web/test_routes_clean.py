@@ -184,3 +184,81 @@ async def test_unknown_entry_id_is_400(tmp_path, monkeypatch):
         )
         assert r.status_code == 400
         assert r.json()["error"]["code"] == "unknown_entry"
+
+
+@pytest.mark.asyncio
+async def test_cleanup_scan_is_uncontained_and_drops_contents_of_selected_worktrees(
+    tmp_path, monkeypatch
+):
+    from devdoctor.types import (
+        CommandAction,
+        DeletePathAction,
+        DiskUsage,
+        Entry,
+        Report,
+        Risk,
+    )
+    from devdoctor.web import routes_clean
+
+    worktree_path = tmp_path / "wt" / "feature"
+
+    def entry(provider, id_, path, risk, action):
+        return Entry(
+            provider=provider,
+            id=id_,
+            path=path,
+            label=str(path),
+            size_bytes=100,
+            mtime=None,
+            risk=risk,
+            recipe=[],
+            usage=DiskUsage(100, 100),
+            actions=(action,),
+        )
+
+    worktree = entry(
+        "git-worktrees",
+        "git-worktrees:feature",
+        worktree_path,
+        Risk.RECLAIMABLE,
+        CommandAction(
+            ("git", "-C", str(tmp_path / "app"), "worktree", "remove", str(worktree_path))
+        ),
+    )
+    inside = entry(
+        "node-project-dependencies",
+        "node:inside",
+        worktree_path / "node_modules",
+        Risk.DANGEROUS,
+        DeletePathAction(worktree_path / "node_modules"),
+    )
+    outside = entry(
+        "node-project-dependencies",
+        "node:outside",
+        tmp_path / "app" / "node_modules",
+        Risk.RECLAIMABLE,
+        DeletePathAction(tmp_path / "app" / "node_modules"),
+    )
+    contain_args: list[bool] = []
+
+    def fake_scan(providers, filters, now, *, contain=True):
+        contain_args.append(contain)
+        return Report(
+            entries=[worktree, inside, outside], scanned_at=now, hostname="h", platform="darwin"
+        )
+
+    monkeypatch.setattr(routes_clean.discovery, "scan", fake_scan)
+    app = _build(tmp_path, monkeypatch)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        r = await client.post(
+            "/api/clean/jobs",
+            json={"entry_ids": ["node:inside", "git-worktrees:feature", "node:outside"]},
+            headers={"Host": "testserver"},
+        )
+        assert r.status_code == 200
+        runner = app.state.runner_registry.active()
+        assert [e.id for e in runner.report.entries] == ["git-worktrees:feature", "node:outside"]
+        await runner.cancel()
+    assert contain_args == [False]

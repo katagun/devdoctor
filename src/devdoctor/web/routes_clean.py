@@ -10,6 +10,7 @@ from sse_starlette.sse import EventSourceResponse
 from starlette.responses import JSONResponse, Response
 
 from devdoctor import discovery, registry
+from devdoctor.containment import drop_contents_of_selected_worktrees
 from devdoctor.types import CleanupOpts, ScanFilters, ShellResult
 from devdoctor.web.cleanup_runner import CleanupRunner
 from devdoctor.web.models import CleanJobCreate, ConfirmAnswer, PromptAnswer
@@ -21,7 +22,9 @@ router = APIRouter(prefix="/api/clean")
 @router.post("/jobs")
 async def start_job(body: CleanJobCreate, request: Request) -> Response:
     providers_list = registry.load_providers(request.app.state.shell)
-    report = discovery.scan(providers_list, ScanFilters(), datetime.now(UTC))
+    # Uncontained: this scan establishes current state for the selection, so every id
+    # a filtered view could have shown still exists (spec §6.4).
+    report = discovery.scan(providers_list, ScanFilters(), datetime.now(UTC), contain=False)
     # Entry ids are globally unique (namespaced "{provider}:{id}" in
     # discovery.scan), so selecting by bare id can never cross providers.
     known_ids = {e.id for e in report.entries}
@@ -32,8 +35,12 @@ async def start_job(body: CleanJobCreate, request: Request) -> Response:
             content={"error": {"code": "unknown_entry", "ids": unknown}},
         )
     # Filter the report down to just the selected entries — cleanup walks candidates from there.
+    # Removing a selected worktree deletes its contents, so selected entries inside it
+    # are dropped rather than cleaned (and counted) a second time.
     selected = set(body.entry_ids)
-    report.entries = [e for e in report.entries if e.id in selected]
+    report.entries = drop_contents_of_selected_worktrees(
+        [e for e in report.entries if e.id in selected]
+    )
 
     registry_obj = request.app.state.runner_registry
 
