@@ -9,6 +9,7 @@ Spec: docs/superpowers/specs/2026-09-12-git-worktree-provider-design.md
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from collections.abc import Mapping, Sequence
@@ -100,6 +101,50 @@ def _worktree_record(fields: dict[str, str]) -> WorktreeRecord | None:
         lock_reason=fields.get("locked") or None,
         prunable="prunable" in fields,
         prunable_reason=fields.get("prunable") or None,
+    )
+
+
+@dataclass(frozen=True)
+class WorktreePointer:
+    """A directory whose ``.git`` is a file naming a linked worktree's git directory."""
+
+    path: Path
+    gitdir: Path
+    # The owning repository: ``<repo>`` for ``<repo>/.git/worktrees/<name>``, or the
+    # bare repository for ``<repo.git>/worktrees/<name>``. Derived from the path even
+    # when that path no longer exists.
+    repository: Path
+    # The gitdir does not exist, typically because the repository was moved.
+    broken: bool
+
+
+def read_worktree_pointer(directory: Path) -> WorktreePointer | None:
+    """Parse ``directory/.git`` when it is a file pointing at a linked worktree.
+
+    Submodules and other gitfiles are not worktrees and return None: only a gitdir
+    whose parent directory is named ``worktrees`` identifies a linked worktree. A
+    relative gitdir resolves against ``directory``.
+    """
+    dotgit = directory / ".git"
+    try:
+        if not dotgit.is_file() or dotgit.is_symlink():
+            return None
+        first_line = dotgit.read_text(encoding="utf-8", errors="replace").partition("\n")[0]
+    except OSError:
+        return None
+    raw = first_line.removeprefix("gitdir:").strip()
+    if raw == first_line.strip() or not raw:
+        return None
+    gitdir = Path(os.path.normpath(raw if os.path.isabs(raw) else directory / raw))
+    if gitdir.parent.name != "worktrees":
+        return None
+    admin = gitdir.parent.parent
+    repository = admin.parent if admin.name == ".git" else admin
+    return WorktreePointer(
+        path=directory,
+        gitdir=gitdir,
+        repository=repository,
+        broken=not gitdir.is_dir(),
     )
 
 

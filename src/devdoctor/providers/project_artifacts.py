@@ -4,9 +4,11 @@ import os
 import stat as stat_mod
 import threading
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 from devdoctor.ports import Shell
+from devdoctor.providers._git import WorktreePointer, read_worktree_pointer
 from devdoctor.providers._walk import (
     PROJECT_MARKER_FILES,
     PROJECT_ROOTS,
@@ -68,23 +70,47 @@ def _roots() -> list[Path]:
     return roots
 
 
+@dataclass(frozen=True)
+class GitCandidates:
+    """Git locations the project walk observed, for the git worktree provider (spec §4.2)."""
+
+    repositories: tuple[Path, ...]
+    pointers: tuple[WorktreePointer, ...]
+    folder_children: tuple[Path, ...]
+
+
+@dataclass(frozen=True)
+class _ProjectIndex:
+    matches: dict[str, tuple[tuple[Path, Path], ...]]
+    git: GitCandidates
+
+
 class ProjectArtifactIndex:
     """One bounded filesystem index shared by all project providers in a scan."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._matches: dict[str, tuple[tuple[Path, Path], ...]] | None = None
+        self._index: _ProjectIndex | None = None
 
     def candidates(self, query: str) -> tuple[tuple[Path, Path], ...]:
+        return self._built().matches[query]
+
+    def git_candidates(self) -> GitCandidates:
+        return self._built().git
+
+    def _built(self) -> _ProjectIndex:
         with self._lock:
-            if self._matches is None:
-                self._matches = _index_projects()
-            return self._matches[query]
+            if self._index is None:
+                self._index = _index_projects()
+            return self._index
 
 
-def _index_projects() -> dict[str, tuple[tuple[Path, Path], ...]]:
+def _index_projects() -> _ProjectIndex:
     matches: dict[str, list[tuple[Path, Path]]] = {query: [] for query in _PROJECT_QUERIES}
     seen_artifacts: set[tuple[int, int]] = set()
+    repositories: list[Path] = []
+    pointers: list[WorktreePointer] = []
+    folder_children: list[Path] = []
     for root in _roots():
         try:
             root_dev = root.lstat().st_dev
@@ -98,6 +124,17 @@ def _index_projects() -> dict[str, tuple[tuple[Path, Path], ...]]:
                 continue
 
             names = set(filenames)
+            # Observe git locations before pruning: `.git` itself is never descended into.
+            if ".git" in dirnames and _is_real_dir(project / ".git"):
+                repositories.append(project)
+            if ".git" in names:
+                pointer = read_worktree_pointer(project)
+                if pointer is not None:
+                    pointers.append(pointer)
+            if _is_worktree_folder(project):
+                folder_children.extend(
+                    project / name for name in sorted(dirnames) if _is_real_dir(project / name)
+                )
             for query, (marker_names, artifact_names) in _PROJECT_QUERIES.items():
                 if marker_names & names:
                     for artifact, key in _artifact_dirs(project, artifact_names):
@@ -111,7 +148,28 @@ def _index_projects() -> dict[str, tuple[tuple[Path, Path], ...]]:
                 if _walkable_child(project, name, _ALL_ARTIFACT_NAMES, root_dev)
             ]
             budget.descend(dirpath, dirnames, reset=bool(PROJECT_MARKER_FILES & names))
-    return {query: tuple(rows) for query, rows in matches.items()}
+    return _ProjectIndex(
+        matches={query: tuple(rows) for query, rows in matches.items()},
+        git=GitCandidates(
+            repositories=tuple(repositories),
+            pointers=tuple(pointers),
+            folder_children=tuple(folder_children),
+        ),
+    )
+
+
+def _is_real_dir(path: Path) -> bool:
+    try:
+        return stat_mod.S_ISDIR(path.lstat().st_mode)
+    except OSError:
+        return False
+
+
+def _is_worktree_folder(directory: Path) -> bool:
+    """``.worktrees``, or ``worktrees`` directly inside ``.claude`` (spec §4.2)."""
+    return directory.name == ".worktrees" or (
+        directory.name == "worktrees" and directory.parent.name == ".claude"
+    )
 
 
 def _artifact_dirs(
