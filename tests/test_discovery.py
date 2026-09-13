@@ -397,3 +397,10 @@ def test_scan_keeps_contents_when_the_filters_hide_the_worktree() -> None:
 def test_scan_with_a_provider_filter_excluding_worktrees_contains_nothing() -> None:
     report = _worktree_scan(ScanFilters(providers=frozenset({"node-project-dependencies"})))
     assert len(report.entries) == 3
+
+
+def test_provider_totals_ignore_the_view_filters() -> None:
+    unfiltered = {pt.name: pt.bytes for pt in _worktree_scan().per_provider}
+    report = _worktree_scan(ScanFilters(risks=frozenset({Risk.DANGEROUS})))
+    assert {pt.name: pt.bytes for pt in report.per_provider} == unfiltered
+    assert sum(pt.bytes for pt in report.per_provider) == 1_300

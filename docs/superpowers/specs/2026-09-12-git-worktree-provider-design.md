@@ -374,6 +374,15 @@ reconciled entry list, alongside the footprint, reclaimable and shared totals it
 already recomputes. Without this, `devdoctor diff` would double-count contained
 bytes.
 
+Provider totals are whole-scan totals under full containment, regardless of the
+view's filters: they are computed from the entry list contained with unfiltered
+`ScanFilters()`, while the returned entries are contained under the scan's
+filters (§6.2). A filtered view that hides a reclaimable worktree therefore still
+counts its contents once, under `git-worktrees`, and `devdoctor scan --json
+--risk …` and `GET /api/scan?risk=…` report the same totals as an unfiltered
+scan. With `contain=False` nothing is contained, and totals come from the
+uncontained list.
+
 When a worktree becomes integrated, its contents' bytes move from their own
 provider's total to `git-worktrees`. Diff reports that as a shift between
 providers, not as space freed. Snapshots and the dashboard summary are written

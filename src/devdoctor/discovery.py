@@ -190,8 +190,10 @@ def scan(
 
     With ``contain`` (the default), entries inside a reclaimable git worktree that
     the filtered view shows are removed, so their bytes count once, under
-    ``git-worktrees``. The web cleanup scan passes ``contain=False``: it
-    establishes current state for a selection, not what to display (spec §6.4).
+    ``git-worktrees``. Provider totals always use full containment, independent of
+    the view's filters, so a filtered scan never counts a byte twice (spec §6.3).
+    The web cleanup scan passes ``contain=False``: it establishes current state for
+    a selection, not what to display (spec §6.4).
     """
     started_at = datetime.now(UTC)
     # Freeze the set (and order) of available providers up front; availability
@@ -221,8 +223,13 @@ def scan(
 
     entries = _reconcile_shared_usage(entries)
     if contain:
+        # Totals are whole-scan totals: full containment, whatever the view shows (§6.3).
+        per_provider = _recompute_provider_totals(
+            per_provider, contain_worktree_contents(entries, ScanFilters())
+        )
         entries = contain_worktree_contents(entries, filters)
-    per_provider = _recompute_provider_totals(per_provider, entries)
+    else:
+        per_provider = _recompute_provider_totals(per_provider, entries)
 
     scanned_at = datetime.now(UTC)
     duration_ms = int((scanned_at - started_at).total_seconds() * 1000)
