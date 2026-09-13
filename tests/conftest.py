@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -41,6 +42,9 @@ class FakeShell:
     responses: dict[tuple[str, ...], ShellResult] = field(default_factory=dict)
     which_table: dict[str, str | None] = field(default_factory=dict)
     calls: list[tuple[str, ...]] = field(default_factory=list)
+    # The environment passed with each call, index-aligned with `calls` (None when
+    # a call passed no env). Kept separate so assertions on `calls` keep their shape.
+    envs: list[dict[str, str] | None] = field(default_factory=list)
     # Discovery runs providers concurrently (devdoctor.discovery.scan), and a
     # single shell instance can be shared across those providers, so record
     # calls under a lock to keep `calls` consistent under concurrent run().
@@ -52,6 +56,7 @@ class FakeShell:
         *,
         check: bool = False,
         timeout: float | None = None,
+        env: Mapping[str, str] | None = None,
     ) -> ShellResult:
         # `check` and `timeout` are accepted for Protocol conformance but
         # not enforced by the fake — tests configure their responses explicitly.
@@ -59,6 +64,7 @@ class FakeShell:
         key = tuple(argv)
         with self._lock:
             self.calls.append(key)
+            self.envs.append(None if env is None else dict(env))
         if key not in self.responses:
             raise AssertionError(f"FakeShell: unexpected call: {argv}")
         return self.responses[key]

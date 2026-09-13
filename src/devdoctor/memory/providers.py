@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Literal
 
@@ -121,6 +121,7 @@ class _NullShell:
         *,
         check: bool = False,
         timeout: float | None = None,
+        env: Mapping[str, str] | None = None,
     ) -> ShellResult:
         return ShellResult(returncode=1, stdout="", stderr="")
 
