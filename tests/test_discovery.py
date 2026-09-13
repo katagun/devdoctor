@@ -1,10 +1,11 @@
+import dataclasses
 from datetime import UTC, datetime
 from pathlib import Path
 
 from devdoctor import discovery
 from devdoctor.discovery import scan
 from devdoctor.providers.base import Provider
-from devdoctor.types import Entry, Risk, ScanFilters, SnapshotKind
+from devdoctor.types import DiskUsage, Entry, Risk, ScanFilters, SnapshotKind
 from tests.conftest import FakeShell
 
 
@@ -319,3 +320,80 @@ def test_scan_shares_shell_safely_across_concurrent_providers() -> None:
     report = discovery.scan(providers, ScanFilters(), datetime.now(UTC))
     assert {e.provider for e in report.entries} == {f"s{i}" for i in range(12)}
     assert len(report.per_provider) == 12
+
+
+def test_scan_keeps_unmeasured_entries_but_drops_measured_zero() -> None:
+    unmeasured = dataclasses.replace(
+        _fe(provider="git-worktrees", size=0), id="advice", usage=DiskUsage(None, None)
+    )
+    measured_zero = dataclasses.replace(
+        _fe(provider="git-worktrees", size=0), id="empty", usage=DiskUsage(0, 0)
+    )
+    p = _FakeProvider(name="git-worktrees", entries=[unmeasured, measured_zero])
+    report = discovery.scan([p], ScanFilters(), datetime.now(UTC))
+    assert [e.id for e in report.entries] == ["git-worktrees:advice"]
+    [timing] = report.per_provider
+    assert (timing.entries, timing.bytes) == (1, 0)
+
+
+def test_scan_min_size_hides_unmeasured_entries() -> None:
+    unmeasured = dataclasses.replace(_fe(size=0), usage=DiskUsage(None, None))
+    p = _FakeProvider(entries=[unmeasured, _fe(size=500)])
+    report = discovery.scan([p], ScanFilters(min_size_bytes=1), datetime.now(UTC))
+    assert [e.size_bytes for e in report.entries] == [500]
+
+
+def _at(provider: str, path: str, size: int, risk: Risk = Risk.RECLAIMABLE) -> Entry:
+    return dataclasses.replace(
+        _fe(provider=provider, size=size),
+        id=path,
+        path=Path(path),
+        label=path,
+        risk=risk,
+        usage=DiskUsage(size, size),
+    )
+
+
+def _worktree_scan(filters: ScanFilters | None = None, **kwargs):
+    worktrees = _FakeProvider(
+        name="git-worktrees", entries=[_at("git-worktrees", "/p/wt/feature", 1_000)]
+    )
+    node = _FakeProvider(
+        name="node-project-dependencies",
+        entries=[
+            _at("node-project-dependencies", "/p/wt/feature/node_modules", 600),
+            _at("node-project-dependencies", "/p/app/node_modules", 300),
+            _at("node-project-dependencies", "/p/wt/feature/web/node_modules", 50, Risk.DANGEROUS),
+        ],
+    )
+    return discovery.scan([worktrees, node], filters or ScanFilters(), datetime.now(UTC), **kwargs)
+
+
+def test_scan_contains_entries_inside_a_reclaimable_worktree() -> None:
+    report = _worktree_scan()
+    assert sorted(str(e.path) for e in report.entries) == ["/p/app/node_modules", "/p/wt/feature"]
+    timings = {pt.name: pt for pt in report.per_provider}
+    assert (
+        timings["node-project-dependencies"].bytes,
+        timings["node-project-dependencies"].entries,
+    ) == (300, 1)
+    assert timings["node-project-dependencies"].footprint_bytes == 300
+    assert (timings["git-worktrees"].bytes, timings["git-worktrees"].entries) == (1_000, 1)
+    assert sum(pt.bytes for pt in report.per_provider) == report.total_bytes() == 1_300
+
+
+def test_scan_without_containment_keeps_every_entry() -> None:
+    report = _worktree_scan(contain=False)
+    assert len(report.entries) == 4
+    timings = {pt.name: pt for pt in report.per_provider}
+    assert timings["node-project-dependencies"].entries == 3
+
+
+def test_scan_keeps_contents_when_the_filters_hide_the_worktree() -> None:
+    report = _worktree_scan(ScanFilters(risks=frozenset({Risk.DANGEROUS})))
+    assert [str(e.path) for e in report.entries] == ["/p/wt/feature/web/node_modules"]
+
+
+def test_scan_with_a_provider_filter_excluding_worktrees_contains_nothing() -> None:
+    report = _worktree_scan(ScanFilters(providers=frozenset({"node-project-dependencies"})))
+    assert len(report.entries) == 3

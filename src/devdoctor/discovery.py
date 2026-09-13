@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from devdoctor.containment import contain_worktree_contents
 from devdoctor.providers.base import Provider
 from devdoctor.types import (
     DiskUsage,
@@ -131,8 +132,10 @@ def _discover_one(p: Provider) -> _ProviderResult:
         # "nothing to reclaim" — most commonly cloud-hosted ollama models
         # (`ollama list` reports `-` for size, which parses to 0), but also
         # empty cache directories. Surfacing them is noise that the user
-        # can't act on.
-        provider_entries = [e for e in p.discover() if e.display_bytes > 0]
+        # can't act on. Entries a provider deliberately left unmeasured
+        # (`DiskUsage(None, None)`, such as advice-only git worktrees) are kept:
+        # their size is unknown, not zero.
+        provider_entries = [e for e in p.discover() if e.display_bytes > 0 or e.is_unmeasured]
     except Exception as exc:  # isolate one provider's failure from the scan
         dt_ms = int((time.monotonic() - t0) * 1000)
         msg = f"{p.name}: discovery failed: {exc}"
@@ -167,6 +170,8 @@ def scan(
     providers: list[Provider],
     filters: ScanFilters,
     now: datetime,
+    *,
+    contain: bool = True,
 ) -> Report:
     """Run every available provider, collect entries, apply filters, sort.
 
@@ -182,6 +187,11 @@ def scan(
     timings are immune to NTP adjustments mid-scan. The returned Report
     has kind=MANUAL by default; the API layer overrides to AUTO when it's
     about to write an auto-snapshot.
+
+    With ``contain`` (the default), entries inside a reclaimable git worktree that
+    the filtered view shows are removed, so their bytes count once, under
+    ``git-worktrees``. The web cleanup scan passes ``contain=False``: it
+    establishes current state for a selection, not what to display (spec §6.4).
     """
     started_at = datetime.now(UTC)
     # Freeze the set (and order) of available providers up front; availability
@@ -210,22 +220,9 @@ def scan(
             per_provider.append(result.timing)
 
     entries = _reconcile_shared_usage(entries)
-    timing_by_name = {timing.name: timing for timing in per_provider}
-    per_provider = [
-        dataclasses.replace(
-            timing,
-            footprint_bytes=unique_footprint_bytes(
-                [entry for entry in entries if entry.provider == timing.name]
-            ),
-            reclaimable_bytes=estimated_reclaimable_bytes(
-                [entry for entry in entries if entry.provider == timing.name]
-            ),
-            shared_bytes=unique_shared_bytes(
-                [entry for entry in entries if entry.provider == timing.name]
-            ),
-        )
-        for timing in (timing_by_name[name] for name in timing_by_name)
-    ]
+    if contain:
+        entries = contain_worktree_contents(entries, filters)
+    per_provider = _recompute_provider_totals(per_provider, entries)
 
     scanned_at = datetime.now(UTC)
     duration_ms = int((scanned_at - started_at).total_seconds() * 1000)
@@ -247,7 +244,7 @@ def scan(
         diagnostics=diagnostics,
     )
 
-    if filters.min_size_bytes or filters.risks is not None or filters.providers is not None:
+    if not filters.is_unfiltered:
         report = report.filter(
             risks=filters.risks,
             min_size=filters.min_size_bytes,
@@ -255,6 +252,34 @@ def scan(
         )
 
     return report
+
+
+def _recompute_provider_totals(
+    per_provider: list[ProviderTiming], entries: list[Entry]
+) -> list[ProviderTiming]:
+    """Recompute every provider total from the reconciled, contained entry list.
+
+    ``bytes`` and ``entries`` were first computed in ``_discover_one``, before
+    containment; ``history.diff`` sums ``bytes``, so leaving them would count
+    contained bytes twice (spec §6.3).
+    """
+    by_provider: dict[str, list[Entry]] = {}
+    for entry in entries:
+        by_provider.setdefault(entry.provider, []).append(entry)
+    totals: list[ProviderTiming] = []
+    for timing in per_provider:
+        own = by_provider.get(timing.name, [])
+        totals.append(
+            dataclasses.replace(
+                timing,
+                bytes=sum(entry.size_bytes for entry in own),
+                entries=len(own),
+                footprint_bytes=unique_footprint_bytes(own),
+                reclaimable_bytes=estimated_reclaimable_bytes(own),
+                shared_bytes=unique_shared_bytes(own),
+            )
+        )
+    return totals
 
 
 def _platform() -> str:
