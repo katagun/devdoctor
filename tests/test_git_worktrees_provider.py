@@ -300,8 +300,8 @@ def test_discover_writes_no_objects_and_removes_its_temporary_directory(app, pro
         for _, env in shell.calls
         if env and env.get("GIT_OBJECT_DIRECTORY")
     }
-    assert len(object_dirs) == 1
-    assert not Path(object_dirs.pop()).exists()
+    [object_dir] = object_dirs
+    assert not Path(object_dir).exists()
 
 
 def test_every_git_call_is_offline(app, projects):
