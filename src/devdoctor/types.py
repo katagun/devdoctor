@@ -190,6 +190,15 @@ class Entry:
         return self.usage.footprint_bytes if self.usage is not None else self.size_bytes
 
     @property
+    def is_unmeasured(self) -> bool:
+        """The provider deliberately did not size this entry: ``DiskUsage(None, None)``."""
+        return (
+            self.usage is not None
+            and self.usage.footprint_bytes is None
+            and self.usage.reclaimable_bytes is None
+        )
+
+    @property
     def reclaimable_bytes(self) -> int | None:
         return self.usage.reclaimable_bytes if self.usage is not None else self.size_bytes
 
@@ -299,6 +308,30 @@ class ScanFilters:
     risks: frozenset[Risk] | None = None
     providers: frozenset[str] | None = None
 
+    @property
+    def is_unfiltered(self) -> bool:
+        """Whether the scan shows everything: only such scans may be stored or summarised."""
+        return self.min_size_bytes == 0 and self.risks is None and self.providers is None
+
+
+def entry_matches_filters(
+    entry: Entry,
+    *,
+    risks: set[Risk] | frozenset[Risk] | None = None,
+    min_size: int = 0,
+    providers: set[str] | frozenset[str] | None = None,
+) -> bool:
+    """Whether ``entry`` passes a scan's filters.
+
+    ``Report.filter`` and worktree containment both use this, so the entries a view
+    shows and the worktrees that may hide their contents can never disagree.
+    """
+    if risks is not None and entry.risk not in risks:
+        return False
+    if providers is not None and entry.provider not in providers:
+        return False
+    return entry.display_bytes >= min_size
+
 
 @dataclass(frozen=True)
 class CleanupOpts:
@@ -401,15 +434,12 @@ class Report:
         min_size: int = 0,
         providers: set[str] | frozenset[str] | None = None,
     ) -> Report:
-        def keep(e: Entry) -> bool:
-            if risks is not None and e.risk not in risks:
-                return False
-            if providers is not None and e.provider not in providers:
-                return False
-            return e.display_bytes >= min_size
-
         return Report(
-            entries=[e for e in self.entries if keep(e)],
+            entries=[
+                e
+                for e in self.entries
+                if entry_matches_filters(e, risks=risks, min_size=min_size, providers=providers)
+            ],
             scanned_at=self.scanned_at,
             hostname=self.hostname,
             platform=self.platform,
