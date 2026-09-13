@@ -26,8 +26,13 @@ from devdoctor.providers._git import (
 )
 from devdoctor.providers._worktree_states import Integration
 
-# Tried in order after origin/HEAD (spec §4.4).
-DEFAULT_BRANCH_FALLBACKS: tuple[str, ...] = ("origin/main", "origin/master")
+# Tried in order after origin/HEAD (spec §4.4). Always full ref names: a short name
+# such as "origin/main" also matches a tag or local branch of that name first.
+DEFAULT_BRANCH_FALLBACKS: tuple[str, ...] = (
+    "refs/remotes/origin/main",
+    "refs/remotes/origin/master",
+)
+_REMOTE_REFS = "refs/remotes/"
 
 # Commits per batched `git log`, keeping argv far below the platform limit (spec §4.2).
 HEAD_TIMES_CHUNK = 500
@@ -46,8 +51,9 @@ class GitQueryError(Exception):
 
 @dataclass(frozen=True)
 class DefaultBranch:
-    name: str  # a revision such as "origin/main"
-    tree: str  # the tree of the commit it names
+    name: str  # for display, such as "origin/main"; never passed to git
+    commit: str  # the commit the ref pointed at when resolved
+    tree: str  # that commit's tree
 
 
 @dataclass(frozen=True)
@@ -68,24 +74,40 @@ def list_worktrees(git: GitRunner, repository: Path) -> list[WorktreeRecord]:
 def resolve_default_branch(git: GitRunner, repository: Path) -> DefaultBranch | None:
     """``origin/HEAD``, then ``origin/main``, then ``origin/master`` (spec §4.4).
 
-    A candidate counts only if it resolves to a tree, so a dangling ``origin/HEAD``
-    falls through to the next candidate.
+    Each candidate is an exact remote-tracking ref: ``show-ref --verify`` reads only
+    that ref, where ``rev-parse`` would also accept a tag named after it. A candidate
+    counts only if it names a commit, so a dangling ``origin/HEAD`` falls through to
+    the next candidate. Later checks use the commit id, never the name.
     """
     candidates: list[str] = []
-    symbolic = git.run(
-        repository, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]
-    )
+    symbolic = git.run(repository, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])
     target = symbolic.stdout.strip()
-    # A name starting with "-" would be read as an option by later calls.
-    if symbolic.ok and target and not target.startswith("-"):
+    if symbolic.ok and target.startswith(_REMOTE_REFS):
         candidates.append(target)
-    candidates.extend(name for name in DEFAULT_BRANCH_FALLBACKS if name not in candidates)
-    for name in candidates:
-        result = git.run(repository, ["rev-parse", "--verify", "--quiet", f"{name}^{{tree}}"])
-        tree = result.stdout.strip()
-        if result.ok and _OID_RE.fullmatch(tree):
-            return DefaultBranch(name=name, tree=tree)
+    candidates.extend(ref for ref in DEFAULT_BRANCH_FALLBACKS if ref not in candidates)
+    for ref in candidates:
+        commit = _peel(git, repository, ref)
+        if commit is None:
+            continue
+        tree = _rev_parse(git, repository, f"{commit}^{{tree}}")
+        if tree is not None:
+            return DefaultBranch(name=ref.removeprefix(_REMOTE_REFS), commit=commit, tree=tree)
     return None
+
+
+def _peel(git: GitRunner, repository: Path, ref: str) -> str | None:
+    """The commit ``ref`` points at, or None if that exact ref names no commit."""
+    result = git.run(repository, ["show-ref", "--verify", "--hash", ref])
+    target = result.stdout.strip()
+    if not result.ok or not _OID_RE.fullmatch(target):
+        return None
+    return _rev_parse(git, repository, f"{target}^{{commit}}")
+
+
+def _rev_parse(git: GitRunner, repository: Path, revision: str) -> str | None:
+    result = git.run(repository, ["rev-parse", "--verify", "--quiet", revision])
+    oid = result.stdout.strip()
+    return oid if result.ok and _OID_RE.fullmatch(oid) else None
 
 
 def is_partial_clone(git: GitRunner, repository: Path) -> bool:
@@ -155,7 +177,7 @@ def check_integration(
     ``merge-base --is-ancestor``, which detects only true merges and fast-forwards.
     """
     if merge_tree is None:
-        result = git.run(repository, ["merge-base", "--is-ancestor", head, default.name])
+        result = git.run(repository, ["merge-base", "--is-ancestor", head, default.commit])
         if result.returncode == 0:
             return Integration.INTEGRATED
         if result.returncode == 1:
@@ -163,7 +185,7 @@ def check_integration(
         raise GitQueryError.from_result(result)
     result = git.run(
         repository,
-        ["merge-tree", "--write-tree", default.name, head],
+        ["merge-tree", "--write-tree", default.commit, head],
         extra_env=merge_tree_env(merge_tree.objects_dir, merge_tree.common_git_dir),
     )
     tree = result.stdout.partition("\n")[0]

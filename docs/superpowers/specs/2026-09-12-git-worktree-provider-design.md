@@ -188,8 +188,11 @@ On the eight real repositories, merge-tree found 59 integrated worktrees; 7 of
 them are invisible to `is-ancestor`.
 
 **Default branch:** `symbolic-ref refs/remotes/origin/HEAD`, then `origin/main`,
-then `origin/master`. If none resolves, every worktree in that repository is
-advice-only. All eight measured repositories resolved through `origin/HEAD`.
+then `origin/master`. Each is read as an exact `refs/remotes/` ref
+(`show-ref --verify`), so a tag or local branch named `origin/main` cannot stand
+in for it, and later calls use the commit id it resolved to, never the name. If
+none resolves, every worktree in that repository is advice-only. All eight
+measured repositories resolved through `origin/HEAD`.
 
 **Staleness errs safe.** The provider never fetches, so the local default-branch
 ref may lag the remote. A lagging ref can only make an integrated worktree look

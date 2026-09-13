@@ -480,3 +480,27 @@ def test_inaccessible_worktree_is_a_diagnostic_and_the_others_classify(app, proj
         ]
     finally:
         sealed_dir.chmod(0o755)
+
+
+def _shadow_with_tag(app, worktree):
+    app.git("tag", "origin/main", worktree.rev())
+
+
+@pytest.mark.parametrize(
+    ("branch", "shadow"),
+    [
+        pytest.param("feature", _shadow_with_tag, id="tag-named-origin-main"),
+        pytest.param("origin/main", None, id="local-branch-named-origin-main"),
+    ],
+)
+def test_refs_named_like_the_default_branch_do_not_shadow_it(app, projects, branch, shadow):
+    worktree = app.add_worktree(projects / "wt" / "feature", branch)
+    worktree.commit("Unmerged work", {"work.txt": "work\n"})
+    app.git("update-ref", "refs/remotes/origin/main", "main")  # and no origin/HEAD
+    if shadow is not None:
+        shadow(app, worktree)
+
+    entry = _entry(_discover()[0], worktree.path)
+
+    assert entry.label.endswith(" · not integrated")
+    assert entry.risk is not Risk.RECLAIMABLE

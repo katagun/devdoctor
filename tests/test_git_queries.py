@@ -28,15 +28,31 @@ REPO = Path("/r/app")
 TREE = "a" * 40
 OTHER_TREE = "b" * 40
 HEAD = "c" * 40
-SYMBOLIC_REF = ("symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+COMMIT = "d" * 40
+SYMBOLIC_REF = ("symbolic-ref", "--quiet", "refs/remotes/origin/HEAD")
 
 
 def _argv(directory: Path, *args: str) -> tuple[str, ...]:
     return ("git", "--no-optional-locks", "-C", str(directory), *args)
 
 
-def _tree_of(name: str) -> tuple[str, ...]:
-    return ("rev-parse", "--verify", "--quiet", f"{name}^{{tree}}")
+def _show_ref(ref: str) -> tuple[str, ...]:
+    return _argv(REPO, "show-ref", "--verify", "--hash", ref)
+
+
+def _rev_parse(revision: str) -> tuple[str, ...]:
+    return _argv(REPO, "rev-parse", "--verify", "--quiet", revision)
+
+
+def _resolves(
+    ref: str, commit: str = COMMIT, tree: str = TREE
+) -> dict[tuple[str, ...], ShellResult]:
+    """Responses for a ref that exists and points at ``commit``."""
+    return {
+        _show_ref(ref): _ok(f"{commit}\n"),
+        _rev_parse(f"{commit}^{{commit}}"): _ok(f"{commit}\n"),
+        _rev_parse(f"{commit}^{{tree}}"): _ok(f"{tree}\n"),
+    }
 
 
 def _ok(stdout: str = "") -> ShellResult:
@@ -58,52 +74,65 @@ def _git(responses: dict[tuple[str, ...], ShellResult]) -> tuple[GitRunner, Fake
 def test_default_branch_follows_origin_head():
     git, _ = _git(
         {
-            _argv(REPO, *SYMBOLIC_REF): _ok("origin/trunk\n"),
-            _argv(REPO, *_tree_of("origin/trunk")): _ok(f"{TREE}\n"),
+            _argv(REPO, *SYMBOLIC_REF): _ok("refs/remotes/origin/trunk\n"),
+            **_resolves("refs/remotes/origin/trunk"),
         }
     )
-    assert resolve_default_branch(git, REPO) == DefaultBranch("origin/trunk", TREE)
+    assert resolve_default_branch(git, REPO) == DefaultBranch("origin/trunk", COMMIT, TREE)
 
 
 def test_default_branch_falls_back_to_origin_main_then_origin_master():
     git, _ = _git(
         {
             _argv(REPO, *SYMBOLIC_REF): _exit(1),
-            _argv(REPO, *_tree_of("origin/main")): _exit(1),
-            _argv(REPO, *_tree_of("origin/master")): _ok(f"{TREE}\n"),
+            _show_ref("refs/remotes/origin/main"): _exit(128, "fatal: not a valid ref"),
+            **_resolves("refs/remotes/origin/master"),
         }
     )
-    assert resolve_default_branch(git, REPO) == DefaultBranch("origin/master", TREE)
+    assert resolve_default_branch(git, REPO) == DefaultBranch("origin/master", COMMIT, TREE)
 
 
 def test_dangling_origin_head_falls_through_to_origin_main():
     git, _ = _git(
         {
-            _argv(REPO, *SYMBOLIC_REF): _ok("origin/gone\n"),
-            _argv(REPO, *_tree_of("origin/gone")): _exit(128, "fatal: bad revision"),
-            _argv(REPO, *_tree_of("origin/main")): _ok(f"{TREE}\n"),
+            _argv(REPO, *SYMBOLIC_REF): _ok("refs/remotes/origin/gone\n"),
+            _show_ref("refs/remotes/origin/gone"): _exit(128, "fatal: not a valid ref"),
+            **_resolves("refs/remotes/origin/main"),
         }
     )
-    assert resolve_default_branch(git, REPO) == DefaultBranch("origin/main", TREE)
+    assert resolve_default_branch(git, REPO) == DefaultBranch("origin/main", COMMIT, TREE)
 
 
-def test_option_like_origin_head_is_never_passed_to_git():
+@pytest.mark.parametrize("target", ["--output=x", "refs/heads/main", "origin/main"])
+def test_origin_head_outside_remote_refs_is_never_passed_to_git(target):
     git, shell = _git(
         {
-            _argv(REPO, *SYMBOLIC_REF): _ok("--output=x\n"),
-            _argv(REPO, *_tree_of("origin/main")): _ok(f"{TREE}\n"),
+            _argv(REPO, *SYMBOLIC_REF): _ok(f"{target}\n"),
+            **_resolves("refs/remotes/origin/main"),
         }
     )
-    assert resolve_default_branch(git, REPO) == DefaultBranch("origin/main", TREE)
-    assert all("--output=x" not in " ".join(call) for call in shell.calls[1:])
+    assert resolve_default_branch(git, REPO) == DefaultBranch("origin/main", COMMIT, TREE)
+    assert all(target not in call for call in shell.calls[1:])
+
+
+def test_ref_that_names_no_commit_falls_through():
+    git, _ = _git(
+        {
+            _argv(REPO, *SYMBOLIC_REF): _exit(1),
+            _show_ref("refs/remotes/origin/main"): _ok(f"{TREE}\n"),
+            _rev_parse(f"{TREE}^{{commit}}"): _exit(1),
+            **_resolves("refs/remotes/origin/master"),
+        }
+    )
+    assert resolve_default_branch(git, REPO) == DefaultBranch("origin/master", COMMIT, TREE)
 
 
 def test_no_default_branch_when_nothing_resolves():
     git, _ = _git(
         {
             _argv(REPO, *SYMBOLIC_REF): _exit(1),
-            _argv(REPO, *_tree_of("origin/main")): _exit(1),
-            _argv(REPO, *_tree_of("origin/master")): _exit(1),
+            _show_ref("refs/remotes/origin/main"): _exit(128),
+            _show_ref("refs/remotes/origin/master"): _exit(128),
         }
     )
     assert resolve_default_branch(git, REPO) is None
@@ -136,10 +165,10 @@ def test_is_partial_clone(result, expected):
 
 # --- integration -----------------------------------------------------------------
 
-DEFAULT = DefaultBranch("origin/main", TREE)
+DEFAULT = DefaultBranch("origin/main", COMMIT, TREE)
 CONTEXT = MergeTreeContext(Path("/tmp/objects"), Path("/r/app/.git"))
-MERGE_TREE = ("merge-tree", "--write-tree", "origin/main", HEAD)
-IS_ANCESTOR = ("merge-base", "--is-ancestor", HEAD, "origin/main")
+MERGE_TREE = ("merge-tree", "--write-tree", COMMIT, HEAD)
+IS_ANCESTOR = ("merge-base", "--is-ancestor", HEAD, COMMIT)
 
 
 @pytest.mark.parametrize(
@@ -165,7 +194,7 @@ def test_merge_tree_integration(result, expected):
 
 def test_merge_tree_error_without_a_tree_raises_with_the_first_stderr_line():
     git, _ = _git(
-        {_argv(REPO, *MERGE_TREE): _exit(1, "merge-tree: origin/main - not something we can merge")}
+        {_argv(REPO, *MERGE_TREE): _exit(1, f"merge-tree: {COMMIT} - not something we can merge")}
     )
     with pytest.raises(GitQueryError, match="not something we can merge"):
         check_integration(git, REPO, default=DEFAULT, head=HEAD, merge_tree=CONTEXT)
@@ -408,11 +437,11 @@ def test_real_default_branch_prefers_origin_head_then_origin_master(git_fixture,
     assert resolve_default_branch(REAL_GIT, repo.path) is None
     repo.git("update-ref", "refs/remotes/origin/master", "main")
     assert resolve_default_branch(REAL_GIT, repo.path) == DefaultBranch(
-        "origin/master", repo.rev("main^{tree}")
+        "origin/master", repo.rev("main"), repo.rev("main^{tree}")
     )
     repo.publish()
     assert resolve_default_branch(REAL_GIT, repo.path) == DefaultBranch(
-        "origin/main", repo.rev("main^{tree}")
+        "origin/main", repo.rev("main"), repo.rev("main^{tree}")
     )
 
 
@@ -456,3 +485,15 @@ def test_real_worktree_status(git_fixture, tmp_path):
     (worktree.path / "README").write_text("changed\n")
     (worktree.path / "new.txt").write_text("new\n")
     assert worktree_status(REAL_GIT, worktree.path) == StatusCounts(modified=1, untracked=1)
+
+
+def test_real_default_branch_ignores_a_tag_named_like_a_remote_ref(git_fixture, tmp_path):
+    repo = git_fixture.repository(tmp_path / "app")
+    base = repo.rev()
+    repo.git("update-ref", "refs/remotes/origin/master", "main")
+    unmerged = repo.commit("Unmerged", {"work.txt": "work\n"})
+    # `rev-parse refs/remotes/origin/main` would find refs/tags/refs/remotes/origin/main.
+    repo.git("tag", "refs/remotes/origin/main", unmerged)
+    default = resolve_default_branch(REAL_GIT, repo.path)
+    assert default is not None
+    assert (default.name, default.commit) == ("origin/master", base)
