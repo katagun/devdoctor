@@ -595,3 +595,19 @@ def test_real_ownership_check_does_not_block_on_a_fifo_backlink(git_fixture, tmp
     check.start()
     check.join(timeout=10)
     assert outcome == [False]
+
+
+def test_real_ownership_check_treats_an_unreadable_admin_directory_as_not_owned(
+    git_fixture, tmp_path
+):
+    if os.geteuid() == 0:
+        pytest.skip("root ignores permissions")
+    repo = git_fixture.repository(tmp_path / "app")
+    worktree = repo.add_worktree(tmp_path / "feature", "feature")
+    admin_dir = repo.path / ".git" / "worktrees" / "feature"
+    old_mode = admin_dir.stat().st_mode
+    try:
+        os.chmod(admin_dir, 0o600)
+        assert worktree_belongs_to(REAL_GIT, worktree.path, repo.path / ".git") is False
+    finally:
+        os.chmod(admin_dir, old_mode)

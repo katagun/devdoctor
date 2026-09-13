@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import re
+import stat
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -201,13 +202,21 @@ def check_integration(
 
 def _read_backlink(path: Path) -> str | None:
     """The first line of a worktree's ``gitdir`` file, or None if it cannot be trusted."""
-    # Only a regular file: reading a FIFO placed there would block the worker forever.
-    if not path.is_file():
-        return None
+    # O_NONBLOCK: opening a FIFO never waits for a writer; fstat then rejects it.
+    # Wrap every filesystem call: PermissionError is not swallowed by Path methods.
     try:
-        line = path.read_text(encoding="utf-8", errors="replace").partition("\n")[0]
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
     except OSError:
         return None
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            return None
+        raw = os.read(fd, 65536)
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+    line = raw.decode("utf-8", errors="replace").partition("\n")[0]
     return line if line and "\0" not in line else None
 
 
