@@ -37,7 +37,11 @@ class WorktreeFacts:
     Facts are gathered in spec §5.1 order and later ones stay ``None`` until needed:
     ``integration`` is only checked once the default branch is known, and
     ``status`` only once the worktree is known to be integrated. ``failure`` records
-    the first git call among those later checks that failed.
+    the first git call that failed.
+
+    ``toplevel_ok`` is whether the directory was shown to still belong to its
+    registered worktree. When it is false, ``failure`` says whether git could not
+    answer (a git error) or answered that it does not (a broken pointer).
     """
 
     toplevel_ok: bool
@@ -52,7 +56,7 @@ class WorktreeFacts:
 def classify(facts: WorktreeFacts) -> WorktreeState | None:  # noqa: PLR0911
     """Return the first matching state (spec §5.1), or ``None`` if more facts are needed."""
     if not facts.toplevel_ok:
-        return WorktreeState.BROKEN_POINTER
+        return WorktreeState.BROKEN_POINTER if facts.failure is None else WorktreeState.GIT_ERROR
     if facts.locked:
         return WorktreeState.LOCKED
     if facts.default_branch is None:
@@ -97,12 +101,21 @@ def advice_message(
     failure: str | None = None,
     status: StatusCounts | None = None,
 ) -> str:
-    """The advice text for an advice-only state (spec §5.2)."""
-    if state is WorktreeState.BROKEN_POINTER:
+    """The advice text for an advice-only state (spec §5.2).
+
+    For a broken pointer, ``gitdir`` is the missing git directory a ``.git`` file
+    names; without one, the ``.git`` does not point back to ``repository``.
+    """
+    if state is WorktreeState.BROKEN_POINTER and gitdir is not None:
         message = (
             f"This worktree's .git file points to {gitdir}, which does not exist; the "
             f'repository was probably moved. Run "git -C {repository} worktree repair", '
             "then rescan."
+        )
+    elif state is WorktreeState.BROKEN_POINTER:
+        message = (
+            f"This worktree's .git does not point back to {repository}. Run "
+            f'"git -C {repository} worktree repair", then rescan.'
         )
     elif state is WorktreeState.LOCKED:
         message = f"Locked by git: {lock_reason}." if lock_reason else "Locked by git."

@@ -23,6 +23,7 @@ from devdoctor.providers._git import (
     merge_tree_env,
     parse_status_porcelain,
     parse_worktree_porcelain,
+    read_worktree_pointer,
 )
 from devdoctor.providers._worktree_states import Integration
 
@@ -198,11 +199,47 @@ def check_integration(
     return Integration.NOT_INTEGRATED
 
 
-def toplevel_matches(git: GitRunner, worktree: Path) -> bool:
-    """Whether git resolves ``worktree`` to itself. False for a broken ``.git`` pointer."""
-    result = git.run(worktree, ["rev-parse", "--show-toplevel"])
-    toplevel = result.stdout.rstrip("\n")
-    return result.ok and bool(toplevel) and os.path.realpath(toplevel) == os.path.realpath(worktree)
+def worktree_belongs_to(git: GitRunner, worktree: Path, common_dir: Path) -> bool:
+    """Whether ``worktree`` is still the linked worktree of the repository at ``common_dir``.
+
+    From the filesystem: ``<worktree>/.git`` is a worktree pointer whose git directory
+    exists inside ``common_dir``, and that directory's ``gitdir`` file names this
+    ``.git`` back. Then git, run inside the worktree, must agree on the toplevel and
+    the common directory. False when any of these disagree (spec §5.1, state 3).
+
+    Raises ``GitQueryError`` only when the filesystem checks pass and git cannot answer.
+    """
+    pointer = read_worktree_pointer(worktree)
+    if pointer is None or pointer.broken:
+        return False
+    common = os.path.realpath(common_dir)
+    if os.path.realpath(pointer.gitdir.parent.parent) != common:
+        return False
+    try:
+        back = (pointer.gitdir / "gitdir").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    # git writes an absolute path, or one relative to the git directory (--relative-paths).
+    back = back.partition("\n")[0]
+    if not back or "\0" in back:
+        return False
+    if os.path.realpath(pointer.gitdir / back) != os.path.realpath(worktree / ".git"):
+        return False
+    result = git.run(
+        worktree, ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"]
+    )
+    if not result.ok:
+        raise GitQueryError.from_result(result)
+    # A path containing a newline splits wrongly here and reads as not belonging.
+    lines = result.stdout.split("\n")
+    return (
+        len(lines) == 3  # noqa: PLR2004 - two paths and the final newline
+        and lines[2] == ""
+        and bool(lines[0])
+        and bool(lines[1])
+        and os.path.realpath(lines[0]) == os.path.realpath(worktree)
+        and os.path.realpath(lines[1]) == common
+    )
 
 
 def worktree_status(git: GitRunner, worktree: Path) -> StatusCounts:

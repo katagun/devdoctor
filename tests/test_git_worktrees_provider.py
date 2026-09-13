@@ -504,3 +504,94 @@ def test_refs_named_like_the_default_branch_do_not_shadow_it(app, projects, bran
 
     assert entry.label.endswith(" · not integrated")
     assert entry.risk is not Risk.RECLAIMABLE
+
+
+def _does_not_point_back(repository):
+    return (
+        f"This worktree's .git does not point back to {repository}. Run "
+        f'"git -C {repository} worktree repair", then rescan.'
+    )
+
+
+def test_directory_replaced_by_another_repository_is_a_broken_pointer(app, projects):
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    _merge(app, worktree)
+    app.publish()
+    (worktree.path / ".git").unlink()
+    subprocess.run(["git", "init", "-q", str(worktree.path)], capture_output=True, check=True)
+    (worktree.path / ".gitignore").write_text("*\n")
+
+    entry = _entry(_discover()[0], worktree.path)
+
+    assert entry.label == "app/feature · broken pointer"
+    _assert_advice_shape(entry)
+    assert _advice(entry) == _does_not_point_back(app.path)
+
+
+def test_pointer_copied_from_another_worktree_is_a_broken_pointer(app, projects):
+    first = app.add_worktree(projects / "wt" / "first", "first")
+    second = app.add_worktree(projects / "wt" / "second", "second")
+    _merge(app, first, branch="first")
+    _merge(app, second, branch="second")
+    app.publish()
+    (second.path / ".git").write_text((first.path / ".git").read_text())
+
+    entries = _discover()[0]
+
+    entry = _entry(entries, second.path)
+    assert entry.label == "app/second · broken pointer"
+    _assert_advice_shape(entry)
+    assert _advice(entry) == _does_not_point_back(app.path)
+    assert _entry(entries, first.path).risk is Risk.RECLAIMABLE
+
+
+def _ownership_argv(worktree):
+    return (
+        "git",
+        "--no-optional-locks",
+        "-C",
+        str(worktree),
+        "rev-parse",
+        "--path-format=absolute",
+        "--show-toplevel",
+        "--git-common-dir",
+    )
+
+
+def test_ownership_timeout_with_an_intact_pointer_is_a_git_error(app, projects):
+    slow = app.add_worktree(projects / "wt" / "slow", "slow")
+    fast = app.add_worktree(projects / "wt" / "fast", "fast")
+    _merge(app, slow, branch="slow")
+    _merge(app, fast, branch="fast")
+    app.publish()
+
+    def intercept(argv):
+        if argv == _ownership_argv(slow.path):
+            raise subprocess.TimeoutExpired(list(argv), 30)
+
+    entries, _ = _discover(RecordingShell(intercept))
+
+    slow_entry = _entry(entries, slow.path)
+    assert slow_entry.label == "app/slow · git error"
+    _assert_advice_shape(slow_entry)
+    assert _advice(slow_entry) == "git failed while checking this worktree: timed out after 30 s."
+    assert _entry(entries, fast.path).risk is Risk.RECLAIMABLE
+
+
+def test_unresolvable_git_directory_makes_every_worktree_a_git_error(app, projects):
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    _merge(app, worktree)
+    app.publish()
+    common_dir = ("-C", str(app.path), "rev-parse", "--path-format=absolute", "--git-common-dir")
+
+    def fail_common_dir(argv):
+        return ShellResult(128, "", "fatal: bad config\n") if argv[2:] == common_dir else None
+
+    shell = RecordingShell(fail_common_dir)
+    entries, provider = _discover(shell)
+
+    entry = _entry(entries, worktree.path)
+    assert entry.label == "app/feature · git error"
+    assert _advice(entry) == "git failed while checking this worktree: fatal: bad config."
+    assert not any({"merge-tree", "merge-base", "status"} & set(argv) for argv, _ in shell.calls)
+    assert provider.diagnostics == []

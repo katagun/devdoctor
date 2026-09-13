@@ -31,7 +31,7 @@ from devdoctor.providers._git_queries import (
     is_partial_clone,
     list_worktrees,
     resolve_default_branch,
-    toplevel_matches,
+    worktree_belongs_to,
     worktree_status,
 )
 from devdoctor.providers._worktree_states import (
@@ -62,6 +62,8 @@ class _Repository:
     """Facts computed once per repository (spec §4.2 step 3)."""
 
     path: Path
+    # The failure, when git could not name the repository's common git directory.
+    common_dir: Path | GitQueryError
     default: DefaultBranch | None
     merge_tree: MergeTreeContext | None
     # None when the batched `git log` failed.
@@ -160,20 +162,20 @@ class GitWorktreeProvider(Provider):
     def _repository_facts(
         self, repository: Path, linked: list[WorktreeRecord], objects_dir: Path | None
     ) -> _Repository:
+        common_dir: Path | GitQueryError
+        try:
+            common_dir = common_git_dir(self._git, repository)
+        except GitQueryError as exc:
+            common_dir = exc  # every worktree of this repository becomes a git error
         default = resolve_default_branch(self._git, repository)
         merge_tree: MergeTreeContext | None = None
         if (
-            default is not None
+            isinstance(common_dir, Path)
+            and default is not None
             and objects_dir is not None
             and not is_partial_clone(self._git, repository)
         ):
-            try:
-                merge_tree = MergeTreeContext(objects_dir, common_git_dir(self._git, repository))
-            except GitQueryError as exc:
-                self.diagnostics.append(
-                    f"git-worktrees: could not resolve the git directory of {repository} "
-                    f"({exc}); checking integration with merge-base --is-ancestor"
-                )
+            merge_tree = MergeTreeContext(objects_dir, common_dir)
         head_times: dict[str, float] | None
         try:
             head_times = head_commit_times(
@@ -184,17 +186,19 @@ class GitWorktreeProvider(Provider):
             self.diagnostics.append(
                 f"git-worktrees: could not read HEAD commit times for {repository}: {exc}"
             )
-        return _Repository(repository, default, merge_tree, head_times)
+        return _Repository(repository, common_dir, default, merge_tree, head_times)
 
     def _classify(
         self, repository: _Repository, record: WorktreeRecord
     ) -> tuple[WorktreeState, WorktreeFacts]:
         """Gather facts in spec §5.1 order until one state matches."""
         default = repository.default
+        toplevel_ok, failure = self._ownership(repository, record)
         facts = WorktreeFacts(
-            toplevel_ok=toplevel_matches(self._git, record.path),
+            toplevel_ok=toplevel_ok,
             locked=record.locked,
             default_branch=default.name if default else None,
+            failure=failure,
         )
         state = classify(facts)
         if state is not None or default is None:
@@ -219,6 +223,17 @@ class GitWorktreeProvider(Provider):
             state = classify(facts)
         return _settled(state), facts
 
+    def _ownership(
+        self, repository: _Repository, record: WorktreeRecord
+    ) -> tuple[bool, str | None]:
+        """Whether the directory still belongs to this repository, or why git cannot tell."""
+        if isinstance(repository.common_dir, GitQueryError):
+            return False, str(repository.common_dir)
+        try:
+            return worktree_belongs_to(self._git, record.path, repository.common_dir), None
+        except GitQueryError as exc:
+            return False, str(exc)
+
     def _worktree_entry(self, repository: _Repository, record: WorktreeRecord) -> Entry:
         state, facts = self._classify(repository, record)
         label = worktree_label(
@@ -236,8 +251,9 @@ class GitWorktreeProvider(Provider):
             return self._reclaimable_entry(repository.path, record.path, label, mtime)
         gitdir = None
         if state is WorktreeState.BROKEN_POINTER:
+            # Only a pointer to a missing git directory names it in the advice (spec §5.2).
             pointer = read_worktree_pointer(record.path)
-            gitdir = pointer.gitdir if pointer else record.path / ".git"
+            gitdir = pointer.gitdir if pointer is not None and pointer.broken else None
         message = advice_message(
             state,
             repository=repository.path,

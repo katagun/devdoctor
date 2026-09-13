@@ -25,6 +25,13 @@ DIRTY = StatusCounts(modified=7, untracked=3)
             id="broken-pointer-wins-over-everything",
         ),
         pytest.param(
+            WorktreeFacts(
+                toplevel_ok=False, locked=True, default_branch=None, failure="timed out after 30 s"
+            ),
+            WorktreeState.GIT_ERROR,
+            id="unverified-ownership-git-error-wins-over-locked",
+        ),
+        pytest.param(
             WorktreeFacts(toplevel_ok=True, locked=True, default_branch=None),
             WorktreeState.LOCKED,
             id="locked-wins-over-no-default-branch",
@@ -152,6 +159,13 @@ REPO = Path("/p/indexcat")
             'not exist; the repository was probably moved. Run "git -C /p/indexcat worktree '
             'repair", then rescan.',
             id="broken-pointer",
+        ),
+        pytest.param(
+            WorktreeState.BROKEN_POINTER,
+            {},
+            "This worktree's .git does not point back to /p/indexcat. Run "
+            '"git -C /p/indexcat worktree repair", then rescan.',
+            id="broken-pointer-not-pointing-back",
         ),
         pytest.param(
             WorktreeState.LOCKED,

@@ -17,7 +17,7 @@ from devdoctor.providers._git_queries import (
     is_partial_clone,
     list_worktrees,
     resolve_default_branch,
-    toplevel_matches,
+    worktree_belongs_to,
     worktree_status,
 )
 from devdoctor.providers._worktree_states import Integration
@@ -256,7 +256,7 @@ def test_head_commit_times_failure_raises():
         head_commit_times(git, REPO, [HEAD])
 
 
-# --- listing, toplevel, status ---------------------------------------------------
+# --- listing, ownership, status --------------------------------------------------
 
 
 def test_list_worktrees_parses_z_output():
@@ -273,25 +273,98 @@ def test_list_worktrees_failure_raises():
         list_worktrees(git, REPO)
 
 
-def test_toplevel_matches_through_a_symlink(tmp_path):
-    real = tmp_path / "real"
-    real.mkdir()
+OWNERSHIP = ("rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir")
+
+
+def _linked_worktree(tmp_path: Path, name: str = "feature") -> tuple[Path, Path]:
+    """A repository's common dir and a worktree whose pointer files agree."""
+    common = tmp_path / "app" / ".git"
+    admin = common / "worktrees" / name
+    admin.mkdir(parents=True)
+    worktree = tmp_path / name
+    worktree.mkdir()
+    (worktree / ".git").write_text(f"gitdir: {admin}\n")
+    (admin / "gitdir").write_text(f"{worktree / '.git'}\n")
+    return common, worktree
+
+
+def test_worktree_belongs_through_a_symlink(tmp_path):
+    common, worktree = _linked_worktree(tmp_path)
     link = tmp_path / "link"
-    link.symlink_to(real)
-    git, _ = _git({_argv(link, "rev-parse", "--show-toplevel"): _ok(f"{real}\n")})
-    assert toplevel_matches(git, link) is True
+    link.symlink_to(worktree)
+    git, _ = _git({_argv(link, *OWNERSHIP): _ok(f"{worktree}\n{common}\n")})
+    assert worktree_belongs_to(git, link, common) is True
 
 
 @pytest.mark.parametrize(
-    "result",
+    "stdout",
     [
-        pytest.param(_ok("/r/elsewhere\n"), id="different-toplevel"),
-        pytest.param(_exit(128, "fatal: not a git repository"), id="git-fails"),
+        pytest.param("/r/elsewhere\n{common}\n", id="different-toplevel"),
+        pytest.param("{worktree}\n/r/elsewhere/.git\n", id="different-common-dir"),
+        pytest.param("{worktree}\n", id="one-line"),
     ],
 )
-def test_toplevel_does_not_match(result):
-    git, _ = _git({_argv(REPO, "rev-parse", "--show-toplevel"): result})
-    assert toplevel_matches(git, REPO) is False
+def test_worktree_does_not_belong_when_git_disagrees(tmp_path, stdout):
+    common, worktree = _linked_worktree(tmp_path)
+    answer = stdout.format(common=common, worktree=worktree)
+    git, _ = _git({_argv(worktree, *OWNERSHIP): _ok(answer)})
+    assert worktree_belongs_to(git, worktree, common) is False
+
+
+def test_worktree_ownership_git_failure_raises(tmp_path):
+    common, worktree = _linked_worktree(tmp_path)
+    git, _ = _git({_argv(worktree, *OWNERSHIP): _exit(128, "fatal: detected dubious ownership")})
+    with pytest.raises(GitQueryError, match="dubious ownership"):
+        worktree_belongs_to(git, worktree, common)
+
+
+def _no_pointer(common: Path, worktree: Path) -> None:
+    (worktree / ".git").unlink()
+
+
+def _pointer_is_a_directory(common: Path, worktree: Path) -> None:
+    (worktree / ".git").unlink()
+    (worktree / ".git").mkdir()
+
+
+def _gitdir_missing(common: Path, worktree: Path) -> None:
+    (worktree / ".git").write_text(f"gitdir: {common.parent / 'gone' / 'worktrees' / 'x'}\n")
+
+
+def _admin_dir_of_another_repository(common: Path, worktree: Path) -> None:
+    other = common.parent.parent / "other" / ".git" / "worktrees" / "feature"
+    other.mkdir(parents=True)
+    (other / "gitdir").write_text(f"{worktree / '.git'}\n")
+    (worktree / ".git").write_text(f"gitdir: {other}\n")
+
+
+def _admin_dir_names_another_worktree(common: Path, worktree: Path) -> None:
+    (common / "worktrees" / "feature" / "gitdir").write_text(
+        f"{common.parent / 'other' / '.git'}\n"
+    )
+
+
+def _admin_dir_without_gitdir_file(common: Path, worktree: Path) -> None:
+    (common / "worktrees" / "feature" / "gitdir").unlink()
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        _no_pointer,
+        _pointer_is_a_directory,
+        _gitdir_missing,
+        _admin_dir_of_another_repository,
+        _admin_dir_names_another_worktree,
+        _admin_dir_without_gitdir_file,
+    ],
+)
+def test_worktree_does_not_belong_without_running_git(tmp_path, damage):
+    common, worktree = _linked_worktree(tmp_path)
+    damage(common, worktree)
+    git, shell = _git({})
+    assert worktree_belongs_to(git, worktree, common) is False
+    assert shell.calls == []
 
 
 def test_worktree_status_counts_changes():
@@ -470,12 +543,18 @@ def test_real_head_commit_times_are_committer_times(git_fixture, tmp_path):
         head_commit_times(REAL_GIT, repo.path, [head, "d" * 40])
 
 
-def test_real_toplevel_breaks_when_the_repository_moves(git_fixture, tmp_path):
+def test_real_ownership_breaks_when_the_repository_moves(git_fixture, tmp_path):
     repo = git_fixture.repository(tmp_path / "app")
     worktree = repo.add_worktree(tmp_path / "feature", "feature")
-    assert toplevel_matches(REAL_GIT, worktree.path) is True
+    assert worktree_belongs_to(REAL_GIT, worktree.path, repo.path / ".git") is True
     shutil.move(repo.path, tmp_path / "moved")
-    assert toplevel_matches(REAL_GIT, worktree.path) is False
+    assert worktree_belongs_to(REAL_GIT, worktree.path, tmp_path / "moved" / ".git") is False
+
+
+def test_real_ownership_follows_relative_paths(git_fixture, tmp_path):
+    repo = git_fixture.repository(tmp_path / "app")
+    repo.git("worktree", "add", "-q", "--relative-paths", "-b", "rel", str(tmp_path / "rel"))
+    assert worktree_belongs_to(REAL_GIT, tmp_path / "rel", repo.path / ".git") is True
 
 
 def test_real_worktree_status(git_fixture, tmp_path):
