@@ -239,7 +239,9 @@ export default function Scan() {
         >
           <span className="inline-flex items-center gap-1.5">
             <NavIcon icon={Play} size={12} />
-            clean up {selectedRows.length > 0 ? `${selectedRows.length} items` : ""}
+            clean up {selectedRows.length > 0
+              ? `${selectedRows.length} item${selectedRows.length === 1 ? "" : "s"}`
+              : ""}
           </span>
         </button>
       </div>
