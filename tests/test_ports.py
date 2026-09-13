@@ -95,3 +95,38 @@ def test_fake_shell_env_record_is_a_snapshot():
     shell.run(["x"], env=env)
     env["A"] = "2"
     assert shell.envs == [{"A": "1"}]
+
+
+def test_real_shell_env_none_removes_an_inherited_variable(monkeypatch):
+    monkeypatch.setenv("DEVDOCTOR_ENV_PROBE", "inherited")
+    r = RealShell().run(
+        ["sh", "-c", 'printf "%s" "${DEVDOCTOR_ENV_PROBE-unset}"'],
+        env={"DEVDOCTOR_ENV_PROBE": None},
+    )
+    assert r.stdout == "unset"
+
+
+def test_real_shell_env_none_for_an_absent_variable_is_harmless(monkeypatch):
+    monkeypatch.delenv("DEVDOCTOR_ENV_PROBE", raising=False)
+    r = RealShell().run(
+        ["sh", "-c", 'printf "%s" "${DEVDOCTOR_ENV_PROBE-unset}"'],
+        env={"DEVDOCTOR_ENV_PROBE": None},
+    )
+    assert r.stdout == "unset"
+
+
+def test_real_shell_env_removes_and_sets_in_one_call(monkeypatch):
+    monkeypatch.setenv("DEVDOCTOR_ENV_PROBE", "inherited")
+    r = RealShell().run(
+        ["sh", "-c", 'printf "%s|%s" "${DEVDOCTOR_ENV_PROBE-unset}" "$DEVDOCTOR_OTHER_PROBE"'],
+        env={"DEVDOCTOR_ENV_PROBE": None, "DEVDOCTOR_OTHER_PROBE": "set"},
+    )
+    assert r.stdout == "unset|set"
+
+
+def test_fake_shell_records_removals_as_none():
+    # Regression guard: removals must stay visible in the recorded environment.
+    ok = ShellResult(returncode=0, stdout="", stderr="")
+    shell = FakeShell(responses={("x",): ok})
+    shell.run(["x"], env={"GIT_DIR": None, "A": "1"})
+    assert shell.envs == [{"GIT_DIR": None, "A": "1"}]
