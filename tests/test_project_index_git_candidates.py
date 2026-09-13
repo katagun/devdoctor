@@ -120,3 +120,10 @@ def test_pointer_into_an_unreadable_directory_is_broken_not_an_error(tmp_path, m
         assert pointer.broken is True
     finally:
         sealed_dir.chmod(0o755)
+
+
+def test_ignores_a_git_file_whose_gitdir_contains_a_nul_byte(tmp_path, monkeypatch):
+    root = tmp_path / "projects"
+    odd = _mkdir(root / "odd")
+    (odd / ".git").write_text("gitdir: /tmp/a\0b/.git/worktrees/x\n")
+    assert _git_candidates(root, monkeypatch).pointers == ()

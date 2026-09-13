@@ -595,3 +595,65 @@ def test_unresolvable_git_directory_makes_every_worktree_a_git_error(app, projec
     assert _advice(entry) == "git failed while checking this worktree: fatal: bad config."
     assert not any({"merge-tree", "merge-base", "status"} & set(argv) for argv, _ in shell.calls)
     assert provider.diagnostics == []
+
+
+def test_every_reclaimable_command_removes_its_worktree(app, projects):
+    app.commit("Ignore dependencies", {".gitignore": "node_modules/\n"})
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    (worktree.path / "node_modules" / "pkg").mkdir(parents=True)
+    (worktree.path / "node_modules" / "pkg" / "index.js").write_text("module.exports = 1;\n")
+    _merge(app, worktree)
+    app.publish()
+
+    entries, _ = _discover()
+
+    reclaimable = [e for e in entries if e.risk is Risk.RECLAIMABLE]
+    assert [os.path.realpath(e.path) for e in reclaimable] == [os.path.realpath(worktree.path)]
+    for entry in reclaimable:
+        [action] = entry.actions
+        assert isinstance(action, CommandAction)
+        subprocess.run(action.argv, capture_output=True, check=True)
+        assert not entry.path.exists()
+        listed = app.git("worktree", "list", "--porcelain").splitlines()
+        assert not {f"worktree {entry.path}", f"worktree {os.path.realpath(entry.path)}"} & set(
+            listed
+        )
+
+
+def test_git_file_with_a_nul_byte_does_not_stop_discovery(app, projects):
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    _merge(app, worktree)
+    app.publish()
+    odd = projects / "odd"
+    odd.mkdir()
+    (odd / ".git").write_text("gitdir: /tmp/a\0b/.git/worktrees/x\n")
+
+    entries, _ = _discover()
+
+    assert _entry(entries, worktree.path).risk is Risk.RECLAIMABLE
+    assert not any(e.path == odd for e in entries)
+
+
+_WRITING_COMMANDS = frozenset({"fetch", "gc", "prune", "repair", "update-ref"})
+
+
+@needs_merge_tree
+def test_discovery_runs_no_writing_command(app, projects):
+    merged = app.add_worktree(projects / "wt" / "merged", "merged")
+    _merge(app, merged, branch="merged")
+    squashed = app.add_worktree(projects / "wt" / "squashed", "squashed")
+    squashed.commit("Squashed feature", {"squashed.txt": "squashed\n"})
+    app.commit("Squashed feature (squashed)", {"squashed.txt": "squashed\n"})
+    app.publish()
+    shell = RecordingShell()
+
+    entries, _ = _discover(shell)
+
+    assert _entry(entries, squashed.path).risk is Risk.RECLAIMABLE  # merge-tree ran
+    assert _uses_merge_tree(shell)
+    for argv, env in shell.calls:
+        assert not _WRITING_COMMANDS & set(argv), argv
+        assert not {"worktree", "remove"} <= set(argv), argv
+        assert env is not None
+        if env.get("GIT_OBJECT_DIRECTORY") is not None:
+            assert "merge-tree" in argv, argv

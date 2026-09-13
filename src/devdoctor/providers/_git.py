@@ -133,7 +133,8 @@ def read_worktree_pointer(directory: Path) -> WorktreePointer | None:
     except OSError:
         return None
     raw = first_line.removeprefix("gitdir:").strip()
-    if raw == first_line.strip() or not raw:
+    # No path holds a NUL byte, and os.path functions raise ValueError on one.
+    if raw == first_line.strip() or not raw or "\0" in raw:
         return None
     gitdir = Path(os.path.normpath(raw if os.path.isabs(raw) else directory / raw))
     if gitdir.parent.name != "worktrees":
