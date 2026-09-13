@@ -1,6 +1,6 @@
 # Git worktree provider — design
 
-- **Status:** Approved design, 2026-09-12. Implementation not started.
+- **Status:** Approved design, 2026-09-12; amended 2026-09-13 for #98. PR 1 merged in #100.
 - **Issue:** #79
 - **Builds on:** #78 (merged in #93), #80 (merged in #94)
 - **Related:** #89 (age filtering), #91 (marketing site), #92 (sizing cost), #97 (web display of unmeasured sizes)
@@ -67,13 +67,14 @@ Non-goals are listed in §10.
 - **`src/devdoctor/providers/_git.py`** — git plumbing with no provider
   concerns: argv and environment construction, the per-call timeout,
   `subprocess.TimeoutExpired` handling, and pure parsers for
-  `worktree list --porcelain`, `status --porcelain` and `git version`.
+  `worktree list --porcelain -z`, `status --porcelain` and `git version`.
 - **`src/devdoctor/ports.py`** — `Shell.run` gains
-  `env: Mapping[str, str] | None = None`: variables set on top of the inherited
-  environment. `RealShell` passes `{**os.environ, **env}` to `subprocess.run`;
-  `_NullShell` (`memory/providers.py`) accepts and ignores it; the test
-  `FakeShell` records it. The default preserves current behaviour, and no
-  existing caller changes.
+  `env: Mapping[str, str | None] | None = None`: changes to the inherited
+  environment. A string value sets a variable and `None` removes it. `RealShell`
+  starts from `os.environ`, applies both, and passes the result to
+  `subprocess.run`; `_NullShell` (`memory/providers.py`) accepts and ignores it;
+  the test `FakeShell` records it. The default preserves current behaviour, and
+  no existing caller changes.
 - **`src/devdoctor/providers/project_artifacts.py`** — the shared index also
   records git candidates (§4.2).
 - **`src/devdoctor/types.py`** — `entry_matches_filters()` extracted from
@@ -106,10 +107,11 @@ Per scan:
 
    `.git` stays in the prune list. Its presence is observed; it is never
    descended into.
-2. **Authoritative enumeration.** One `git worktree list --porcelain` per
+2. **Authoritative enumeration.** One `git worktree list --porcelain -z` per
    distinct repository. This lists worktrees wherever they are on disk,
    including locations no scan root covers (observed:
-   `~/.config/superpowers/worktrees/`).
+   `~/.config/superpowers/worktrees/`). NUL-terminated output keeps paths and
+   lock reasons that contain newlines intact, with no quoting to undo.
 3. **Per-repository facts, computed once:** the default branch and its tree
    (§4.4); whether the repository is a partial clone (`remote.*.promisor` or
    `extensions.partialClone` set); when merge-tree is in use, the absolute common
@@ -129,8 +131,17 @@ Every git call:
 
 - runs as `git --no-optional-locks -C <dir> …` through the `Shell` port, so it
   never refreshes an index or takes a lock;
+- removes every repository-local variable listed by
+  `git rev-parse --local-env-vars` (`GIT_DIR`, `GIT_WORK_TREE`,
+  `GIT_OBJECT_DIRECTORY`, `GIT_CONFIG_PARAMETERS` and the rest) from the
+  environment it inherits. Inherited values take precedence over `-C`: with
+  `GIT_DIR` and `GIT_WORK_TREE` pointing at another repository, `status` and
+  `log` answer for that repository, so a dirty worktree could read as clean.
+  The names live in `_git.LOCAL_ENV_VARS`, and a real-git test fails if the
+  installed git lists a name the constant lacks;
 - sets `GIT_TERMINAL_PROMPT=0` and `GIT_NO_LAZY_FETCH=1`, so it never prompts
-  and never fetches missing objects from a promisor remote;
+  and never fetches missing objects from a promisor remote (git honours
+  `GIT_NO_LAZY_FETCH` only from 2.44; see §11);
 - has a 30 s timeout. `subprocess.TimeoutExpired` — which `RealShell`
   raises — and non-zero exits are caught in `_git.py` and returned as results.
   A git failure never propagates out of `discover()`, where `_discover_one`
@@ -138,7 +149,8 @@ Every git call:
 
 `git merge-tree` additionally sets `GIT_OBJECT_DIRECTORY` to a temporary
 directory created for the scan, and `GIT_ALTERNATE_OBJECT_DIRECTORIES` to the
-repository's `<common git dir>/objects`. Objects merge-tree writes land in the
+repository's `<common git dir>/objects`, always C-quoted: git splits that variable
+on `:` and would otherwise misread a path containing one. Objects merge-tree writes land in the
 temporary directory, which is removed in a `finally` block when `discover()`
 returns. Without this, merge-tree persists objects into the user's repository:
 2 objects for one conflicting merge in a fixture, and 883 across the eight real
@@ -189,11 +201,16 @@ repository is a partial clone, the signal is `merge-base --is-ancestor <HEAD>
 <default>`. The fallback only under-reports integration; it never over-reports
 it.
 
+**Minimum git.** Worktree listing needs `git worktree list -z`, which shipped in
+git 2.36. Below 2.36 the provider lists no worktrees and records one diagnostic
+(§7) rather than parse newline-separated output that cannot represent every
+path.
+
 ### 4.5 Cost
 
 | Work | Measured or estimated |
 |---|---|
-| `worktree list --porcelain` | 8 calls |
+| `worktree list --porcelain -z` | 8 calls |
 | `show-toplevel`, `merge-tree`, `status` per worktree | 138 × 3 calls: ~20 s serial, ~5 s on 4 workers (merge-tree median 69 ms, max 792 ms) |
 | Sizing | Reclaimable worktrees only: 10.7 GB, ~30 s at the sizer's measured ~0.34 GB/s |
 
@@ -386,6 +403,7 @@ containment rules.
 | Failure | Behaviour |
 |---|---|
 | `git` not on `PATH` | provider unavailable, via `required_binary` |
+| `git` older than 2.36 (no `worktree list -z`) | no worktree entries; one diagnostic naming the installed version |
 | A per-worktree git call exits non-zero or times out | that worktree takes the matching advice state (§5.1: 3 or 6); the provider continues |
 | A repository's `worktree list` fails | one diagnostic for that repository; its worktrees are not reported |
 | A repository's batched HEAD-time `git log` fails | `mtime` is `None` for its worktrees; one diagnostic |
@@ -397,9 +415,10 @@ containment rules.
 
 **1. Pure unit tests (no subprocess)**
 
-- Porcelain parser: detached HEAD, `locked <reason>`, `prunable`, `bare`, paths
-  containing spaces.
-- Status parser (modified versus untracked counts), default-branch fallback chain,
+- Porcelain parser, on real `-z` output: detached HEAD, `locked <reason>`,
+  `prunable`, `bare`, paths containing spaces or newlines, and raw multi-line
+  lock reasons.
+- Status parser (modified versus untracked counts, and a conflicted `UU` entry), default-branch fallback chain,
   `git version` parsing, label formatting.
 - Table-driven classification: one case per §5.1 state, including first-match
   ordering.
@@ -419,7 +438,9 @@ containment rules.
 
 - `RealShell` passes `env` through, checked with a `sh -c 'printf %s "$X"'`
   probe, and preserves the inherited environment.
-- `FakeShell` records `env`; existing callers are unaffected.
+- A `None` value removes an inherited variable, is harmless for an absent one,
+  and combines with set values in one call.
+- `FakeShell` records `env`, including removals; existing callers are unaffected.
 
 **3. Real-git integration**
 
@@ -441,6 +462,13 @@ git never discovers a repository above the fixture.
   and after `discover()`, and the temporary object directory no longer exists.
 - **Offline:** a recording wrapper around `RealShell` confirms every git call set
   `GIT_NO_LAZY_FETCH=1` and `GIT_TERMINAL_PROMPT=0`.
+- **Inherited environment:** with `GIT_DIR` and `GIT_WORK_TREE` exported for a
+  different, dirty repository, `status` and `log` still answer for the `-C`
+  repository; with `GIT_OBJECT_DIRECTORY` exported, `rev-parse` still works; and
+  `LOCAL_ENV_VARS` covers every name the installed git lists.
+- **Quoting and `-z`:** merge-tree succeeds and writes nothing on a repository
+  whose path contains `:`, and `worktree list -z` round-trips a path containing
+  a newline.
 - merge-tree tests skip on git below 2.38. A separate test runs only when `CI`
   is set and fails if git is below 2.38, so the primary path cannot be silently
   skipped in CI.
@@ -499,6 +527,11 @@ should land no later than PR 3.
 - **Unreachable repositories.** A repository outside every scan root, with no
   worktree inside one, is not found.
 - **git below 2.38** detects only true merges and fast-forwards.
+- **git below 2.36** lists no worktrees (§4.4).
+- **Lazy fetching on git below 2.44.** Git ignores `GIT_NO_LAZY_FETCH` before
+  2.44, so older git may fetch missing objects in a partial clone. The §4.4
+  fallback keeps merge-tree away from partial clones, but the other read-only
+  calls are not guarded.
 - **Double sizing.** Contents of a reclaimable worktree are sized by their own
   providers and again as part of the worktree before containment removes them
   (#92).

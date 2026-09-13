@@ -16,7 +16,7 @@ class Shell(Protocol):
         *,
         check: bool = False,
         timeout: float | None = None,
-        env: Mapping[str, str] | None = None,
+        env: Mapping[str, str | None] | None = None,
     ) -> ShellResult: ...
     def which(self, binary: str) -> str | None: ...
 
@@ -28,8 +28,18 @@ class RealShell:
         *,
         check: bool = False,
         timeout: float | None = None,
-        env: Mapping[str, str] | None = None,
+        env: Mapping[str, str | None] | None = None,
     ) -> ShellResult:
+        # `env` changes the inherited environment rather than replacing it, so a caller
+        # setting one variable never loses PATH or HOME. A None value removes a variable.
+        child_env: dict[str, str] | None = None
+        if env is not None:
+            child_env = dict(os.environ)
+            for name, value in env.items():
+                if value is None:
+                    child_env.pop(name, None)
+                else:
+                    child_env[name] = value
         proc = subprocess.run(
             argv,
             capture_output=True,
@@ -38,9 +48,7 @@ class RealShell:
             stdin=subprocess.DEVNULL,
             encoding="utf-8",
             errors="replace",
-            # `env` adds to the inherited environment instead of replacing it, so a
-            # caller setting one variable never loses PATH or HOME.
-            env=None if env is None else {**os.environ, **env},
+            env=child_env,
         )
         return ShellResult(
             returncode=proc.returncode,

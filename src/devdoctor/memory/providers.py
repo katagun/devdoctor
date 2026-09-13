@@ -121,7 +121,7 @@ class _NullShell:
         *,
         check: bool = False,
         timeout: float | None = None,
-        env: Mapping[str, str] | None = None,
+        env: Mapping[str, str | None] | None = None,
     ) -> ShellResult:
         return ShellResult(returncode=1, stdout="", stderr="")
 
