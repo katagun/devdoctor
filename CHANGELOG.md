@@ -59,6 +59,18 @@ entries under a versioned heading as described in
 
 ### Added
 
+- **Git worktrees provider (`git-worktrees`).** Finds the linked worktrees of
+  repositories under the project roots, including worktrees those repositories
+  register elsewhere, and classifies each one without writing to the repository
+  or using the network. A worktree whose changes are already in the default
+  branch (squash and rebase merges included, detected with `git merge-tree`) and
+  that has no uncommitted changes is offered for removal with
+  `git worktree remove`, never `--force`. Every other worktree is reported as
+  advice: not integrated, uncommitted changes, locked, broken pointer, no default
+  branch, git error, or unverifiable. Contents of a removable worktree, such as
+  `node_modules`, virtualenvs and build output, are counted once, under the
+  worktree, instead of again by their own providers.
+  ([#79](https://github.com/katagun/devdoctor/issues/79))
 - **Expanded provider coverage** — added pnpm, Yarn, Bun, bounded
   `node_modules`, Go caches, Cargo dependency/build storage, Xcode/iOS,
   Android SDK/build storage, Conda, NuGet, and tox/nox providers, grouped by
@@ -119,6 +131,13 @@ entries under a versioned heading as described in
 
 ### Fixed
 
+- **Filtered web scans no longer save partial auto-snapshots.** A scan with a
+  risk, size or provider filter could be stored as an auto-snapshot and show up
+  in history as a large drop followed by an equal jump. Only unfiltered scans are
+  stored now. ([#103](https://github.com/katagun/devdoctor/issues/103))
+- **The web UI shows unmeasured entries as not measured instead of 0 B.** They
+  sort after measured rows and are never hidden as small by the minimum-size
+  setting. ([#97](https://github.com/katagun/devdoctor/issues/97))
 - **Made Docker volume cleanup precise and version-independent** — unused
   volumes are now listed individually instead of pairing Docker's aggregate
   volume size with version-dependent `docker volume prune` behavior. Anonymous
