@@ -15,7 +15,7 @@ Spec: docs/superpowers/specs/2026-09-12-git-worktree-provider-design.md §6
 from __future__ import annotations
 
 import os
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 
 from devdoctor.types import Entry, Risk, ScanFilters, entry_matches_filters
 
@@ -32,7 +32,7 @@ def contain_worktree_contents(entries: list[Entry], filters: ScanFilters) -> lis
     owners = [
         entry
         for entry in entries
-        if _is_owner(entry)
+        if is_reclaimable_worktree(entry)
         and entry_matches_filters(
             entry,
             risks=filters.risks,
@@ -43,16 +43,8 @@ def contain_worktree_contents(entries: list[Entry], filters: ScanFilters) -> lis
     return _without_contents(entries, owners)
 
 
-def drop_contents_of_selected_worktrees(selected: list[Entry]) -> list[Entry]:
-    """Drop selected entries that removing a selected reclaimable worktree deletes (§6.4).
-
-    Keeping them would run a cleanup for content the worktree removal already
-    deletes, and report its bytes as freed twice.
-    """
-    return _without_contents(selected, [entry for entry in selected if _is_owner(entry)])
-
-
-def _is_owner(entry: Entry) -> bool:
+def is_reclaimable_worktree(entry: Entry) -> bool:
+    """Whether removing ``entry`` deletes everything under its path (spec §6.2)."""
     return (
         entry.provider == WORKTREE_PROVIDER
         and entry.risk is Risk.RECLAIMABLE
@@ -69,11 +61,11 @@ def _without_contents(entries: list[Entry], owners: Iterable[Entry]) -> list[Ent
         for entry in entries
         if entry.provider == WORKTREE_PROVIDER
         or entry.path is None
-        or not _inside_any(os.path.realpath(entry.path), roots)
+        or not path_is_inside(os.path.realpath(entry.path), roots)
     ]
 
 
-def _inside_any(path: str, roots: set[str]) -> bool:
+def path_is_inside(path: str, roots: Collection[str]) -> bool:
     """Whether ``path`` equals or lies inside one of ``roots`` (all realpaths)."""
     current = path
     while True:

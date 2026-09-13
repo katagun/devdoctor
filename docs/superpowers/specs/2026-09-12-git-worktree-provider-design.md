@@ -81,8 +81,9 @@ Non-goals are listed in §10.
   `Report.filter` (§6.2).
 - **`src/devdoctor/discovery.py`** — zero-byte filter exemption, containment
   pass, provider-total recomputation, `scan(..., contain=)` (§6).
-- **`src/devdoctor/web/routes_clean.py`** — `contain=False` and selection
-  dedupe (§6.4).
+- **`src/devdoctor/web/routes_clean.py`** — `contain=False` (§6.4).
+- **`src/devdoctor/cleanup.py`** — the shared executor runs removable worktrees
+  first and skips what their removal deleted (§6.4).
 - **`src/devdoctor/registry.py`** — registration, in the PR that also ships
   containment (§9).
 
@@ -347,6 +348,10 @@ usage.reclaimable_bytes is None`. No existing provider emits that shape, so no
 existing output changes, and `test_scan_drops_zero_byte_entries` must keep
 passing unchanged.
 
+The server-side minimum size (`--min-size` on the CLI, `min_size` on the API)
+hides unmeasured entries, because their size is not known to reach it. The web
+UI's client-side minimum size never hides them.
+
 ### 6.2 Containment pass
 
 `_reconcile_worktree_containment(entries, filters)` runs in `discovery.scan`
@@ -396,10 +401,18 @@ containment rules.
   current state, not what to display, so every id any filtered view could have
   shown still exists, and the existing `unknown_entry` (HTTP 400) check cannot
   fire for a legitimate selection. That scan's totals are never shown.
-- After narrowing that report to the selected ids, any selected entry whose path
-  lies inside a selected `git-worktrees` entry's path is dropped from the job.
-  Removing the worktree deletes it, and keeping it would double-report freed
-  bytes.
+- That report is narrowed to the selected ids, and every selected entry stays in
+  the job, so each one gets a `CleanResult`.
+- **The shared cleanup executor** (`cleanup._iter_execute`, used by CLI and web)
+  runs approved reclaimable `git-worktrees` entries before other approved
+  entries; non-approved selections resolve as before. Before running any other
+  approved entry, if its resolved path equals or lies inside the path of a
+  `git-worktrees` entry whose actions all succeeded in this run, it resolves as
+  `CleanResult(status="skipped", freed_bytes=0, message="removed with worktree
+  <worktree label>")` without running: the removal already deleted it, and
+  running it would double-report freed bytes. Otherwise it runs normally — the
+  worktree was declined, skipped, never reached, or git refused its removal.
+  Paths are resolved before anything runs.
 - **CLI `clean` and `recipe` keep containment on.** They scan and act in one
   invocation, so ids cannot drift, and their `--provider` filter decides
   ownership consistently.
@@ -453,7 +466,9 @@ containment rules.
   are still dropped.
 - `entry_matches_filters` parity: the existing `Report.filter` tests pass
   unchanged.
-- Web-cleanup selection dedupe.
+- Cleanup executor: removable worktrees run first; an entry inside a worktree
+  removed in the same run is skipped with a result; if the removal fails or is
+  declined, the entry runs.
 - Timeout: a `FakeShell` raising `TimeoutExpired` for one worktree yields advice
   for that worktree while the others classify normally.
 
@@ -566,6 +581,10 @@ should land no later than PR 3.
   can name a repository that does not exist, and its worktree is reported as
   unverifiable instead of classified. Worktrees are still classified, and removed,
   only through the repository that registers them.
+- **Case-insensitive filesystems.** Containment compares resolved paths
+  case-sensitively, so on a case-insensitive filesystem a project root spelled
+  differently from git's recorded worktree path can miss containment, and those
+  contents are counted and offered under their own provider as well.
 - **Commits made between classification and cleanup.** Integration is checked
   against the HEAD read at scan time; if an agent commits in a detached,
   integrated worktree before `git worktree remove` runs, the worktree still

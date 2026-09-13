@@ -10,7 +10,6 @@ from sse_starlette.sse import EventSourceResponse
 from starlette.responses import JSONResponse, Response
 
 from devdoctor import discovery, registry
-from devdoctor.containment import drop_contents_of_selected_worktrees
 from devdoctor.types import CleanupOpts, ScanFilters, ShellResult
 from devdoctor.web.cleanup_runner import CleanupRunner
 from devdoctor.web.models import CleanJobCreate, ConfirmAnswer, PromptAnswer
@@ -35,12 +34,10 @@ async def start_job(body: CleanJobCreate, request: Request) -> Response:
             content={"error": {"code": "unknown_entry", "ids": unknown}},
         )
     # Filter the report down to just the selected entries — cleanup walks candidates from there.
-    # Removing a selected worktree deletes its contents, so selected entries inside it
-    # are dropped rather than cleaned (and counted) a second time.
+    # Every selected entry stays in the job: the executor skips an entry only once the
+    # worktree holding it has actually been removed, so each one gets a result (spec §6.4).
     selected = set(body.entry_ids)
-    report.entries = drop_contents_of_selected_worktrees(
-        [e for e in report.entries if e.id in selected]
-    )
+    report.entries = [e for e in report.entries if e.id in selected]
 
     registry_obj = request.app.state.runner_registry
 

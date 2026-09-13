@@ -187,7 +187,7 @@ async def test_unknown_entry_id_is_400(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_cleanup_scan_is_uncontained_and_drops_contents_of_selected_worktrees(
+async def test_cleanup_job_keeps_every_selected_entry_from_an_uncontained_scan(
     tmp_path, monkeypatch
 ):
     from devdoctor.types import (
@@ -259,6 +259,10 @@ async def test_cleanup_scan_is_uncontained_and_drops_contents_of_selected_worktr
         )
         assert r.status_code == 200
         runner = app.state.runner_registry.active()
-        assert [e.id for e in runner.report.entries] == ["git-worktrees:feature", "node:outside"]
+        assert [e.id for e in runner.report.entries] == [
+            "git-worktrees:feature",
+            "node:inside",
+            "node:outside",
+        ]
         await runner.cancel()
     assert contain_args == [False]

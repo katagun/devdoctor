@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Generator
 from dataclasses import dataclass
 from typing import Literal
 
+from devdoctor.containment import is_reclaimable_worktree, path_is_inside
 from devdoctor.ports import Shell
 from devdoctor.types import (
     AsyncConfirm,
@@ -207,12 +209,41 @@ def _resolve_aborted(
 def _iter_execute(
     selections: list[tuple[Entry, SelectionState]],
 ) -> Generator[CleanupEvent, object, None]:
-    """Run each approved entry's recipe via ExecuteStep yields; resolve every selection."""
-    for entry, state in selections:
+    """Run each approved entry's recipe via ExecuteStep yields; resolve every selection.
+
+    Approved reclaimable worktrees run first. An approved entry inside a worktree whose
+    removal succeeded in this run is already gone, so it resolves as skipped instead of
+    running; if the removal was declined or failed, the entry runs normally (spec §6.4).
+    """
+    worktrees_first = sorted(
+        selections,
+        key=lambda item: not (item[1] == "approved" and is_reclaimable_worktree(item[0])),
+    )
+    # Resolved before anything runs: a removed directory can no longer be resolved.
+    real = {
+        entry.id: os.path.realpath(entry.path)
+        for entry, state in selections
+        if state == "approved" and entry.path is not None
+    }
+    removed: dict[str, Entry] = {}
+    for entry, state in worktrees_first:
         if state != "approved":
             yield EntryResolved(_to_result(entry, state))
             continue
+        worktree = None if is_reclaimable_worktree(entry) else _removed_with(entry, real, removed)
+        if worktree is not None:
+            yield EntryResolved(
+                CleanResult(
+                    entry_id=entry.id,
+                    status="skipped",
+                    freed_bytes=0,
+                    message=f"removed with worktree {worktree.label}",
+                )
+            )
+            continue
         error_msg, executed = yield from _run_actions(entry)
+        if executed and not error_msg and is_reclaimable_worktree(entry):
+            removed[real[entry.id]] = entry
         if error_msg:
             yield EntryResolved(
                 CleanResult(entry_id=entry.id, status="error", freed_bytes=0, message=error_msg)
@@ -241,6 +272,14 @@ def _iter_execute(
                     bytes_verified=False,
                 )
             )
+
+
+def _removed_with(entry: Entry, real: dict[str, str], removed: dict[str, Entry]) -> Entry | None:
+    """The worktree removed in this run whose path holds ``entry``, if any."""
+    path = real.get(entry.id)
+    if path is None:
+        return None
+    return next((owner for root, owner in removed.items() if path_is_inside(path, {root})), None)
 
 
 def _run_actions(entry: Entry) -> Generator[CleanupEvent, object, tuple[str | None, bool]]:

@@ -2,10 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from devdoctor.containment import (
-    contain_worktree_contents,
-    drop_contents_of_selected_worktrees,
-)
+from devdoctor.containment import contain_worktree_contents, path_is_inside
 from devdoctor.types import DiskUsage, Entry, Risk, ScanFilters
 
 ALL = ScanFilters()
@@ -96,15 +93,14 @@ def test_paths_are_compared_after_resolving_symlinks(tmp_path):
     assert _ids(contain_worktree_contents([owner, inside], ALL)) == [owner.id]
 
 
-def test_cleanup_selection_drops_contents_of_selected_reclaimable_worktrees():
-    owner = _worktree(WT)
-    inside = _entry("node-project-dependencies", WT / "node_modules")
-    elsewhere = _entry("node-project-dependencies", Path("/p/other/node_modules"))
-    result = drop_contents_of_selected_worktrees([inside, owner, elsewhere])
-    assert _ids(result) == [owner.id, elsewhere.id]
-
-
-def test_cleanup_selection_keeps_contents_of_a_selected_advice_worktree():
-    owner = _worktree(WT, risk=Risk.DANGEROUS)
-    inside = _entry("node-project-dependencies", WT / "node_modules")
-    assert _ids(drop_contents_of_selected_worktrees([owner, inside])) == [owner.id, inside.id]
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        pytest.param("/p/app/.worktrees/feature", True, id="equal"),
+        pytest.param("/p/app/.worktrees/feature/web/node_modules", True, id="inside"),
+        pytest.param("/p/app/.worktrees/feature-2", False, id="sibling-sharing-the-prefix"),
+        pytest.param("/p/app", False, id="parent"),
+    ],
+)
+def test_path_is_inside(path, expected):
+    assert path_is_inside(path, {str(WT)}) is expected
