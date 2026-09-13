@@ -96,13 +96,22 @@ def test_an_unmeasured_advice_worktree_is_reported(git_fixture, tmp_path):
 
 @pytest.mark.asyncio
 async def test_an_id_from_a_dangerous_view_can_start_a_cleanup(
-    git_fixture, tmp_path, empty_paths_yaml
+    git_fixture, tmp_path, empty_paths_yaml, monkeypatch
 ):
     # Without a lockfile, the worktree's node_modules is dangerous; the worktree is not.
     _integrated_worktree(git_fixture, tmp_path, lockfile=False)
     (tmp_path / "index.html").write_text("<!doctype html><title>t</title>")
     app = build_app(GitOnlyShell(), allowed_hosts={"testserver"}, static_dir=tmp_path)
     headers = {"Host": "testserver"}
+    registry = app.state.runner_registry
+    created = []
+    create = registry.create
+
+    def recording_create(factory):
+        created.append(create(factory))
+        return created[-1]
+
+    monkeypatch.setattr(registry, "create", recording_create)
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://testserver"
@@ -118,7 +127,13 @@ async def test_an_id_from_a_dangerous_view_can_start_a_cleanup(
         )
 
         assert response.status_code == 200
-        await app.state.runner_registry.active().cancel()
+        # The job may already have finished and left the registry; its report still holds.
+        [job] = created
+        assert response.json() == {"job_id": job.id}
+        assert [e.id for e in job.report.entries] == [entry["id"]]
+        active = registry.active()
+        if active is not None:
+            await active.cancel()
 
 
 def test_cli_clean_execute_removes_an_integrated_worktree(integrated, empty_paths_yaml):

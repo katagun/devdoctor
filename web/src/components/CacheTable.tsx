@@ -311,7 +311,7 @@ function Cell({
       return (
         <div className="text-right tabular-nums font-medium">
           {row.footprint_bytes === null ? (
-            <span className="text-text-muted" title="Not measured">
+            <span className="text-text-muted" title="Not measured" aria-label="Not measured">
               —
             </span>
           ) : (

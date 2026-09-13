@@ -103,6 +103,7 @@ describe("CacheTable", () => {
   it("renders an unmeasured footprint as a dash, not 0B", () => {
     render(<CacheTable rows={[unmeasured]} selected={new Set()} onToggle={() => {}} />);
     expect(screen.getByTitle("Not measured")).toHaveTextContent("—");
+    expect(screen.getByLabelText("Not measured")).toHaveTextContent("—");
     expect(screen.queryByText("0B")).not.toBeInTheDocument();
   });
 

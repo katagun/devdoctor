@@ -63,13 +63,18 @@ entries under a versioned heading as described in
   repositories under the project roots, including worktrees those repositories
   register elsewhere, and classifies each one without writing to the repository
   or using the network. A worktree whose changes are already in the default
-  branch (squash and rebase merges included, detected with `git merge-tree`) and
-  that has no uncommitted changes is offered for removal with
-  `git worktree remove`, never `--force`. Every other worktree is reported as
-  advice: not integrated, uncommitted changes, locked, broken pointer, no default
-  branch, git error, or unverifiable. Contents of a removable worktree, such as
-  `node_modules`, virtualenvs and build output, are counted once, under the
-  worktree, instead of again by their own providers.
+  branch and that has no uncommitted changes is offered for removal with
+  `git worktree remove`, never `--force`. Squash and rebase merges are detected
+  with `git merge-tree` on git 2.38 or later; older git and partial clones detect
+  only true merges and fast-forwards. A worktree containing a nested repository
+  or worktree, even an ignored one, is never offered, because `git worktree
+  remove` would delete it. Every other worktree is reported as advice: not
+  integrated, uncommitted changes, contains nested repository, locked, broken
+  pointer, no default branch, git error, or unverifiable. Contents of a removable
+  worktree, such as `node_modules`, virtualenvs and build output, are counted
+  once, under the worktree, instead of again by their own providers. The first
+  `devdoctor diff` against an older snapshot therefore shows those bytes moving
+  from their own providers to `git-worktrees` for removable worktrees.
   ([#79](https://github.com/katagun/devdoctor/issues/79))
 - **Expanded provider coverage** — added pnpm, Yarn, Bun, bounded
   `node_modules`, Go caches, Cargo dependency/build storage, Xcode/iOS,
