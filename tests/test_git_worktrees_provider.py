@@ -826,3 +826,37 @@ def test_no_offered_command_deletes_a_nested_worktree(app, projects):
             if isinstance(action, CommandAction):
                 subprocess.run(action.argv, capture_output=True, check=False)
     assert staged.read_text() == "staged work\n"
+
+
+def test_integrated_worktree_holding_an_ignored_bare_repository_is_advice(
+    git_fixture, app, projects, tmp_path
+):
+    app.commit("Ignore vendored code", {".gitignore": "vendor/\n"})
+    worktree = app.add_worktree(projects / "wt" / "bare", "bare")
+    _merge(app, worktree, branch="bare")
+    app.publish()
+    mirror = worktree.path / "vendor" / "mirror.git"
+    subprocess.run(["git", "init", "--bare", "-q", str(mirror)], check=True, capture_output=True)
+    scratch = git_fixture.repository(tmp_path / "scratch")
+    only_copy = scratch.commit("Exists only in the mirror", {"only.txt": "only\n"})
+    scratch.git("push", "-q", str(mirror), "main")
+    shutil.rmtree(scratch.path)
+
+    entries, _ = _discover()
+
+    entry = _entry(entries, worktree.path)
+    assert entry.label == "app/bare · contains nested repository"
+    assert entry.risk is not Risk.RECLAIMABLE
+    _assert_advice_shape(entry)
+    assert _advice(entry) == _nested_advice("vendor/mirror.git")
+    for offered in entries:
+        for action in offered.actions:
+            if isinstance(action, CommandAction):
+                subprocess.run(action.argv, capture_output=True, check=False)
+    kept = subprocess.run(
+        ["git", "--git-dir", str(mirror), "cat-file", "-t", only_copy],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert kept.stdout.strip() == "commit"

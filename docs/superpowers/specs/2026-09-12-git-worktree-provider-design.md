@@ -238,7 +238,7 @@ Registered worktrees are checked in order, and the first match wins.
 | 6 | git error | the state 3 `rev-parse` (pointer intact), `--git-common-dir` for the repository, or a later call (`merge-tree` or `merge-base --is-ancestor`, `status`) exits non-zero or times out | advice |
 | 7 | Not integrated | §4.4 | advice |
 | 8 | Integrated, dirty | `status --porcelain --untracked-files=normal` produces output | advice |
-| 9 | Integrated, contains nested repository | the worktree's tree, walked without following symlinks and without descending into `<worktree>/.git`, contains an entry named `.git` (file or directory) other than `<worktree>/.git`; or the resolved path of a worktree registered by any repository listed in this scan lies strictly inside it; or a directory inside cannot be read during that walk, so neither can be ruled out. The walk stops at the first finding. `git status` does not see ignored paths, and `git worktree remove` deletes ignored nested repositories and worktrees (§5.3) | advice |
+| 9 | Integrated, contains nested repository | the worktree's tree, walked without following symlinks and without descending into `<worktree>/.git`, contains a nested repository — a directory holding an entry named `.git` (file or directory) other than `<worktree>/.git`, or a directory below the worktree root that git recognises as a repository (a regular file `HEAD` and directories `objects/` and `refs/`), bare repositories included; or the resolved path of a worktree registered by any repository listed in this scan lies strictly inside it; or a directory inside cannot be read during that walk, so neither can be ruled out. The walk stops at the first finding. `git status` does not see ignored paths, and `git worktree remove` deletes ignored nested repositories and worktrees (§5.3) | advice |
 | 10 | Integrated, clean | all checks pass | **reclaimable** |
 
 One further advice state covers directories that are not registered at all (§4.2
@@ -305,7 +305,7 @@ The `<state>` text in labels:
 | git error | `git failed while checking this worktree: <first stderr line, or "timed out after 30 s">.` |
 | Not integrated | `Not integrated into <default>. Anything inside it that other providers report can still be cleaned individually.` |
 | Integrated, dirty | `Integrated into <default>, but has <n> modified and <m> untracked files. Commit, stash or discard them first.` |
-| Integrated, contains nested repository | `Contains another git repository or worktree at <relative path>. git worktree remove would delete it, including uncommitted work. Move or remove it first.` `<relative path>` is relative to the worktree (for example `.worktrees/inner`): the registered worktree found inside, or the directory holding the first nested `.git` in sorted walk order |
+| Integrated, contains nested repository | `Contains another git repository or worktree at <relative path>. git worktree remove would delete it, including uncommitted work. Move or remove it first.` `<relative path>` is relative to the worktree (for example `.worktrees/inner`): the registered worktree found inside, or the first nested repository in sorted walk order: the directory holding a `.git` entry, or the directory git recognises as a repository (`HEAD`, `objects/`, `refs/`), such as `vendor/mirror.git` |
 | Integrated, nested check could not read a directory | `Could not read <relative path> inside this worktree, so DevDoctor cannot rule out a nested repository that git worktree remove would delete.` |
 | Unverifiable directory | `Inside a worktree folder, but not a registered git worktree. DevDoctor cannot verify what it contains.` |
 
@@ -323,7 +323,7 @@ repairs every broken worktree of that repository in one run.
 | Modified tracked file | refused |
 | Staged change | refused |
 | Nested repository, not ignored | refused |
-| Nested repository or worktree under an ignored path | removed; the nested repository or worktree is deleted with it, uncommitted and staged work included. `git status` does not show it, which is why §5.1 state 9 checks for it |
+| Nested repository or worktree under an ignored path — a `.git` entry, or a directory git recognises as a repository (`HEAD`, `objects/`, `refs/`), bare repositories included | removed; the nested repository or worktree is deleted with it, uncommitted and staged work and commits that exist nowhere else included. `git status` does not show it, which is why §5.1 state 9 checks for it |
 | Locked | refused, citing the lock reason |
 | Broken `.git` pointer (repository moved) | refused: validation failed |
 | Only a stash | removed; the stash survives, because it lives in the repository |

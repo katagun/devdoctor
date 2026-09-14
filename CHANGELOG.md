@@ -68,7 +68,9 @@ entries under a versioned heading as described in
   with `git merge-tree` on git 2.38 or later; older git and partial clones detect
   only true merges and fast-forwards. A worktree containing a nested repository
   or worktree, even an ignored one, is never offered, because `git worktree
-  remove` would delete it. Every other worktree is reported as advice: not
+  remove` would delete it; nested repositories are detected by a `.git` entry or
+  by a directory git recognises as a repository (`HEAD`, `objects/`, `refs/`),
+  bare repositories included. Every other worktree is reported as advice: not
   integrated, uncommitted changes, contains nested repository, locked, broken
   pointer, no default branch, git error, or unverifiable. Contents of a removable
   worktree, such as `node_modules`, virtualenvs and build output, are counted

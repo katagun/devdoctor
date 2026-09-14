@@ -10,20 +10,26 @@ Spec: docs/superpowers/specs/2026-09-12-git-worktree-provider-design.md §5.1, s
 from __future__ import annotations
 
 import os
+import stat
 from collections.abc import Iterable
 from pathlib import Path
 
 from devdoctor.providers._worktree_states import NestedCheck
 
 GIT_ENTRY = ".git"
+# git's own repository test: what a bare repository, or a .git directory, holds.
+REPOSITORY_FILE = "HEAD"
+REPOSITORY_DIRS = frozenset({"objects", "refs"})
 
 
 def check_nesting(worktree: Path, registered: Iterable[str]) -> NestedCheck:
-    """Look for a registered worktree, a ``.git`` entry or an unreadable directory inside.
+    """Look for a registered worktree, a repository or an unreadable directory inside.
 
-    ``registered`` holds the resolved paths of every worktree the scan listed. The
-    walk does not follow symlinks, skips the worktree's own ``.git`` and stops at the
-    first finding.
+    A directory below the root is a repository when it holds a ``.git`` entry, or a
+    regular ``HEAD`` file with ``objects`` and ``refs`` directories, as a bare
+    repository does. ``registered`` holds the resolved paths of every worktree the
+    scan listed. The walk does not follow symlinks, skips the worktree's own ``.git``
+    and stops at the first finding.
     """
     root = os.path.realpath(worktree)
     inside = sorted(path for path in registered if _strictly_inside(path, root))
@@ -48,9 +54,22 @@ def _walk(root: str) -> NestedCheck:
             continue
         if GIT_ENTRY in dirnames or GIT_ENTRY in filenames:
             return NestedCheck(nested=os.path.relpath(directory, root))
+        if _looks_like_repository(directory, dirnames, filenames):
+            return NestedCheck(nested=os.path.relpath(directory, root))
     if unreadable:
         return NestedCheck(unreadable=os.path.relpath(unreadable[0], root))
     return NestedCheck()
+
+
+def _looks_like_repository(directory: str, dirnames: list[str], filenames: list[str]) -> bool:
+    if REPOSITORY_FILE not in filenames or not REPOSITORY_DIRS.issubset(dirnames):
+        return False
+    try:
+        head = os.lstat(os.path.join(directory, REPOSITORY_FILE))
+        parts = [os.lstat(os.path.join(directory, name)) for name in REPOSITORY_DIRS]
+    except OSError:
+        return True  # cannot rule it out
+    return stat.S_ISREG(head.st_mode) and all(stat.S_ISDIR(part.st_mode) for part in parts)
 
 
 def _strictly_inside(path: str, root: str) -> bool:

@@ -54,3 +54,35 @@ def test_an_unreadable_directory_cannot_be_verified(worktree):
         assert check_nesting(worktree, []) == NestedCheck(unreadable="src/sealed")
     finally:
         sealed.chmod(0o755)
+
+
+def _repository_shape(directory, parts):
+    directory.mkdir(parents=True)
+    if "HEAD" in parts:
+        (directory / "HEAD").write_text("ref: refs/heads/main\n")
+    for name in ("objects", "refs"):
+        if name in parts:
+            (directory / name).mkdir()
+
+
+def test_a_directory_git_recognises_as_a_repository_is_nested(worktree):
+    _repository_shape(worktree / "vendor" / "mirror.git", {"HEAD", "objects", "refs"})
+    assert check_nesting(worktree, []) == NestedCheck(nested="vendor/mirror.git")
+
+
+@pytest.mark.parametrize(
+    "parts",
+    [{"HEAD", "objects"}, {"HEAD", "refs"}, {"objects", "refs"}],
+    ids=["no-refs", "no-objects", "no-head"],
+)
+def test_a_directory_with_only_some_repository_parts_is_not_nested(worktree, parts):
+    _repository_shape(worktree / "vendor" / "partial", parts)
+    assert check_nesting(worktree, []) == NestedCheck()
+
+
+def test_a_head_directory_is_not_a_repository_head(worktree):
+    shape = worktree / "vendor" / "odd"
+    (shape / "HEAD").mkdir(parents=True)
+    (shape / "objects").mkdir()
+    (shape / "refs").mkdir()
+    assert check_nesting(worktree, []) == NestedCheck()
