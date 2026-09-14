@@ -328,10 +328,11 @@ repairs every broken worktree of that repository in one run.
 | Broken `.git` pointer (repository moved) | refused: validation failed |
 | Only a stash | removed; the stash survives, because it lives in the repository |
 
-The scan decides what is offered; git re-checks at execution. If a worktree
-changes between scan and cleanup, git refuses and cleanup reports git's message
-as that entry's error. Deleting uncommitted work requires both checks to be
-wrong.
+The scan decides what is offered; git re-checks at execution, but only for
+what it refuses above. If a worktree gains uncommitted changes between scan
+and cleanup, git refuses and cleanup reports git's message as that entry's
+error. Git does not re-check integration: a commit made after the scan, on a
+detached HEAD, is left unreferenced when the worktree is removed (§11; #110).
 
 ## 6. Containment, filters and cleanup
 

@@ -252,6 +252,14 @@ a{color:inherit;text-decoration:none}
 .fanout .wt.danger .wt-state{fill:color-mix(in srgb,var(--danger) 80%,var(--text))}
 .fanout .nm{fill:var(--surface-2);stroke:var(--border-strong);stroke-width:1}
 .fanout .nm-text{font:500 8px "JetBrains Mono",monospace;fill:var(--text-faint)}
+@media (max-width:560px){
+  .fanout .nm,.fanout .nm-text{display:none}
+  .fanout .wt-name{font-size:15px}
+  .fanout .wt-state{font-size:14px}
+  .fanout .repo-name{font-size:17px}
+  .fanout .repo-ref{font-size:14px}
+  #worktrees .provs .chip{white-space:normal;text-align:left}
+}
 
 /* memory meter */
 .meter{margin-top:.4rem}
@@ -382,7 +390,7 @@ a{color:inherit;text-decoration:none}
       </div>
       <div class="hero-meta">
         <div class="m"><b>2</b><span>disk &amp; memory, one tool</span></div>
-        <div class="m"><b>60+</b><span>providers</span></div>
+        <div class="m"><b>50+</b><span>providers</span></div>
         <div class="m"><b>0</b><span>bytes leave your machine</span></div>
       </div>
     </div>
@@ -567,18 +575,18 @@ a{color:inherit;text-decoration:none}
         </svg>
       </div>
       <div class="gauge-legend" style="margin-top:1.2rem">
-        <div class="li"><span class="sw" style="background:var(--border-strong)"></span>Worktree footprint <b>53.9 GB</b></div>
+        <div class="li"><span class="sw" style="background:var(--border-strong)"></span>Worktree footprint <b>53.6 GB</b></div>
         <div class="li"><span class="sw" style="background:var(--reclaim)"></span>Provably removable <b>9.3 GB</b></div>
       </div>
-      <p class="lede" style="margin-top:1rem;font-size:.86rem">Measured on one developer's machine: 150 worktrees, 39 of them integrated and clean. Yours will differ, and footprint is never counted as reclaimable.</p>
+      <p class="lede" style="margin-top:1rem;font-size:.86rem">Measured on one developer's machine: 150 worktrees, 39 of them provably removable. Yours will differ, and footprint is never counted as reclaimable.</p>
     </div>
     <div>
       <span class="eyebrow">Agent exhaust, verified</span>
       <h2 class="head" style="font-size:clamp(1.6rem,3vw,2.2rem);margin-top:1rem">Merged is not the same as safe to delete.</h2>
-      <p class="lede" style="margin-top:1rem">Coding agents check out a fresh git worktree for every task, and each one carries its own <code class="mono" style="font-size:.86em">node_modules</code>, virtualenv and build output. DevDoctor finds every worktree your repositories register and proves which ones can go: integrated into the default branch, squash and rebase merges included (git&nbsp;2.38+), with no uncommitted changes and nothing nested inside. Only those are offered, through <code class="mono" style="font-size:.86em">git&nbsp;worktree&nbsp;remove</code> and never <code class="mono" style="font-size:.86em">--force</code>. Everything else stays advice.</p>
+      <p class="lede" style="margin-top:1rem">Many coding agents check out a fresh git worktree for every task, and each one carries its own <code class="mono" style="font-size:.86em">node_modules</code>, virtualenv and build output. DevDoctor finds every worktree that repositories under your project roots register and proves which ones can go: integrated into the default branch, squash and rebase merges included (git&nbsp;2.38+), with no uncommitted changes and nothing nested inside. Only those are offered, through <code class="mono" style="font-size:.86em">git&nbsp;worktree&nbsp;remove</code> and never <code class="mono" style="font-size:.86em">--force</code>. Everything else stays advice.</p>
       <div class="provs" style="margin-top:1.6rem">
         <span class="chip reclaim">integrated &amp; clean — removable</span>
-        <span class="chip danger">unmerged, uncommitted or broken — advice only</span>
+        <span class="chip danger">not integrated, uncommitted or broken — advice only</span>
       </div>
     </div>
   </div>

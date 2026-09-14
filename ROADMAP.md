@@ -8,9 +8,9 @@ living backlog lives in [GitHub Issues](https://github.com/katagun/devdoctor/iss
 
 - **Git worktrees** — a `git-worktrees` provider finds the worktrees that agents
   and `git worktree add` leave behind, proves which are integrated into the
-  default branch and clean (squash and rebase merges included), and offers only
-  those for `git worktree remove`. Their contents are counted once, under the
-  worktree. ([#79](https://github.com/katagun/devdoctor/issues/79))
+  default branch and clean (squash and rebase merges included on git 2.38+),
+  and offers only those for `git worktree remove`. Their contents are counted
+  once, under the worktree. ([#79](https://github.com/katagun/devdoctor/issues/79))
 - **Public launch** — renamed to `devdoctor`, MIT-licensed, a public
   [landing page](https://sysaidmin.com/), and community docs
   (CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, issue/PR templates).

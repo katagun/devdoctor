@@ -68,7 +68,8 @@ Coding agents and `git worktree add` leave full checkouts behind, each with its
 own `node_modules`, virtualenvs and build output. The `git-worktrees` provider
 lists every linked worktree that the repositories under your project roots
 register, wherever it lives on disk, and classifies each one without writing to
-the repository or using the network. It needs git 2.36 or later.
+the repository or using the network (on git before 2.44, a partial clone may
+still fetch missing objects). It needs git 2.36 or later.
 
 | State | Offered as |
 |---|---|
@@ -85,8 +86,10 @@ later; older git and partial clones detect only true merges and fast-forwards.
 A worktree holding another repository or worktree, even under an ignored path,
 is never offered, because `git worktree remove` would delete it. The contents of
 a removable worktree are counted once, under the worktree, instead of again by
-their own providers. Git re-checks the worktree when cleanup runs, so one that
-changed after the scan is refused.
+their own providers. Git re-checks for uncommitted changes when cleanup runs,
+so a worktree that gained uncommitted work after the scan is refused. If you
+commit in a worktree after scanning, rescan before cleaning
+([#110](https://github.com/katagun/devdoctor/issues/110)).
 
 ```bash
 devdoctor scan --provider git-worktrees
