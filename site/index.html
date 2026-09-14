@@ -248,8 +248,8 @@ a{color:inherit;text-decoration:none}
 .fanout .wt.danger .box{stroke:var(--danger);fill:color-mix(in srgb,var(--danger) 8%,var(--surface))}
 .fanout .wt-name{font:500 10.5px "JetBrains Mono",monospace;fill:var(--text)}
 .fanout .wt-state{font:500 9px "JetBrains Mono",monospace}
-.fanout .wt.reclaim .wt-state{fill:var(--reclaim)}
-.fanout .wt.danger .wt-state{fill:var(--danger)}
+.fanout .wt.reclaim .wt-state{fill:color-mix(in srgb,var(--reclaim) 80%,var(--text))}
+.fanout .wt.danger .wt-state{fill:color-mix(in srgb,var(--danger) 80%,var(--text))}
 .fanout .nm{fill:var(--surface-2);stroke:var(--border-strong);stroke-width:1}
 .fanout .nm-text{font:500 8px "JetBrains Mono",monospace;fill:var(--text-faint)}
 
@@ -575,7 +575,7 @@ a{color:inherit;text-decoration:none}
     <div>
       <span class="eyebrow">Agent exhaust, verified</span>
       <h2 class="head" style="font-size:clamp(1.6rem,3vw,2.2rem);margin-top:1rem">Merged is not the same as safe to delete.</h2>
-      <p class="lede" style="margin-top:1rem">Coding agents check out a fresh git worktree for every task, and each one carries its own <code class="mono" style="font-size:.86em">node_modules</code>, virtualenv and build output. DevDoctor finds every worktree your repositories register and proves which ones can go: integrated into the default branch, squash and rebase merges included, with no uncommitted changes and nothing nested inside. Only those are offered, through <code class="mono" style="font-size:.86em">git&nbsp;worktree&nbsp;remove</code> and never <code class="mono" style="font-size:.86em">--force</code>. Everything else stays advice.</p>
+      <p class="lede" style="margin-top:1rem">Coding agents check out a fresh git worktree for every task, and each one carries its own <code class="mono" style="font-size:.86em">node_modules</code>, virtualenv and build output. DevDoctor finds every worktree your repositories register and proves which ones can go: integrated into the default branch, squash and rebase merges included (git&nbsp;2.38+), with no uncommitted changes and nothing nested inside. Only those are offered, through <code class="mono" style="font-size:.86em">git&nbsp;worktree&nbsp;remove</code> and never <code class="mono" style="font-size:.86em">--force</code>. Everything else stays advice.</p>
       <div class="provs" style="margin-top:1.6rem">
         <span class="chip reclaim">integrated &amp; clean — removable</span>
         <span class="chip danger">unmerged, uncommitted or broken — advice only</span>
