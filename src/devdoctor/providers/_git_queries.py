@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import re
+import stat
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -199,6 +200,26 @@ def check_integration(
     return Integration.NOT_INTEGRATED
 
 
+def _read_backlink(path: Path) -> str | None:
+    """The first line of a worktree's ``gitdir`` file, or None if it cannot be trusted."""
+    # O_NONBLOCK: opening a FIFO never waits for a writer; fstat then rejects it.
+    # Wrap every filesystem call: PermissionError is not swallowed by Path methods.
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    except OSError:
+        return None
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            return None
+        raw = os.read(fd, 65536)
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+    line = raw.decode("utf-8", errors="replace").partition("\n")[0]
+    return line if line and "\0" not in line else None
+
+
 def worktree_belongs_to(git: GitRunner, worktree: Path, common_dir: Path) -> bool:
     """Whether ``worktree`` is still the linked worktree of the repository at ``common_dir``.
 
@@ -215,15 +236,11 @@ def worktree_belongs_to(git: GitRunner, worktree: Path, common_dir: Path) -> boo
     common = os.path.realpath(common_dir)
     if os.path.realpath(pointer.gitdir.parent.parent) != common:
         return False
-    try:
-        back = (pointer.gitdir / "gitdir").read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return False
+    back = _read_backlink(pointer.gitdir / "gitdir")
     # git writes an absolute path, or one relative to the git directory (--relative-paths).
-    back = back.partition("\n")[0]
-    if not back or "\0" in back:
-        return False
-    if os.path.realpath(pointer.gitdir / back) != os.path.realpath(worktree / ".git"):
+    if back is None or os.path.realpath(pointer.gitdir / back) != os.path.realpath(
+        worktree / ".git"
+    ):
         return False
     result = git.run(
         worktree, ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"]

@@ -62,6 +62,29 @@ describe("useScan", () => {
     expect(result.current.data?.rows.length).toBe(3);
   });
 
+  it("keeps an unmeasured footprint as null instead of substituting size_bytes", async () => {
+    mockApiFetch.mockResolvedValue({
+      entries: [
+        { ...entry("worktree", 0, "dangerous"), footprint_bytes: null, reclaimable_bytes: null },
+        { ...entry("measured", 700, "safe"), footprint_bytes: 700, reclaimable_bytes: 700 },
+        entry("legacy", 300, "safe"),
+      ],
+      scanned_at: "2026-04-25T10:00:00Z",
+      hostname: "h",
+      platform: "darwin",
+      skipped_paths: [],
+    });
+    const { useScan } = await import("@/hooks/useScan");
+    const { result } = renderHook(() => useScan(), { wrapper });
+    await waitFor(() => expect(result.current.data).toBeTruthy());
+    const byId = Object.fromEntries(result.current.data!.rows.map((r) => [r.id, r]));
+    expect(byId.worktree.footprint_bytes).toBeNull();
+    expect(byId.worktree.size_bytes).toBe(0);
+    expect(byId.worktree.reclaimable_bytes).toBeNull();
+    expect(byId.measured.footprint_bytes).toBe(700);
+    expect(byId.legacy.footprint_bytes).toBe(300);
+  });
+
   it("returns 0 totalBytes when every entry is dangerous", async () => {
     mockApiFetch.mockResolvedValue({
       entries: [entry("a", 1000, "dangerous"), entry("b", 2000, "dangerous")],

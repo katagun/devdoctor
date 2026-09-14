@@ -16,6 +16,7 @@ import { cadenceMs, useSettings } from "@/hooks/useSettings";
 import { useScanETA } from "@/hooks/useScanETA";
 import { formatMs, humanBytes, RiskValue, timeAgo } from "@/lib/format";
 import { diskProviderParam } from "@/lib/providerFilters";
+import { partitionByMinSize } from "@/lib/scanRows";
 
 const RISK_CHIPS: Array<{ key: string; label: string; risks: RiskValue[] }> = [
   { key: "all", label: "all", risks: [] },
@@ -64,18 +65,10 @@ export default function Scan() {
   const [showHiddenRows, setShowHiddenRows] = useState(false);
 
   const allRows = data?.rows ?? [];
-  const { visibleRows, hiddenRows, hiddenBytes, visibleBytes } = useMemo(() => {
-    const threshold = settings.minSizeBytes;
-    if (threshold <= 0) {
-      const totalBytes = allRows.reduce((a, b) => a + b.size_bytes, 0);
-      return { visibleRows: allRows, hiddenRows: [], hiddenBytes: 0, visibleBytes: totalBytes };
-    }
-    const visible = allRows.filter((r) => r.size_bytes >= threshold);
-    const hidden = allRows.filter((r) => r.size_bytes < threshold);
-    const hBytes = hidden.reduce((a, b) => a + b.size_bytes, 0);
-    const vBytes = visible.reduce((a, b) => a + b.size_bytes, 0);
-    return { visibleRows: visible, hiddenRows: hidden, hiddenBytes: hBytes, visibleBytes: vBytes };
-  }, [allRows, settings.minSizeBytes]);
+  const { visibleRows, hiddenRows, hiddenBytes, visibleBytes } = useMemo(
+    () => partitionByMinSize(allRows, settings.minSizeBytes),
+    [allRows, settings.minSizeBytes],
+  );
 
   const selectedRows = visibleRows.filter((r) => selected.has(r.id));
   const totalSelected = useMemo(

@@ -258,8 +258,8 @@ def test_missing_worktree_has_no_entry_and_suggests_prune(app, projects):
 
     assert entries == []
     assert provider.diagnostics == [
-        f"git-worktrees: 1 registered worktree(s) of {app.path} no longer exist; "
-        f'run "git -C {app.path} worktree prune"'
+        f"git-worktrees: 1 registered worktree(s) of {app.path} are missing or no longer "
+        f'valid; run "git -C {app.path} worktree prune"'
     ]
 
 
@@ -376,8 +376,17 @@ def test_git_before_2_36_reports_nothing():
     entries, provider = _discover(shell)
     assert entries == []
     assert provider.diagnostics == [
-        "git-worktrees: worktree listing needs git 2.36 and git 2.35.8 could not be "
-        "confirmed to support it; no worktrees reported"
+        "git-worktrees: worktree listing needs git 2.36, found git 2.35.8; no worktrees reported"
+    ]
+
+
+def test_unknown_git_version_reports_nothing():
+    version = ("git", "--no-optional-locks", "-C", "/", "version")
+    shell = FakeShell(responses={version: ShellResult(1, "", "boom\n")})
+    entries, provider = _discover(shell)
+    assert entries == []
+    assert provider.diagnostics == [
+        "git-worktrees: could not determine the git version; no worktrees reported"
     ]
 
 
@@ -657,3 +666,197 @@ def test_discovery_runs_no_writing_command(app, projects):
         assert env is not None
         if env.get("GIT_OBJECT_DIRECTORY") is not None:
             assert "merge-tree" in argv, argv
+
+
+def test_unregistered_broken_pointer_is_unverifiable(git_fixture, tmp_path, projects):
+    repo = git_fixture.repository(tmp_path / "elsewhere" / "app")
+    worktree = repo.add_worktree(projects / "wt" / "orphan", "orphan")
+    shutil.rmtree(repo.path)
+
+    entry = _entry(_discover()[0], worktree.path)
+
+    assert entry.label == "app/orphan · unverifiable"
+    _assert_advice_shape(entry)
+
+
+def test_worktree_of_a_bare_repository_is_classified_without_diagnostics(
+    git_fixture, tmp_path, projects
+):
+    source = git_fixture.repository(tmp_path / "source")
+    bare = projects / "bare.git"
+    subprocess.run(
+        ["git", "clone", "--bare", "-q", str(source.path), str(bare)],
+        check=True,
+        capture_output=True,
+    )
+    worktree = projects / "wt" / "feature"
+    subprocess.run(
+        ["git", "-C", str(bare), "worktree", "add", "-q", "-b", "feature", str(worktree), "main"],
+        check=True,
+        capture_output=True,
+    )
+
+    entries, provider = _discover()
+
+    assert _entry(entries, worktree).label == "bare.git/feature · no default branch"
+    assert provider.diagnostics == []
+
+
+def test_worktree_on_an_unborn_branch_is_a_git_error(app, projects):
+    version = GitRunner(RealShell()).version()
+    if version is None or version < (2, 42, 0):
+        pytest.skip("git worktree add --orphan needs git 2.42")
+    app.publish()
+    worktree = projects / "wt" / "empty"
+    app.git("worktree", "add", "-q", "--orphan", "-b", "empty", str(worktree))
+
+    entry = _entry(_discover()[0], worktree)
+
+    assert entry.label == "app/empty · git error"
+    assert entry.risk is Risk.DANGEROUS
+
+
+def test_repository_reached_by_the_walk_and_a_pointer_is_listed_once(app, projects):
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    _merge(app, worktree)
+    app.publish()
+    shell = RecordingShell()
+
+    _discover(shell)
+
+    listings = [argv for argv, _ in shell.calls if argv[4:6] == ("worktree", "list")]
+    assert len(listings) == 1
+
+
+def _nested_advice(relative):
+    return (
+        f"Contains another git repository or worktree at {relative}. git worktree remove "
+        "would delete it, including uncommitted work. Move or remove it first."
+    )
+
+
+def test_integrated_worktree_holding_an_ignored_nested_worktree_is_advice(app, projects):
+    app.commit("Ignore worktrees", {".gitignore": ".worktrees/\n"})
+    outer = app.add_worktree(projects / "wt" / "outer", "outer")
+    _merge(app, outer, branch="outer")
+    app.publish()
+    inner = outer.add_worktree(outer.path / ".worktrees" / "inner", "inner")
+    (inner.path / "staged.txt").write_text("staged work\n")
+    inner.git("add", "staged.txt")
+
+    entries, _ = _discover()
+
+    entry = _entry(entries, outer.path)
+    assert entry.label == "app/outer · contains nested repository"
+    assert entry.risk is not Risk.RECLAIMABLE
+    _assert_advice_shape(entry)
+    assert _advice(entry) == _nested_advice(".worktrees/inner")
+
+
+def test_integrated_worktree_holding_an_ignored_nested_repository_is_advice(
+    git_fixture, app, tmp_path
+):
+    app.commit("Ignore vendored code", {".gitignore": "vendor/\n"})
+    # Outside every scan root, so only the walk inside the worktree can find the repository.
+    outer = app.add_worktree(tmp_path / "elsewhere" / "outer", "outer")
+    _merge(app, outer, branch="outer")
+    app.publish()
+    vendored = git_fixture.repository(outer.path / "vendor" / "lib")
+    (vendored.path / "uncommitted.txt").write_text("uncommitted\n")
+
+    entry = _entry(_discover()[0], outer.path)
+
+    assert entry.label == "app/outer · contains nested repository"
+    _assert_advice_shape(entry)
+    assert _advice(entry) == _nested_advice("vendor/lib")
+
+
+def test_integrated_worktree_with_ignored_dependencies_and_no_nested_git_is_reclaimable(
+    app, projects
+):
+    app.commit("Ignore dependencies", {".gitignore": "node_modules/\n"})
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    (worktree.path / "node_modules" / "pkg" / "lib").mkdir(parents=True)
+    (worktree.path / "node_modules" / "pkg" / "lib" / "index.js").write_text("x\n")
+    _merge(app, worktree)
+    app.publish()
+
+    entry = _entry(_discover()[0], worktree.path)
+
+    assert entry.label == "app/feature · integrated"
+    assert entry.risk is Risk.RECLAIMABLE
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores permissions")
+def test_unreadable_directory_in_an_integrated_worktree_is_advice(app, projects):
+    app.commit("Ignore sealed", {".gitignore": "sealed/\n"})
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    _merge(app, worktree)
+    app.publish()
+    sealed = worktree.path / "sealed" / "inner"
+    sealed.mkdir(parents=True)
+    sealed.chmod(0o000)
+    try:
+        entry = _entry(_discover()[0], worktree.path)
+    finally:
+        sealed.chmod(0o755)
+
+    assert entry.label == "app/feature · contains nested repository"
+    _assert_advice_shape(entry)
+    assert _advice(entry) == (
+        "Could not read sealed/inner inside this worktree, so DevDoctor cannot rule out a "
+        "nested repository that git worktree remove would delete."
+    )
+
+
+def test_no_offered_command_deletes_a_nested_worktree(app, projects):
+    app.commit("Ignore worktrees", {".gitignore": ".worktrees/\n"})
+    outer = app.add_worktree(projects / "wt" / "outer", "outer")
+    _merge(app, outer, branch="outer")
+    app.publish()
+    inner = outer.add_worktree(outer.path / ".worktrees" / "inner", "inner")
+    staged = inner.path / "staged.txt"
+    staged.write_text("staged work\n")
+    inner.git("add", "staged.txt")
+
+    entries, _ = _discover()
+
+    for entry in entries:
+        for action in entry.actions:
+            if isinstance(action, CommandAction):
+                subprocess.run(action.argv, capture_output=True, check=False)
+    assert staged.read_text() == "staged work\n"
+
+
+def test_integrated_worktree_holding_an_ignored_bare_repository_is_advice(
+    git_fixture, app, projects, tmp_path
+):
+    app.commit("Ignore vendored code", {".gitignore": "vendor/\n"})
+    worktree = app.add_worktree(projects / "wt" / "bare", "bare")
+    _merge(app, worktree, branch="bare")
+    app.publish()
+    mirror = worktree.path / "vendor" / "mirror.git"
+    subprocess.run(["git", "init", "--bare", "-q", str(mirror)], check=True, capture_output=True)
+    scratch = git_fixture.repository(tmp_path / "scratch")
+    only_copy = scratch.commit("Exists only in the mirror", {"only.txt": "only\n"})
+    scratch.git("push", "-q", str(mirror), "main")
+    shutil.rmtree(scratch.path)
+
+    entries, _ = _discover()
+
+    entry = _entry(entries, worktree.path)
+    assert entry.label == "app/bare · contains nested repository"
+    assert entry.risk is not Risk.RECLAIMABLE
+    _assert_advice_shape(entry)
+    assert _advice(entry) == _nested_advice("vendor/mirror.git")
+    for offered in entries:
+        for action in offered.actions:
+            if isinstance(action, CommandAction):
+                subprocess.run(action.argv, capture_output=True, check=False)
+    kept = subprocess.run(
+        ["git", "--git-dir", str(mirror), "cat-file", "-t", only_copy],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert kept.stdout.strip() == "commit"

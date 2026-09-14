@@ -8,7 +8,16 @@ from devdoctor.cleanup import (
     PromptRequired,
     iter_cleanup_events,
 )
-from devdoctor.types import CleanupOpts, Entry, Report, Risk, ShellResult
+from devdoctor.types import (
+    CleanResult,
+    CleanupOpts,
+    CommandAction,
+    DeletePathAction,
+    Entry,
+    Report,
+    Risk,
+    ShellResult,
+)
 
 
 def _report(*entries: Entry) -> Report:
@@ -192,3 +201,108 @@ def test_final_confirm_no_marks_everything_aborted():
     assert isinstance(ev, EntryResolved)
     assert ev.result.status == "skipped"
     assert "aborted" in (ev.result.message or "").lower()
+
+
+_WORKTREE = Path("/p/wt/feature")
+
+
+def _worktree_owner() -> Entry:
+    return Entry(
+        provider="git-worktrees",
+        id="git-worktrees:/p/wt/feature",
+        path=_WORKTREE,
+        label="app/feature · integrated",
+        size_bytes=1_000,
+        mtime=None,
+        risk=Risk.RECLAIMABLE,
+        recipe=[],
+        actions=(CommandAction(("git", "-C", "/p/app", "worktree", "remove", str(_WORKTREE))),),
+    )
+
+
+def _content(id_: str, path: Path) -> Entry:
+    return Entry(
+        provider="node-project-dependencies",
+        id=id_,
+        path=path,
+        label=str(path),
+        size_bytes=600,
+        mtime=None,
+        risk=Risk.RECLAIMABLE,
+        recipe=[],
+        actions=(DeletePathAction(path),),
+    )
+
+
+def _run_cleanup(report: Report, choices: dict[str, str], returncodes: dict[str, int]):
+    """Drive a cleanup: answer prompts by entry id, confirm, record executed entry ids."""
+    executed: list[str] = []
+    results = {}
+    gen = iter_cleanup_events(report, CleanupOpts(execute=True))
+    try:
+        event = next(gen)
+        while True:
+            if isinstance(event, PromptRequired):
+                event = gen.send(choices[event.entry.id])
+            elif isinstance(event, ConfirmRequired):
+                event = gen.send(True)
+            elif isinstance(event, ExecuteStep):
+                executed.append(event.entry.id)
+                event = gen.send(ShellResult(returncodes.get(event.entry.id, 0), "", "refused"))
+            else:
+                results[event.result.entry_id] = event.result
+                event = next(gen)
+    except StopIteration:
+        pass
+    return executed, results
+
+
+def _worktree_report() -> tuple[Report, Entry, Entry, Entry]:
+    inside = _content("node:inside", _WORKTREE / "node_modules")
+    owner = _worktree_owner()
+    outside = _content("node:outside", Path("/p/app/node_modules"))
+    return _report(inside, owner, outside), inside, owner, outside
+
+
+def test_contents_of_a_removed_worktree_are_skipped_after_it_runs_first():
+    report, inside, owner, outside = _worktree_report()
+
+    executed, results = _run_cleanup(report, dict.fromkeys(_ids(report), "y"), {})
+
+    assert executed == [owner.id, outside.id]
+    assert results[owner.id].status == "ok"
+    assert results[inside.id] == CleanResult(
+        entry_id=inside.id,
+        status="skipped",
+        freed_bytes=0,
+        message="removed with worktree app/feature · integrated",
+    )
+    assert results[outside.id].status == "ok"
+    assert set(results) == set(_ids(report))
+
+
+def test_contents_run_when_the_worktree_removal_fails():
+    report, inside, owner, outside = _worktree_report()
+
+    executed, results = _run_cleanup(report, dict.fromkeys(_ids(report), "y"), {owner.id: 128})
+
+    assert executed == [owner.id, inside.id, outside.id]
+    assert results[owner.id].status == "error"
+    assert results[inside.id].status == "ok"
+    assert set(results) == set(_ids(report))
+
+
+def test_contents_run_when_the_worktree_is_declined():
+    report, inside, owner, outside = _worktree_report()
+    choices = {inside.id: "y", owner.id: "n", outside.id: "y"}
+
+    executed, results = _run_cleanup(report, choices, {})
+
+    assert executed == [inside.id, outside.id]
+    assert results[owner.id].message == "declined"
+    assert results[inside.id].status == "ok"
+    assert set(results) == set(_ids(report))
+
+
+def _ids(report: Report) -> list[str]:
+    return [entry.id for entry in report.entries]

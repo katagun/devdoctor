@@ -21,7 +21,9 @@ router = APIRouter(prefix="/api/clean")
 @router.post("/jobs")
 async def start_job(body: CleanJobCreate, request: Request) -> Response:
     providers_list = registry.load_providers(request.app.state.shell)
-    report = discovery.scan(providers_list, ScanFilters(), datetime.now(UTC))
+    # Uncontained: this scan establishes current state for the selection, so every id
+    # a filtered view could have shown still exists (spec §6.4).
+    report = discovery.scan(providers_list, ScanFilters(), datetime.now(UTC), contain=False)
     # Entry ids are globally unique (namespaced "{provider}:{id}" in
     # discovery.scan), so selecting by bare id can never cross providers.
     known_ids = {e.id for e in report.entries}
@@ -32,6 +34,8 @@ async def start_job(body: CleanJobCreate, request: Request) -> Response:
             content={"error": {"code": "unknown_entry", "ids": unknown}},
         )
     # Filter the report down to just the selected entries — cleanup walks candidates from there.
+    # Every selected entry stays in the job: the executor skips an entry only once the
+    # worktree holding it has actually been removed, so each one gets a result (spec §6.4).
     selected = set(body.entry_ids)
     report.entries = [e for e in report.entries if e.id in selected]
 

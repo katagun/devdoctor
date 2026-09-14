@@ -1,5 +1,6 @@
 import os
 import shutil
+import threading
 from pathlib import Path
 
 import pytest
@@ -576,3 +577,37 @@ def test_real_default_branch_ignores_a_tag_named_like_a_remote_ref(git_fixture, 
     default = resolve_default_branch(REAL_GIT, repo.path)
     assert default is not None
     assert (default.name, default.commit) == ("origin/master", base)
+
+
+def test_real_ownership_check_does_not_block_on_a_fifo_backlink(git_fixture, tmp_path):
+    repo = git_fixture.repository(tmp_path / "app")
+    worktree = repo.add_worktree(tmp_path / "feature", "feature")
+    backlink = repo.path / ".git" / "worktrees" / "feature" / "gitdir"
+    backlink.unlink()
+    os.mkfifo(backlink)
+    outcome: list[bool] = []
+    check = threading.Thread(
+        target=lambda: outcome.append(
+            worktree_belongs_to(REAL_GIT, worktree.path, repo.path / ".git")
+        ),
+        daemon=True,
+    )
+    check.start()
+    check.join(timeout=10)
+    assert outcome == [False]
+
+
+def test_real_ownership_check_treats_an_unreadable_admin_directory_as_not_owned(
+    git_fixture, tmp_path
+):
+    if os.geteuid() == 0:
+        pytest.skip("root ignores permissions")
+    repo = git_fixture.repository(tmp_path / "app")
+    worktree = repo.add_worktree(tmp_path / "feature", "feature")
+    admin_dir = repo.path / ".git" / "worktrees" / "feature"
+    old_mode = admin_dir.stat().st_mode
+    try:
+        os.chmod(admin_dir, 0o600)
+        assert worktree_belongs_to(REAL_GIT, worktree.path, repo.path / ".git") is False
+    finally:
+        os.chmod(admin_dir, old_mode)

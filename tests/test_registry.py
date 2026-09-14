@@ -39,10 +39,12 @@ def test_registry_includes_expanded_ecosystem_providers():
         "conda-environments",
         "nuget-caches",
         "tox-nox-environments",
+        "git-worktrees",
     } <= providers.keys()
     assert providers["go-caches"].family == "go"
     assert providers["cargo-targets"].family == "rust"
     assert providers["android-sdk-storage"].family == "android"
+    assert providers["git-worktrees"].family == "vcs"
 
 
 def test_downloads_provider_is_dangerous_and_advice_only():

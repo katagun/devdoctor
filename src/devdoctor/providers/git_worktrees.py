@@ -34,6 +34,7 @@ from devdoctor.providers._git_queries import (
     worktree_belongs_to,
     worktree_status,
 )
+from devdoctor.providers._worktree_nesting import check_nesting
 from devdoctor.providers._worktree_states import (
     WorktreeFacts,
     WorktreeState,
@@ -90,11 +91,16 @@ class GitWorktreeProvider(Provider):
 
     def discover(self) -> list[Entry]:
         version = self._git.version()
-        if not supports_worktree_list_z(version):
-            found = "the git version" if version is None else "git " + ".".join(map(str, version))
+        if version is None:
             self.diagnostics.append(
-                f"git-worktrees: worktree listing needs git 2.36 and {found} could not be "
-                "confirmed to support it; no worktrees reported"
+                "git-worktrees: could not determine the git version; no worktrees reported"
+            )
+            return []
+        if not supports_worktree_list_z(version):
+            found = ".".join(map(str, version))
+            self.diagnostics.append(
+                f"git-worktrees: worktree listing needs git 2.36, found git {found}; "
+                "no worktrees reported"
             )
             return []
         objects_dir = (
@@ -124,8 +130,12 @@ class GitWorktreeProvider(Provider):
             if linked:
                 facts = self._repository_facts(repository, linked, objects_dir)
                 work.extend((facts, record) for record in linked)
+        # Every repository has been listed: a worktree holding any of them is not removable.
+        registered = frozenset(listed)
         with ThreadPoolExecutor(max_workers=WORKER_THREADS) as pool:
-            entries = list(pool.map(lambda item: self._worktree_entry(*item), work))
+            entries = list(
+                pool.map(lambda item: self._worktree_entry(item[0], item[1], registered), work)
+            )
         entries.extend(self._unverifiable_entries(candidates, listed, failed))
         return entries
 
@@ -154,8 +164,8 @@ class GitWorktreeProvider(Provider):
             linked.append(record)
         if stale:
             self.diagnostics.append(
-                f"git-worktrees: {stale} registered worktree(s) of {repository} no longer "
-                f'exist; run "git -C {repository} worktree prune"'
+                f"git-worktrees: {stale} registered worktree(s) of {repository} are missing "
+                f'or no longer valid; run "git -C {repository} worktree prune"'
             )
         return linked
 
@@ -189,13 +199,13 @@ class GitWorktreeProvider(Provider):
         return _Repository(repository, common_dir, default, merge_tree, head_times)
 
     def _classify(
-        self, repository: _Repository, record: WorktreeRecord
+        self, repository: _Repository, record: WorktreeRecord, registered: frozenset[str]
     ) -> tuple[WorktreeState, WorktreeFacts]:
         """Gather facts in spec §5.1 order until one state matches."""
         default = repository.default
-        toplevel_ok, failure = self._ownership(repository, record)
+        ownership_ok, failure = self._ownership(repository, record)
         facts = WorktreeFacts(
-            toplevel_ok=toplevel_ok,
+            ownership_ok=ownership_ok,
             locked=record.locked,
             default_branch=default.name if default else None,
             failure=failure,
@@ -218,6 +228,9 @@ class GitWorktreeProvider(Provider):
             if state is None:
                 facts = replace(facts, status=worktree_status(self._git, record.path))
                 state = classify(facts)
+            if state is None:  # integrated and clean: last, because it walks the tree
+                facts = replace(facts, nesting=check_nesting(record.path, registered))
+                state = classify(facts)
         except GitQueryError as exc:
             facts = replace(facts, failure=str(exc))
             state = classify(facts)
@@ -234,8 +247,10 @@ class GitWorktreeProvider(Provider):
         except GitQueryError as exc:
             return False, str(exc)
 
-    def _worktree_entry(self, repository: _Repository, record: WorktreeRecord) -> Entry:
-        state, facts = self._classify(repository, record)
+    def _worktree_entry(
+        self, repository: _Repository, record: WorktreeRecord, registered: frozenset[str]
+    ) -> Entry:
+        state, facts = self._classify(repository, record, registered)
         label = worktree_label(
             repository_name=repository.path.name,
             directory=record.path,
@@ -262,6 +277,7 @@ class GitWorktreeProvider(Provider):
             default_branch=facts.default_branch,
             failure=facts.failure,
             status=facts.status,
+            nesting=facts.nesting,
         )
         return self._advice_entry(record.path, label, mtime, message)
 

@@ -81,8 +81,9 @@ Non-goals are listed in §10.
   `Report.filter` (§6.2).
 - **`src/devdoctor/discovery.py`** — zero-byte filter exemption, containment
   pass, provider-total recomputation, `scan(..., contain=)` (§6).
-- **`src/devdoctor/web/routes_clean.py`** — `contain=False` and selection
-  dedupe (§6.4).
+- **`src/devdoctor/web/routes_clean.py`** — `contain=False` (§6.4).
+- **`src/devdoctor/cleanup.py`** — the shared executor runs removable worktrees
+  first and skips what their removal deleted (§6.4).
 - **`src/devdoctor/registry.py`** — registration, in the PR that also ships
   containment (§9).
 
@@ -217,6 +218,7 @@ path.
 | `worktree list --porcelain -z` | 8 calls |
 | ownership `rev-parse`, `merge-tree`, `status` per worktree | 138 × 3 calls: ~20 s serial, ~5 s on 4 workers (merge-tree median 69 ms, max 792 ms) |
 | Sizing | Reclaimable worktrees only: 10.7 GB, ~30 s at the sizer's measured ~0.34 GB/s |
+| Nested-repository walk | Integrated, clean worktrees only: one more walk of the tree (§5.1 state 9), stopping at the first finding, before sizing walks it again |
 
 Sizing dominates and is tracked in #92. Advice entries are never sized.
 
@@ -230,13 +232,14 @@ Registered worktrees are checked in order, and the first match wins.
 |---|---|---|---|
 | 1 | Primary worktree | first porcelain record | none |
 | 2 | Missing, prunable or bare | porcelain `prunable` or `bare`, or the directory is absent | none; one diagnostic per repository suggesting `git -C <repo> worktree prune` |
-| 3 | Broken pointer | the directory no longer belongs to this worktree: `<worktree>/.git` is missing or is not a worktree pointer; the pointer's gitdir does not exist; the gitdir is not inside the repository's common git dir, or its `gitdir` file does not name `<worktree>/.git`; or `rev-parse --path-format=absolute --show-toplevel --git-common-dir` in the worktree names a different toplevel or common dir. Paths compare after resolving symlinks. If that `rev-parse` fails or times out with the pointer intact, the worktree is state 6 instead | advice |
+| 3 | Broken pointer | the directory no longer belongs to this worktree: `<worktree>/.git` is missing or is not a worktree pointer; the pointer's gitdir does not exist; the gitdir is not `<common git dir>/worktrees/<name>`, or its `gitdir` file does not name `<worktree>/.git`; or `rev-parse --path-format=absolute --show-toplevel --git-common-dir` in the worktree names a different toplevel or common dir. Paths compare after resolving symlinks. If that `rev-parse` fails or times out with the pointer intact, the worktree is state 6 instead | advice |
 | 4 | Locked | porcelain `locked [reason]` | advice |
 | 5 | Default branch unresolvable | §4.4 | advice |
-| 6 | git error | the state 3 `rev-parse` (pointer intact), `--git-common-dir` for the repository, or a later call (`merge-tree`, `status`) exits non-zero or times out | advice |
+| 6 | git error | the state 3 `rev-parse` (pointer intact), `--git-common-dir` for the repository, or a later call (`merge-tree` or `merge-base --is-ancestor`, `status`) exits non-zero or times out | advice |
 | 7 | Not integrated | §4.4 | advice |
 | 8 | Integrated, dirty | `status --porcelain --untracked-files=normal` produces output | advice |
-| 9 | Integrated, clean | all checks pass | **reclaimable** |
+| 9 | Integrated, contains nested repository | the worktree's tree, walked without following symlinks and without descending into `<worktree>/.git`, contains a nested repository — a directory holding an entry named `.git` (file or directory) other than `<worktree>/.git`, or a directory below the worktree root that git recognises as a repository (a regular file `HEAD` and directories `objects/` and `refs/`), bare repositories included; or the resolved path of a worktree registered by any repository listed in this scan lies strictly inside it; or a directory inside cannot be read during that walk, so neither can be ruled out. The walk stops at the first finding. `git status` does not see ignored paths, and `git worktree remove` deletes ignored nested repositories and worktrees (§5.3) | advice |
+| 10 | Integrated, clean | all checks pass | **reclaimable** |
 
 One further advice state covers directories that are not registered at all (§4.2
 step 5): **unverifiable directory**.
@@ -270,6 +273,7 @@ The `<state>` text in labels:
 |---|---|
 | Integrated, clean | `integrated` |
 | Integrated, dirty | `integrated, uncommitted changes` |
+| Integrated, contains nested repository | `contains nested repository` |
 | Not integrated | `not integrated` |
 | Broken pointer | `broken pointer` |
 | Locked | `locked` |
@@ -277,7 +281,7 @@ The `<state>` text in labels:
 | git error | `git error` |
 | Unverifiable directory | `unverifiable` |
 
-**Reclaimable** (state 9):
+**Reclaimable** (state 10):
 
 - `risk = Risk.RECLAIMABLE`
 - sized with `size_path_detailed`; `usage = DiskUsage(size, size)`
@@ -301,6 +305,8 @@ The `<state>` text in labels:
 | git error | `git failed while checking this worktree: <first stderr line, or "timed out after 30 s">.` |
 | Not integrated | `Not integrated into <default>. Anything inside it that other providers report can still be cleaned individually.` |
 | Integrated, dirty | `Integrated into <default>, but has <n> modified and <m> untracked files. Commit, stash or discard them first.` |
+| Integrated, contains nested repository | `Contains another git repository or worktree at <relative path>. git worktree remove would delete it, including uncommitted work. Move or remove it first.` `<relative path>` is relative to the worktree (for example `.worktrees/inner`): the registered worktree found inside, or the first nested repository in sorted walk order: the directory holding a `.git` entry, or the directory git recognises as a repository (`HEAD`, `objects/`, `refs/`), such as `vendor/mirror.git` |
+| Integrated, nested check could not read a directory | `Could not read <relative path> inside this worktree, so DevDoctor cannot rule out a nested repository that git worktree remove would delete.` |
 | Unverifiable directory | `Inside a worktree folder, but not a registered git worktree. DevDoctor cannot verify what it contains.` |
 
 The broken-pointer command is repository-level on purpose: `git worktree repair`
@@ -316,7 +322,8 @@ repairs every broken worktree of that repository in one run.
 | Untracked file | refused |
 | Modified tracked file | refused |
 | Staged change | refused |
-| Nested repository | refused |
+| Nested repository, not ignored | refused |
+| Nested repository or worktree under an ignored path — a `.git` entry, or a directory git recognises as a repository (`HEAD`, `objects/`, `refs/`), bare repositories included | removed; the nested repository or worktree is deleted with it, uncommitted and staged work and commits that exist nowhere else included. `git status` does not show it, which is why §5.1 state 9 checks for it |
 | Locked | refused, citing the lock reason |
 | Broken `.git` pointer (repository moved) | refused: validation failed |
 | Only a stash | removed; the stash survives, because it lives in the repository |
@@ -340,6 +347,10 @@ explicitly unmeasured: `usage is not None and usage.footprint_bytes is None and
 usage.reclaimable_bytes is None`. No existing provider emits that shape, so no
 existing output changes, and `test_scan_drops_zero_byte_entries` must keep
 passing unchanged.
+
+The server-side minimum size (`--min-size` on the CLI, `min_size` on the API)
+hides unmeasured entries, because their size is not known to reach it. The web
+UI's client-side minimum size never hides them.
 
 ### 6.2 Containment pass
 
@@ -368,6 +379,15 @@ reconciled entry list, alongside the footprint, reclaimable and shared totals it
 already recomputes. Without this, `devdoctor diff` would double-count contained
 bytes.
 
+Provider totals are whole-scan totals under full containment, regardless of the
+view's filters: they are computed from the entry list contained with unfiltered
+`ScanFilters()`, while the returned entries are contained under the scan's
+filters (§6.2). A filtered view that hides a reclaimable worktree therefore still
+counts its contents once, under `git-worktrees`, and `devdoctor scan --json
+--risk …` and `GET /api/scan?risk=…` report the same totals as an unfiltered
+scan. With `contain=False` nothing is contained, and totals come from the
+uncontained list.
+
 When a worktree becomes integrated, its contents' bytes move from their own
 provider's total to `git-worktrees`. Diff reports that as a shift between
 providers, not as space freed. Snapshots and the dashboard summary are written
@@ -381,10 +401,18 @@ containment rules.
   current state, not what to display, so every id any filtered view could have
   shown still exists, and the existing `unknown_entry` (HTTP 400) check cannot
   fire for a legitimate selection. That scan's totals are never shown.
-- After narrowing that report to the selected ids, any selected entry whose path
-  lies inside a selected `git-worktrees` entry's path is dropped from the job.
-  Removing the worktree deletes it, and keeping it would double-report freed
-  bytes.
+- That report is narrowed to the selected ids, and every selected entry stays in
+  the job, so each one gets a `CleanResult`.
+- **The shared cleanup executor** (`cleanup._iter_execute`, used by CLI and web)
+  runs approved reclaimable `git-worktrees` entries before other approved
+  entries; non-approved selections resolve as before. Before running any other
+  approved entry, if its resolved path equals or lies inside the path of a
+  `git-worktrees` entry whose actions all succeeded in this run, it resolves as
+  `CleanResult(status="skipped", freed_bytes=0, message="removed with worktree
+  <worktree label>")` without running: the removal already deleted it, and
+  running it would double-report freed bytes. Otherwise it runs normally — the
+  worktree was declined, skipped, never reached, or git refused its removal.
+  Paths are resolved before anything runs.
 - **CLI `clean` and `recipe` keep containment on.** They scan and act in one
   invocation, so ids cannot drift, and their `--provider` filter decides
   ownership consistently.
@@ -409,6 +437,7 @@ containment rules.
 |---|---|
 | `git` not on `PATH` | provider unavailable, via `required_binary` |
 | `git` older than 2.36 (no `worktree list -z`) | no worktree entries; one diagnostic naming the installed version |
+| The `git` version cannot be determined | no worktree entries; one diagnostic |
 | A per-worktree git call exits non-zero or times out | that worktree is a git error (§5.1 state 6), including the ownership `rev-parse` when its `.git` pointer is intact; a worktree whose ownership fails the pointer checks is a broken pointer (state 3) without that call; the provider continues |
 | A repository's `rev-parse --git-common-dir` fails | every worktree of that repository is a git error with that failure; no integration or status check runs for them |
 | A repository's `worktree list` fails | one diagnostic for that repository; its worktrees are not reported |
@@ -416,6 +445,7 @@ containment rules.
 | The temporary object directory cannot be created | merge-tree is skipped for the scan, classification falls back to `is-ancestor`, and one diagnostic is recorded |
 | The temporary object directory cannot be removed | one diagnostic naming the path |
 | Sizing skips unreadable paths | the existing `_note_skipped` diagnostics |
+| A directory inside an integrated, clean worktree cannot be read during the nested-repository walk | that worktree is state 9 with the "Could not read" advice (§5.2); it is never reclaimable |
 
 ## 8. Testing
 
@@ -436,7 +466,9 @@ containment rules.
   are still dropped.
 - `entry_matches_filters` parity: the existing `Report.filter` tests pass
   unchanged.
-- Web-cleanup selection dedupe.
+- Cleanup executor: removable worktrees run first; an entry inside a worktree
+  removed in the same run is skipped with a result; if the removal fails or is
+  declined, the entry runs.
 - Timeout: a `FakeShell` raising `TimeoutExpired` for one worktree yields advice
   for that worktree while the others classify normally.
 
@@ -505,7 +537,7 @@ same PR that introduces containment.
 |---|---|---|
 | 1. Foundation | `Shell.run(env=)` in all three implementations; `providers/_git.py` with parsers and the invocation contract; unit and port tests | no |
 | 2. Discovery and classification | the index records git candidates; `GitWorktreeProvider` with every §5 state and the write-free, offline contract; real-git integration tests. Not registered | no |
-| 3. Containment and registration | zero-byte exemption; `entry_matches_filters`; containment pass and provider-total recomputation; `scan(contain=)`; web cleanup `contain=False` and selection dedupe; registration; end-to-end tests; CHANGELOG | yes |
+| 3. Containment and registration | zero-byte exemption; `entry_matches_filters`; containment pass and provider-total recomputation; `scan(contain=)`; web cleanup `contain=False`; cleanup executor runs worktrees first and skips what their removal deleted; registration; end-to-end tests; CHANGELOG | yes |
 | 4. Documentation and site | README provider list; then #91 | yes |
 
 Alongside this spec, issues #79 and #91 are corrected to the measured figures in
@@ -541,6 +573,18 @@ should land no later than PR 3.
 - **Double sizing.** Contents of a reclaimable worktree are sized by their own
   providers and again as part of the worktree before containment removes them
   (#92).
+- **Worktree paths containing a newline.** The ownership `rev-parse` prints one
+  path per line, so such a worktree reads as a broken pointer with the "does not
+  point back" advice even when its pointer is intact. It is never reclaimable.
+- **Relative pointers under symlinked directories.** A relative `gitdir:` line is
+  normalised without resolving symlinks, so a pointer under a symlinked scan root
+  can name a repository that does not exist, and its worktree is reported as
+  unverifiable instead of classified. Worktrees are still classified, and removed,
+  only through the repository that registers them.
+- **Case-insensitive filesystems.** Containment compares resolved paths
+  case-sensitively, so on a case-insensitive filesystem a project root spelled
+  differently from git's recorded worktree path can miss containment, and those
+  contents are counted and offered under their own provider as well.
 - **Commits made between classification and cleanup.** Integration is checked
   against the HEAD read at scan time; if an agent commits in a detached,
   integrated worktree before `git worktree remove` runs, the worktree still

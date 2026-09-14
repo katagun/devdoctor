@@ -83,6 +83,41 @@ describe("CacheTable", () => {
     expect(providerCells[1].textContent).toBe("uv-cache");
   });
 
+  const unmeasured: CacheTableRow = {
+    id: "3",
+    provider: "git-worktrees",
+    label: "app/feature · not integrated",
+    path: "/p/app/.worktrees/feature",
+    size_bytes: 0,
+    footprint_bytes: null,
+    reclaimable_bytes: null,
+    shared_bytes: 0,
+    risk: "dangerous",
+    mtime: null,
+    recipeHint: "echo 'Not integrated into origin/main.'",
+    owner: null,
+    group: null,
+    perms: null,
+  };
+
+  it("renders an unmeasured footprint as a dash, not 0B", () => {
+    render(<CacheTable rows={[unmeasured]} selected={new Set()} onToggle={() => {}} />);
+    expect(screen.getByTitle("Not measured")).toHaveTextContent("—");
+    expect(screen.getByLabelText("Not measured")).toHaveTextContent("—");
+    expect(screen.queryByText("0B")).not.toBeInTheDocument();
+  });
+
+  it("sorts unmeasured rows after measured rows in both directions", () => {
+    render(
+      <CacheTable rows={[unmeasured, ...rows]} selected={new Set()} onToggle={() => {}} />,
+    );
+    const order = () =>
+      screen.getAllByText(/^(docker|uv-cache|git-worktrees)$/).map((cell) => cell.textContent);
+    expect(order()).toEqual(["docker", "uv-cache", "git-worktrees"]);
+    fireEvent.click(screen.getByRole("button", { name: /footprint/i }));
+    expect(order()).toEqual(["uv-cache", "docker", "git-worktrees"]);
+  });
+
   it("renders a decorative icon next to each provider slug", () => {
     const { container } = render(
       <CacheTable rows={rows} selected={new Set()} onToggle={() => {}} />,

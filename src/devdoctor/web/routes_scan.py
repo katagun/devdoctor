@@ -60,12 +60,18 @@ def scan(
     providers_list = registry.load_providers(request.app.state.shell)
     report = discovery.scan(providers_list, filters, datetime.now(UTC))
     storage: StorageBackend = request.app.state.storage
-    if filters.min_size_bytes == 0 and filters.risks is None and filters.providers is None:
+    # Only an unfiltered scan may be stored: a filtered report's totals cover part of
+    # the disk, and would read as a drop in history (#103).
+    if filters.is_unfiltered:
         try:
             storage.write_disk_dashboard_summary(report)
         except OSError as exc:
             logger.warning("scan: failed to write dashboard summary: %s", exc)
-    if snapshot and _should_write_auto_snapshot(storage, snapshot_min_interval_ms):
+    if (
+        snapshot
+        and filters.is_unfiltered
+        and _should_write_auto_snapshot(storage, snapshot_min_interval_ms)
+    ):
         auto_report = dataclasses.replace(report, kind=SnapshotKind.AUTO)
         try:
             storage.write_disk_snapshot(auto_report)

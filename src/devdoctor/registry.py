@@ -9,6 +9,7 @@ import yaml
 from devdoctor.ports import Shell
 from devdoctor.providers.base import PathProvider, Provider
 from devdoctor.providers.docker import DockerProvider
+from devdoctor.providers.git_worktrees import GitWorktreeProvider
 from devdoctor.providers.huggingface import HuggingFaceProvider
 from devdoctor.providers.large_files import LargeFilesProvider
 from devdoctor.providers.lm_studio import LMStudioProvider
@@ -49,6 +50,7 @@ _CLASS_PROVIDERS: list[type[Provider]] = [
     CargoTargetsProvider,
     CondaCacheProvider,
     CondaEnvironmentsProvider,
+    GitWorktreeProvider,
     GoCachesProvider,
     HuggingFaceProvider,
     LargeFilesProvider,
@@ -67,15 +69,11 @@ _CLASS_PROVIDERS: list[type[Provider]] = [
 def load_providers(shell: Shell) -> list[Provider]:
     """Load and sort all providers. Fails on duplicate names."""
     project_index = ProjectArtifactIndex()
-    project_provider_types = {
-        NodeModulesProvider,
-        CargoTargetsProvider,
-        AndroidBuildProvider,
-        ToxNoxProvider,
-    }
     providers: list[Provider] = []
     for cls in _CLASS_PROVIDERS:
-        if cls in project_provider_types:
+        # Project-artifact providers (NodeModulesProvider and its subclasses) and the
+        # git worktree provider share one filesystem walk per scan.
+        if issubclass(cls, (NodeModulesProvider, GitWorktreeProvider)):
             providers.append(cls(shell, index=project_index))
         else:
             providers.append(cls(shell))

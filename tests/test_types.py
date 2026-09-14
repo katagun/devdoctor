@@ -2,12 +2,15 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from devdoctor.types import (
     SNAPSHOT_SCHEMA_VERSION,
     CleanResult,
     CleanupOpts,
     DiffReport,
     DiffRow,
+    DiskUsage,
     Entry,
     ProviderTiming,
     Report,
@@ -15,6 +18,7 @@ from devdoctor.types import (
     ScanFilters,
     ShellResult,
     SnapshotKind,
+    entry_matches_filters,
 )
 
 
@@ -411,3 +415,63 @@ def test_filter_preserves_kind_and_timings() -> None:
     assert filtered.started_at == started
     assert filtered.duration_ms == 777
     assert filtered.per_provider == r.per_provider
+
+
+def _filter_entry(provider: str, risk: Risk, size: int, usage=None) -> Entry:
+    return Entry(provider, "id", Path("/x"), "x", size, None, risk, [], usage=usage)
+
+
+@pytest.mark.parametrize(
+    ("entry", "kwargs", "expected"),
+    [
+        pytest.param(_filter_entry("a", Risk.SAFE, 10), {}, True, id="no-filters"),
+        pytest.param(
+            _filter_entry("a", Risk.SAFE, 10), {"risks": {Risk.DANGEROUS}}, False, id="risk"
+        ),
+        pytest.param(_filter_entry("a", Risk.SAFE, 10), {"providers": {"b"}}, False, id="provider"),
+        pytest.param(
+            _filter_entry("a", Risk.SAFE, 10), {"min_size": 11}, False, id="below-min-size"
+        ),
+        pytest.param(_filter_entry("a", Risk.SAFE, 10), {"min_size": 10}, True, id="at-min-size"),
+        pytest.param(
+            _filter_entry("a", Risk.DANGEROUS, 0, usage=DiskUsage(None, None)),
+            {"min_size": 1},
+            False,
+            id="unmeasured-hidden-by-any-min-size",
+        ),
+        pytest.param(
+            _filter_entry("a", Risk.DANGEROUS, 0, usage=DiskUsage(None, None)),
+            {},
+            True,
+            id="unmeasured-shown-without-min-size",
+        ),
+    ],
+)
+def test_entry_matches_filters(entry, kwargs, expected):
+    assert entry_matches_filters(entry, **kwargs) is expected
+
+
+@pytest.mark.parametrize(
+    ("usage", "expected"),
+    [
+        pytest.param(DiskUsage(None, None), True, id="unmeasured"),
+        pytest.param(DiskUsage(0, 0), False, id="measured-zero"),
+        pytest.param(DiskUsage(None, 5), False, id="reclaimable-known"),
+        pytest.param(None, False, id="legacy-size-only"),
+    ],
+)
+def test_entry_is_unmeasured(usage, expected):
+    assert _filter_entry("a", Risk.SAFE, 0, usage=usage).is_unmeasured is expected
+
+
+@pytest.mark.parametrize(
+    ("filters", "expected"),
+    [
+        pytest.param(ScanFilters(), True, id="defaults"),
+        pytest.param(ScanFilters(min_size_bytes=1), False, id="min-size"),
+        pytest.param(ScanFilters(risks=frozenset({Risk.SAFE})), False, id="risks"),
+        pytest.param(ScanFilters(providers=frozenset({"a"})), False, id="providers"),
+    ],
+)
+def test_scan_filters_is_unfiltered(filters, expected):
+    assert filters.is_unfiltered is expected

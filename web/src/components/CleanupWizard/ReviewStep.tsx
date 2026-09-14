@@ -39,7 +39,9 @@ export function ReviewStep() {
                 <div className="flex items-center gap-3">
                   <RiskBadge risk={e.risk} />
                   <span className="font-medium text-[12px]">
-                    {humanBytes(e.size_bytes)} footprint
+                    {e.footprint_bytes === null
+                      ? "not measured"
+                      : `${humanBytes(e.size_bytes)} footprint`}
                   </span>
                   <button
                     onClick={() => toggleEnabled(e.id, !on)}
