@@ -86,10 +86,8 @@ later; older git and partial clones detect only true merges and fast-forwards.
 A worktree holding another repository or worktree, even under an ignored path,
 is never offered, because `git worktree remove` would delete it. The contents of
 a removable worktree are counted once, under the worktree, instead of again by
-their own providers. Git re-checks for uncommitted changes when cleanup runs,
-so a worktree that gained uncommitted work after the scan is refused. If you
-commit in a worktree after scanning, rescan before cleaning
-([#110](https://github.com/katagun/devdoctor/issues/110)).
+their own providers. Cleanup re-checks each worktree immediately before removing
+it, so one that changed after the scan is skipped.
 
 ```bash
 devdoctor scan --provider git-worktrees

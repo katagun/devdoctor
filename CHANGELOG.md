@@ -138,6 +138,12 @@ entries under a versioned heading as described in
 
 ### Fixed
 
+- **Cleanup re-checks each git worktree immediately before removing it.** Git
+  never re-checks whether a worktree is still integrated, so a commit made after
+  the scan, especially on a detached HEAD, could be lost when cleanup removed the
+  worktree. `devdoctor clean` and the web cleanup now re-classify every worktree
+  right before `git worktree remove` and skip any that changed, with the reason.
+  ([#110](https://github.com/katagun/devdoctor/issues/110))
 - **Filtered web scans no longer save partial auto-snapshots.** A scan with a
   risk, size or provider filter could be stored as an auto-snapshot and show up
   in history as a large drop followed by an equal jump. Only unfiltered scans are

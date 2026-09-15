@@ -41,6 +41,8 @@ class CleanupRunner:
     report: Report
     opts: CleanupOpts
     run_line: AsyncRunLine
+    # Re-checks a worktree immediately before removal (#110); None refuses every removal.
+    verify: cleanup_mod.Verify | None = None
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
     storage: StorageBackend | None = None
     events: asyncio.Queue[dict[str, Any]] = field(default_factory=asyncio.Queue)
@@ -64,6 +66,8 @@ class CleanupRunner:
                         summary = cleanup_mod._confirm_summary(event)
                         confirmed = await self._confirm(summary)
                         event = gen.send(confirmed)
+                    elif isinstance(event, cleanup_mod.VerifyRequired):
+                        event = gen.send(await cleanup_mod.answer_verify(self.verify, event.entry))
                     elif isinstance(event, cleanup_mod.ExecuteStep):
                         result = await self._run_execute_step(
                             event.entry,

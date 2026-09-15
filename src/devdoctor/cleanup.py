@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import os
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from typing import Literal
 
@@ -67,11 +68,27 @@ class ExecuteStep:
 
 
 @dataclass
+class VerifyRequired:
+    """Asks whether a worktree is still removable, immediately before it is removed.
+
+    The adapter answers ``None`` to proceed, or a reason to skip the removal.
+    """
+
+    entry: Entry
+
+
+@dataclass
 class EntryResolved:
     result: CleanResult
 
 
-CleanupEvent = PromptRequired | ConfirmRequired | ExecuteStep | EntryResolved
+CleanupEvent = PromptRequired | ConfirmRequired | VerifyRequired | ExecuteStep | EntryResolved
+
+# Re-checks an entry against current state: None if it is still removable, else why not.
+Verify = Callable[[Entry], str | None]
+
+# The answer when an adapter was given no verifier: never remove what cannot be re-checked.
+NO_VERIFIER_REASON = "cannot verify worktree removal"
 
 
 def iter_cleanup_events(report: Report, opts: CleanupOpts) -> Generator[CleanupEvent, object, None]:
@@ -79,6 +96,7 @@ def iter_cleanup_events(report: Report, opts: CleanupOpts) -> Generator[CleanupE
 
     - PromptRequired  -> send Choice ('y'/'n'/'a'/'s'/'q')
     - ConfirmRequired -> send bool
+    - VerifyRequired  -> send None to proceed, or a reason (str) to skip the entry
     - ExecuteStep     -> send ShellResult (adapter runs the shell)
     - EntryResolved   -> advance with next()
 
@@ -241,6 +259,19 @@ def _iter_execute(
                 )
             )
             continue
+        if is_reclaimable_worktree(entry):
+            # Git never re-checks integration, so re-classify right before removal (#110).
+            reason = yield VerifyRequired(entry)
+            if reason is not None:
+                yield EntryResolved(
+                    CleanResult(
+                        entry_id=entry.id,
+                        status="skipped",
+                        freed_bytes=0,
+                        message=f"changed since the scan: {reason}; rescan before cleaning",
+                    )
+                )
+                continue
         error_msg, executed = yield from _run_actions(entry)
         if executed and not error_msg and is_reclaimable_worktree(entry):
             removed[real[entry.id]] = entry
@@ -304,6 +335,7 @@ def run(
     prompt_choice: PromptChoice,
     confirm: Confirm,
     opts: CleanupOpts,
+    verify: Verify | None = None,
 ) -> list[CleanResult]:
     """Sync adapter over iter_cleanup_events. Preserves the v1 signature and behavior."""
     gen = iter_cleanup_events(report, opts)
@@ -316,6 +348,8 @@ def run(
             elif isinstance(event, ConfirmRequired):
                 summary = _confirm_summary(event)
                 event = gen.send(confirm(summary))
+            elif isinstance(event, VerifyRequired):
+                event = gen.send(NO_VERIFIER_REASON if verify is None else verify(event.entry))
             elif isinstance(event, ExecuteStep):
                 event = gen.send(shell.run(list(event.argv), check=False))
             elif isinstance(event, EntryResolved):
@@ -333,6 +367,7 @@ async def run_async(
     prompt_choice: AsyncPromptChoice,
     confirm: AsyncConfirm,
     opts: CleanupOpts,
+    verify: Verify | None = None,
 ) -> list[CleanResult]:
     """Async adapter over iter_cleanup_events. The web backend uses this."""
     gen = iter_cleanup_events(report, opts)
@@ -346,6 +381,8 @@ async def run_async(
             elif isinstance(event, ConfirmRequired):
                 summary = _confirm_summary(event)
                 event = gen.send(await confirm(summary))
+            elif isinstance(event, VerifyRequired):
+                event = gen.send(await answer_verify(verify, event.entry))
             elif isinstance(event, ExecuteStep):
                 event = gen.send(await run_line(event.argv))
             elif isinstance(event, EntryResolved):
@@ -354,6 +391,13 @@ async def run_async(
     except StopIteration:
         pass
     return results
+
+
+async def answer_verify(verify: Verify | None, entry: Entry) -> str | None:
+    """Answer ``VerifyRequired`` off the event loop: verification runs git subprocesses."""
+    if verify is None:
+        return NO_VERIFIER_REASON
+    return await asyncio.to_thread(verify, entry)
 
 
 def _confirm_summary(event: ConfirmRequired) -> str:

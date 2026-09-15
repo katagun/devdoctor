@@ -10,6 +10,7 @@ from sse_starlette.sse import EventSourceResponse
 from starlette.responses import JSONResponse, Response
 
 from devdoctor import discovery, registry
+from devdoctor.providers.git_worktrees import GitWorktreeProvider
 from devdoctor.types import CleanupOpts, ScanFilters, ShellResult
 from devdoctor.web.cleanup_runner import CleanupRunner
 from devdoctor.web.models import CleanJobCreate, ConfirmAnswer, PromptAnswer
@@ -55,6 +56,8 @@ async def start_job(body: CleanJobCreate, request: Request) -> Response:
                     allow_dangerous=body.allow_dangerous,
                 ),
                 run_line=run_line,
+                # Re-check each worktree immediately before removing it (#110).
+                verify=GitWorktreeProvider(request.app.state.shell).verify_removable,
                 storage=request.app.state.storage,
             )
         )

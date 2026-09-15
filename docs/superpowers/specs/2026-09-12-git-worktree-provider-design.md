@@ -328,11 +328,12 @@ repairs every broken worktree of that repository in one run.
 | Broken `.git` pointer (repository moved) | refused: validation failed |
 | Only a stash | removed; the stash survives, because it lives in the repository |
 
-The scan decides what is offered; git re-checks at execution, but only for
-what it refuses above. If a worktree gains uncommitted changes between scan
-and cleanup, git refuses and cleanup reports git's message as that entry's
-error. Git does not re-check integration: a commit made after the scan, on a
-detached HEAD, is left unreferenced when the worktree is removed (§11; #110).
+The scan decides what is offered. Git never re-checks integration, so cleanup
+re-classifies each worktree immediately before `git worktree remove` runs
+(see [`2026-09-15-worktree-cleanup-reverify-design.md`](2026-09-15-worktree-cleanup-reverify-design.md),
+#110): a worktree that is no longer integrated, clean and free of nested
+repositories is skipped. Git then applies its own refusals above, and cleanup
+reports git's message as that entry's error.
 
 ## 6. Containment, filters and cleanup
 
@@ -414,6 +415,13 @@ containment rules.
   running it would double-report freed bytes. Otherwise it runs normally — the
   worktree was declined, skipped, never reached, or git refused its removal.
   Paths are resolved before anything runs.
+- **Immediately before each approved reclaimable `git-worktrees` entry runs**, the
+  executor yields `VerifyRequired(entry)`. The CLI and web adapters answer with
+  `GitWorktreeProvider.verify_removable(entry)`, which re-classifies that worktree
+  against current state. A refusal resolves the entry as
+  `CleanResult(status="skipped", freed_bytes=0, message="changed since the scan:
+  <reason>; rescan before cleaning")`; the worktree is not counted as removed, so
+  approved entries inside it run normally (#110).
 - **CLI `clean` and `recipe` keep containment on.** They scan and act in one
   invocation, so ids cannot drift, and their `--provider` filter decides
   ownership consistently.
@@ -586,10 +594,12 @@ should land no later than PR 3.
   case-sensitively, so on a case-insensitive filesystem a project root spelled
   differently from git's recorded worktree path can miss containment, and those
   contents are counted and offered under their own provider as well.
-- **Commits made between classification and cleanup.** Integration is checked
-  against the HEAD read at scan time; if an agent commits in a detached,
-  integrated worktree before `git worktree remove` runs, the worktree still
-  removes cleanly and those commits become unreferenced.
+- **Verify-to-remove window.** Cleanup re-classifies a worktree immediately
+  before removing it (#110), which shrinks the gap between classification and
+  removal to the time between two subprocesses. A commit landing in that instant
+  can still be lost.
+- **Recipe script.** `devdoctor recipe` does not re-verify; review it against a
+  fresh scan before uncommenting a worktree removal.
 
 ## Appendix: measurement method
 

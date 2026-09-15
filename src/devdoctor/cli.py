@@ -15,6 +15,7 @@ from devdoctor.cleanup import run as cleanup_run
 from devdoctor.config import load_app_settings
 from devdoctor.logging_config import configure_logging
 from devdoctor.ports import RealShell, Shell
+from devdoctor.providers.git_worktrees import GitWorktreeProvider
 from devdoctor.rendering import (
     real_prompts,
     render_diff_table,
@@ -214,6 +215,8 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
                 allow_dangerous=allow_dangerous,
                 providers=frozenset(providers) if providers else None,
             ),
+            # Re-check each worktree immediately before removing it (#110).
+            verify=GitWorktreeProvider(ctx.obj["shell"]).verify_removable,
         )
         freed = sum(r.freed_bytes for r in results if r.status == "ok")
         failures = [r for r in results if r.status == "error"]
