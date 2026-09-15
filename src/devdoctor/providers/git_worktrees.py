@@ -50,6 +50,8 @@ from devdoctor.types import (
     CommandAction,
     DiskUsage,
     Entry,
+    Refusal,
+    RefusalKind,
     Risk,
     render_cleanup_action,
 )
@@ -347,37 +349,42 @@ class GitWorktreeProvider(Provider):
             **_stat_kwargs(path),
         )
 
-    def verify_removable(self, entry: Entry) -> str | None:
+    def verify_removable(self, entry: Entry) -> Refusal | None:
         """Re-classify ``entry`` against current state, immediately before removal (#110).
 
-        Returns None only if the worktree is still integrated and clean; otherwise the
-        state's label, or why it could not be verified. Never raises: a verifier must
-        answer, and every failure refuses the removal.
+        Returns None only if the worktree is still integrated and clean. Otherwise a
+        ``Refusal``: ``CHANGED`` when the worktree is no longer what the scan offered,
+        ``UNVERIFIED`` when it could not be re-checked (#114). Never raises: a verifier
+        must answer, and every failure refuses the removal.
         """
         try:
             return self._verify_removable(entry)
         except Exception as exc:
-            return f"could not verify: {exc}"
+            return Refusal(RefusalKind.UNVERIFIED, str(exc))
 
-    def _verify_removable(self, entry: Entry) -> str | None:
+    # One return per refusal keeps the checks in design spec §3.3's step order.
+    def _verify_removable(self, entry: Entry) -> Refusal | None:  # noqa: PLR0911
         target = _removal_target(entry)
         if target is None:
-            return "could not verify: unexpected cleanup action"
+            return Refusal(RefusalKind.UNVERIFIED, "unexpected cleanup action")
         repository, path = target
         version, version_error = self._verified_version()
         if version_error is not None:
-            return version_error
+            return Refusal(RefusalKind.UNVERIFIED, version_error)
         try:
             records = list_worktrees(self._git, repository)
         except GitQueryError as exc:
-            return f"git error: {exc}"
+            return Refusal(RefusalKind.UNVERIFIED, f"git worktree list failed: {exc}")
         real = _real(path)
+        inaccessible = _inaccessible(records, real)
+        if inaccessible is not None:
+            return Refusal(RefusalKind.UNVERIFIED, inaccessible)
         record = next(
             (r for r in self._linked_worktrees(repository, records) if _real(r.path) == real),
             None,
         )
         if record is None:
-            return "no longer registered"
+            return Refusal(RefusalKind.CHANGED, "no longer registered")
         registered = frozenset(_real(r.path) for r in records)
         objects_dir = (
             self._create_objects_dir() if supports_merge_tree_write_tree(version) else None
@@ -388,36 +395,39 @@ class GitWorktreeProvider(Provider):
         finally:
             if objects_dir is not None:
                 self._remove_objects_dir(objects_dir)
+        if state is WorktreeState.GIT_ERROR:
+            return Refusal(RefusalKind.UNVERIFIED, state.value)
         if state is not WorktreeState.INTEGRATED:
-            return state.value
+            return Refusal(RefusalKind.CHANGED, state.value)
         return self._changed_during_verification(repository, real, record.head)
 
     def _changed_during_verification(
         self, repository: Path, real: str, head: str | None
-    ) -> str | None:
+    ) -> Refusal | None:
         """Catch a commit, lock, or prune landing between classifying and this final read.
 
         Re-lists the repository (every record, not only linked ones, so a worktree that
         just became prunable or locked is still seen) and refuses unless the same
         worktree is still there with the same HEAD it had when classification began.
         """
+        changed = Refusal(RefusalKind.CHANGED, "changed during verification")
         try:
             records = list_worktrees(self._git, repository)
         except GitQueryError:
-            return "changed during verification"
+            return changed
         record = next((r for r in records if _real(r.path) == real), None)
         if record is None or record.head != head or record.locked or record.prunable:
-            return "changed during verification"
+            return changed
         return None
 
     def _verified_version(self) -> tuple[tuple[int, int, int] | None, str | None]:
         """The installed git version, or why verification cannot use it."""
         version = self._git.version()
         if version is None:
-            return None, "cannot verify: git version unknown"
+            return None, "git version unknown"
         if not supports_worktree_list_z(version):
             found = ".".join(map(str, version))
-            return None, f"cannot verify: git {found} is older than 2.36"
+            return None, f"git {found} is older than 2.36"
         return version, None
 
     def _create_objects_dir(self) -> Path | None:
@@ -437,6 +447,25 @@ class GitWorktreeProvider(Provider):
             self.diagnostics.append(
                 f"git-worktrees: could not remove temporary object directory {path}: {exc}"
             )
+
+
+def _inaccessible(records: list[WorktreeRecord], real: str) -> str | None:
+    """Why a still-registered worktree directory cannot be read, if it cannot (#114).
+
+    ``_linked_worktrees`` drops such a worktree with only a diagnostic, which would read
+    as "no longer registered"; this names the real reason. Prunable records are checked
+    too, on purpose: git marks an unreadable worktree prunable because its own stat fails.
+    """
+    for record in records[1:]:
+        if record.bare or _real(record.path) != real:
+            continue
+        try:
+            record.path.stat()
+        except (FileNotFoundError, NotADirectoryError):
+            return None
+        except OSError as exc:
+            return f"cannot access {record.path}: {exc.strerror or exc}"
+    return None
 
 
 def _removal_target(entry: Entry) -> tuple[Path, Path] | None:

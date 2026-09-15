@@ -143,7 +143,11 @@ entries under a versioned heading as described in
   the scan, especially on a detached HEAD, could be lost when cleanup removed the
   worktree. `devdoctor clean` and the web cleanup now re-classify every worktree
   right before `git worktree remove` and skip any that changed, with the reason.
-  ([#110](https://github.com/katagun/devdoctor/issues/110))
+  A worktree that could not be re-checked at all, for example because git failed,
+  is skipped with a separate "could not re-check" message instead of being
+  reported as changed.
+  ([#110](https://github.com/katagun/devdoctor/issues/110),
+  [#114](https://github.com/katagun/devdoctor/issues/114))
 - **Filtered web scans no longer save partial auto-snapshots.** A scan with a
   risk, size or provider filter could be stored as an auto-snapshot and show up
   in history as a large drop followed by an equal jump. Only unfiltered scans are

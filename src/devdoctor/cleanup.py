@@ -18,6 +18,8 @@ from devdoctor.types import (
     Confirm,
     Entry,
     PromptChoice,
+    Refusal,
+    RefusalKind,
     Report,
     Risk,
     ShellResult,
@@ -71,7 +73,7 @@ class ExecuteStep:
 class VerifyRequired:
     """Asks whether a worktree is still removable, immediately before it is removed.
 
-    The adapter answers ``None`` to proceed, or a reason to skip the removal.
+    The adapter answers ``None`` to proceed, or a ``Refusal`` to skip the removal.
     """
 
     entry: Entry
@@ -85,10 +87,17 @@ class EntryResolved:
 CleanupEvent = PromptRequired | ConfirmRequired | VerifyRequired | ExecuteStep | EntryResolved
 
 # Re-checks an entry against current state: None if it is still removable, else why not.
-Verify = Callable[[Entry], str | None]
+Verify = Callable[[Entry], Refusal | None]
 
 # The answer when an adapter was given no verifier: never remove what cannot be re-checked.
-NO_VERIFIER_REASON = "cannot verify worktree removal"
+NO_VERIFIER = Refusal(RefusalKind.UNVERIFIED, "no verifier configured")
+
+
+def refusal_message(refusal: Refusal) -> str:
+    """The skipped entry's message: a real change asks for a rescan, a failed check does not."""
+    if refusal.kind is RefusalKind.CHANGED:
+        return f"changed since the scan: {refusal.reason}; rescan before cleaning"
+    return f"not removed: could not re-check this worktree ({refusal.reason})"
 
 
 def iter_cleanup_events(report: Report, opts: CleanupOpts) -> Generator[CleanupEvent, object, None]:
@@ -96,7 +105,7 @@ def iter_cleanup_events(report: Report, opts: CleanupOpts) -> Generator[CleanupE
 
     - PromptRequired  -> send Choice ('y'/'n'/'a'/'s'/'q')
     - ConfirmRequired -> send bool
-    - VerifyRequired  -> send None to proceed, or a reason (str) to skip the entry
+    - VerifyRequired  -> send None to proceed, or a Refusal to skip the entry
     - ExecuteStep     -> send ShellResult (adapter runs the shell)
     - EntryResolved   -> advance with next()
 
@@ -261,14 +270,15 @@ def _iter_execute(
             continue
         if is_reclaimable_worktree(entry):
             # Git never re-checks integration, so re-classify right before removal (#110).
-            reason = yield VerifyRequired(entry)
-            if reason is not None:
+            refusal = yield VerifyRequired(entry)
+            if refusal is not None:
+                assert isinstance(refusal, Refusal)
                 yield EntryResolved(
                     CleanResult(
                         entry_id=entry.id,
                         status="skipped",
                         freed_bytes=0,
-                        message=f"changed since the scan: {reason}; rescan before cleaning",
+                        message=refusal_message(refusal),
                     )
                 )
                 continue
@@ -349,7 +359,7 @@ def run(
                 summary = _confirm_summary(event)
                 event = gen.send(confirm(summary))
             elif isinstance(event, VerifyRequired):
-                event = gen.send(NO_VERIFIER_REASON if verify is None else verify(event.entry))
+                event = gen.send(NO_VERIFIER if verify is None else verify(event.entry))
             elif isinstance(event, ExecuteStep):
                 event = gen.send(shell.run(list(event.argv), check=False))
             elif isinstance(event, EntryResolved):
@@ -393,10 +403,10 @@ async def run_async(
     return results
 
 
-async def answer_verify(verify: Verify | None, entry: Entry) -> str | None:
+async def answer_verify(verify: Verify | None, entry: Entry) -> Refusal | None:
     """Answer ``VerifyRequired`` off the event loop: verification runs git subprocesses."""
     if verify is None:
-        return NO_VERIFIER_REASON
+        return NO_VERIFIER
     return await asyncio.to_thread(verify, entry)
 
 

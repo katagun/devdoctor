@@ -350,6 +350,21 @@ class CleanResult:
     bytes_verified: bool = False
 
 
+class RefusalKind(StrEnum):
+    """Why cleanup declined an entry's removal after re-checking it immediately before."""
+
+    # The entry is no longer what the scan offered, for example no longer integrated.
+    CHANGED = "changed"
+    # The entry could not be re-checked at all, for example git is too old or failed.
+    UNVERIFIED = "unverified"
+
+
+@dataclass(frozen=True)
+class Refusal:
+    kind: RefusalKind
+    reason: str
+
+
 @dataclass(frozen=True)
 class DiffRow:
     provider: str

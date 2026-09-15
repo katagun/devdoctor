@@ -11,8 +11,18 @@ import pytest
 from devdoctor.ports import RealShell
 from devdoctor.providers import git_worktrees
 from devdoctor.providers._git import GitRunner, supports_merge_tree_write_tree
+from devdoctor.providers._git_queries import GitQueryError
 from devdoctor.providers.git_worktrees import GitWorktreeProvider
-from devdoctor.types import AdviceAction, CommandAction, DiskUsage, Entry, Risk, ShellResult
+from devdoctor.types import (
+    AdviceAction,
+    CommandAction,
+    DiskUsage,
+    Entry,
+    Refusal,
+    RefusalKind,
+    Risk,
+    ShellResult,
+)
 from tests.conftest import FakeShell
 
 needs_merge_tree = pytest.mark.skipif(
@@ -890,7 +900,7 @@ def test_verify_refuses_a_commit_made_on_a_detached_head_after_the_scan(app, pro
 
     late = worktree.commit("Late work", {"late.txt": "late\n"})
 
-    assert provider.verify_removable(entry) == "not integrated"
+    assert provider.verify_removable(entry) == Refusal(RefusalKind.CHANGED, "not integrated")
     assert app.git("cat-file", "-t", late) == "commit"
 
 
@@ -910,7 +920,9 @@ def test_verify_refuses_a_commit_made_during_verification(app, projects, monkeyp
 
     monkeypatch.setattr(git_worktrees, "check_nesting", commit_then_check_nesting)
 
-    assert provider.verify_removable(entry) == "changed during verification"
+    assert provider.verify_removable(entry) == Refusal(
+        RefusalKind.CHANGED, "changed during verification"
+    )
     assert app.git("cat-file", "-t", shas[0]) == "commit"
 
 
@@ -926,7 +938,9 @@ def test_verify_refuses_a_worktree_locked_during_verification(app, projects, mon
 
     monkeypatch.setattr(git_worktrees, "check_nesting", lock_then_check_nesting)
 
-    assert provider.verify_removable(entry) == "changed during verification"
+    assert provider.verify_removable(entry) == Refusal(
+        RefusalKind.CHANGED, "changed during verification"
+    )
 
 
 def test_verify_accepts_a_later_commit_that_was_merged(app, projects):
@@ -950,7 +964,9 @@ def test_verify_refuses_an_untracked_file_added_after_the_scan(app, projects):
 
     (worktree.path / "late.txt").write_text("late\n")
 
-    assert provider.verify_removable(entry) == "integrated, uncommitted changes"
+    assert provider.verify_removable(entry) == Refusal(
+        RefusalKind.CHANGED, "integrated, uncommitted changes"
+    )
 
 
 def test_verify_refuses_a_bare_repository_nested_after_the_scan(app, projects):
@@ -966,7 +982,9 @@ def test_verify_refuses_a_bare_repository_nested_after_the_scan(app, projects):
         capture_output=True,
     )
 
-    assert provider.verify_removable(entry) == "contains nested repository"
+    assert provider.verify_removable(entry) == Refusal(
+        RefusalKind.CHANGED, "contains nested repository"
+    )
 
 
 def test_verify_refuses_a_worktree_that_is_no_longer_registered(app, projects):
@@ -977,7 +995,7 @@ def test_verify_refuses_a_worktree_that_is_no_longer_registered(app, projects):
 
     app.git("worktree", "remove", str(worktree.path))
 
-    assert provider.verify_removable(entry) == "no longer registered"
+    assert provider.verify_removable(entry) == Refusal(RefusalKind.CHANGED, "no longer registered")
 
 
 def test_verify_refuses_an_entry_whose_action_is_not_the_removal(app, projects):
@@ -987,29 +1005,114 @@ def test_verify_refuses_an_entry_whose_action_is_not_the_removal(app, projects):
     provider, entry = _verify(worktree.path)
     tampered = replace(entry, actions=(CommandAction(("git", "-C", "/elsewhere", "gc")),))
 
-    assert provider.verify_removable(tampered) == "could not verify: unexpected cleanup action"
+    assert provider.verify_removable(tampered) == Refusal(
+        RefusalKind.UNVERIFIED, "unexpected cleanup action"
+    )
 
 
-def test_verify_refuses_when_git_is_too_old():
-    version = ("git", "--no-optional-locks", "-C", "/", "version")
-    shell = FakeShell(responses={version: ShellResult(0, "git version 2.35.8\n", "")})
-    path = Path("/p/wt/feature")
-    entry = Entry(
+_GIT_VERSION = ("git", "--no-optional-locks", "-C", "/", "version")
+_FAKE_WORKTREE = Path("/p/wt/feature")
+
+
+def _fake_worktree_entry() -> Entry:
+    return Entry(
         provider="git-worktrees",
-        id=f"git-worktrees:{path}",
-        path=path,
+        id=f"git-worktrees:{_FAKE_WORKTREE}",
+        path=_FAKE_WORKTREE,
         label="app/feature · integrated",
         size_bytes=1,
         mtime=None,
         risk=Risk.RECLAIMABLE,
         recipe=[],
-        actions=(CommandAction(("git", "-C", "/p/app", "worktree", "remove", str(path))),),
+        actions=(
+            CommandAction(("git", "-C", "/p/app", "worktree", "remove", str(_FAKE_WORKTREE))),
+        ),
     )
 
-    assert (
-        GitWorktreeProvider(shell).verify_removable(entry)
-        == "cannot verify: git 2.35.8 is older than 2.36"
+
+def test_verify_refuses_when_git_is_too_old():
+    shell = FakeShell(responses={_GIT_VERSION: ShellResult(0, "git version 2.35.8\n", "")})
+
+    assert GitWorktreeProvider(shell).verify_removable(_fake_worktree_entry()) == Refusal(
+        RefusalKind.UNVERIFIED, "git 2.35.8 is older than 2.36"
     )
+
+
+def test_verify_refuses_when_the_git_version_is_unknown():
+    shell = FakeShell(responses={_GIT_VERSION: ShellResult(1, "", "boom\n")})
+
+    assert GitWorktreeProvider(shell).verify_removable(_fake_worktree_entry()) == Refusal(
+        RefusalKind.UNVERIFIED, "git version unknown"
+    )
+
+
+def test_verify_refuses_when_worktree_list_fails():
+    listing = (
+        "git",
+        "--no-optional-locks",
+        "-C",
+        "/p/app",
+        "worktree",
+        "list",
+        "--porcelain",
+        "-z",
+    )
+    shell = FakeShell(
+        responses={
+            _GIT_VERSION: ShellResult(0, "git version 2.50.1\n", ""),
+            listing: ShellResult(128, "", "fatal: not a git repository\n"),
+        }
+    )
+
+    assert GitWorktreeProvider(shell).verify_removable(_fake_worktree_entry()) == Refusal(
+        RefusalKind.UNVERIFIED, "git worktree list failed: fatal: not a git repository"
+    )
+
+
+def test_verify_refuses_a_worktree_deleted_but_not_pruned(app, projects):
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    _merge(app, worktree)
+    app.publish()
+    provider, entry = _verify(worktree.path)
+
+    shutil.rmtree(worktree.path)
+
+    assert provider.verify_removable(entry) == Refusal(RefusalKind.CHANGED, "no longer registered")
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_verify_reports_an_inaccessible_worktree_as_not_re_checked(app, projects):
+    sealed = projects / "sealed"
+    worktree = app.add_worktree(sealed / "feature", "feature")
+    _merge(app, worktree)
+    app.publish()
+    provider, entry = _verify(worktree.path)
+
+    sealed.chmod(0o000)
+    try:
+        refusal = provider.verify_removable(entry)
+    finally:
+        sealed.chmod(0o755)
+
+    assert refusal == Refusal(
+        RefusalKind.UNVERIFIED, f"cannot access {worktree.path}: Permission denied"
+    )
+
+
+def test_verify_reports_a_git_failure_during_classification_as_not_re_checked(
+    app, projects, monkeypatch
+):
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    _merge(app, worktree)
+    app.publish()
+    provider, entry = _verify(worktree.path)
+
+    def corrupt(*args, **kwargs):
+        raise GitQueryError("fatal: index file corrupt")
+
+    monkeypatch.setattr(git_worktrees, "worktree_status", corrupt)
+
+    assert provider.verify_removable(entry) == Refusal(RefusalKind.UNVERIFIED, "git error")
 
 
 def test_verify_never_raises(app, projects, monkeypatch):
@@ -1023,7 +1126,7 @@ def test_verify_never_raises(app, projects, monkeypatch):
 
     monkeypatch.setattr(git_worktrees, "list_worktrees", boom)
 
-    assert provider.verify_removable(entry) == "could not verify: boom"
+    assert provider.verify_removable(entry) == Refusal(RefusalKind.UNVERIFIED, "boom")
 
 
 @needs_merge_tree

@@ -419,8 +419,10 @@ containment rules.
   executor yields `VerifyRequired(entry)`. The CLI and web adapters answer with
   `GitWorktreeProvider.verify_removable(entry)`, which re-classifies that worktree
   against current state. A refusal resolves the entry as
-  `CleanResult(status="skipped", freed_bytes=0, message="changed since the scan:
-  <reason>; rescan before cleaning")`; the worktree is not counted as removed, so
+  `CleanResult(status="skipped", freed_bytes=0)` with
+  `changed since the scan: <reason>; rescan before cleaning` when the worktree
+  changed, or `not removed: could not re-check this worktree (<reason>)` when it
+  could not be re-checked (#114); the worktree is not counted as removed, so
   approved entries inside it run normally (#110).
 - **CLI `clean` and `recipe` keep containment on.** They scan and act in one
   invocation, so ids cannot drift, and their `--provider` filter decides
@@ -605,6 +607,11 @@ should land no later than PR 3.
   repository created after the nesting walk passed its directory, or after
   verification, is deleted with the worktree; uncommitted changes made after
   verification are still refused by git.
+- **Only the current HEAD commit is protected.** Verification compares HEAD, not
+  history: if HEAD moves to a new commit and back during verification, or a
+  commit was abandoned the same way before the scan, that intermediate commit is
+  reachable only from the worktree's reflog, which `git worktree remove`
+  deletes.
 - **Recipe script.** `devdoctor recipe` does not re-verify; review it against a
   fresh scan before uncommenting a worktree removal.
 

@@ -13,7 +13,7 @@ from devdoctor.cli import build_cli
 from devdoctor.ports import RealShell
 from devdoctor.providers.git_worktrees import GitWorktreeProvider
 from devdoctor.providers.project_artifacts import NodeModulesProvider, ProjectArtifactIndex
-from devdoctor.types import CleanupOpts, Risk, ScanFilters
+from devdoctor.types import CleanupOpts, Refusal, RefusalKind, Risk, ScanFilters
 from devdoctor.web.app import build_app
 
 
@@ -183,7 +183,10 @@ def test_git_still_refuses_a_worktree_dirtied_after_verification(integrated):
     report = _scan()
 
     def verify(entry):
+        if entry.provider != "git-worktrees":
+            return Refusal(RefusalKind.UNVERIFIED, "only worktrees are verified")
         (worktree.path / "late.txt").write_text("written after verification\n")
+        return None  # accept, then let git's own check refuse the removal
 
     results = cleanup.run(
         report,
