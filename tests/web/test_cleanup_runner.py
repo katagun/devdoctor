@@ -1,9 +1,18 @@
 import asyncio
+import threading
 from pathlib import Path
 
 import pytest
 
-from devdoctor.types import CleanupOpts, CommandAction, Entry, Risk, ShellResult
+from devdoctor.types import (
+    CleanupOpts,
+    CommandAction,
+    Entry,
+    Refusal,
+    RefusalKind,
+    Risk,
+    ShellResult,
+)
 from devdoctor.web.cleanup_runner import CleanupRunner
 from devdoctor.web.runner_registry import RunnerRegistry
 from tests.test_cleanup_async import _e, _report
@@ -188,9 +197,9 @@ async def test_runner_multi_entry_attributes_events_to_correct_entry():
     await asyncio.wait_for(task, timeout=1)
 
 
-async def test_runner_skips_a_worktree_its_verifier_refuses():
+def _worktree_owner() -> Entry:
     path = "/p/wt/feature"
-    owner = Entry(
+    return Entry(
         provider="git-worktrees",
         id=f"git-worktrees:{path}",
         path=Path(path),
@@ -201,30 +210,77 @@ async def test_runner_skips_a_worktree_its_verifier_refuses():
         recipe=[],
         actions=(CommandAction(("git", "-C", "/p/app", "worktree", "remove", path)),),
     )
-    verified = []
+
+
+async def _approve_and_confirm(runner: CleanupRunner, entry_id: str) -> None:
+    assert (await runner.events.get())["event"] == "prompt"
+    await runner.answer_prompt(entry_id=entry_id, choice="y")
+    assert (await runner.events.get())["event"] == "awaiting_confirm"
+    await runner.answer_confirm(True)
+
+
+async def _events_until_done(runner: CleanupRunner) -> list[dict]:
+    events = [await asyncio.wait_for(runner.events.get(), timeout=5)]
+    while events[-1]["event"] != "done":
+        events.append(await asyncio.wait_for(runner.events.get(), timeout=5))
+    return events
+
+
+async def test_runner_skips_a_worktree_its_verifier_refuses():
+    owner = _worktree_owner()
+    loop_thread = threading.get_ident()
+    verifier_threads: list[int] = []
 
     async def fake_run_line(_argv):
         raise AssertionError("no command may run")
 
     def verify(entry):
-        verified.append(entry.id)
-        return "not integrated"
+        verifier_threads.append(threading.get_ident())
+        return Refusal(RefusalKind.CHANGED, "not integrated")
 
     runner = CleanupRunner(
         report=_report(owner), opts=CleanupOpts(execute=True), run_line=fake_run_line, verify=verify
     )
     task = asyncio.create_task(runner.run())
-    assert (await runner.events.get())["event"] == "prompt"
-    await runner.answer_prompt(entry_id=owner.id, choice="y")
-    assert (await runner.events.get())["event"] == "awaiting_confirm"
-    await runner.answer_confirm(True)
-    event = await asyncio.wait_for(runner.events.get(), timeout=5)
-    while event["event"] != "done":
-        event = await asyncio.wait_for(runner.events.get(), timeout=5)
+    await _approve_and_confirm(runner, owner.id)
+    events = await _events_until_done(runner)
     results = await task
 
-    assert verified == [owner.id]
+    assert len(verifier_threads) == 1
+    assert verifier_threads[0] != loop_thread  # verification never blocks the event loop
     assert [r.status for r in results] == ["skipped"]
-    assert [(r["status"], r["message"]) for r in event["data"]["results"]] == [
+    assert [(r["status"], r["message"]) for r in events[-1]["data"]["results"]] == [
         ("skipped", "changed since the scan: not integrated; rescan before cleaning")
     ]
+
+
+async def test_cancelling_while_verification_runs_never_removes_the_worktree():
+    owner = _worktree_owner()
+    started = threading.Event()
+    release = threading.Event()
+    ran: list[tuple[str, ...]] = []
+
+    async def fake_run_line(argv):
+        ran.append(argv)
+        return ShellResult(0, "", "")
+
+    def verify(entry):
+        started.set()
+        release.wait(timeout=5)
+
+    runner = CleanupRunner(
+        report=_report(owner), opts=CleanupOpts(execute=True), run_line=fake_run_line, verify=verify
+    )
+    runner._task = asyncio.create_task(runner.run())
+    await _approve_and_confirm(runner, owner.id)
+    assert await asyncio.to_thread(started.wait, 5)
+
+    await runner.cancel()
+    release.set()
+    events = await _events_until_done(runner)
+    with pytest.raises(asyncio.CancelledError):
+        await runner._task
+
+    assert ran == []
+    assert "execute_start" not in [event["event"] for event in events]
+    assert events[-1]["data"]["cancelled"] is True

@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from devdoctor.cleanup import (
-    NO_VERIFIER_REASON,
     ConfirmRequired,
     EntryResolved,
     ExecuteStep,
@@ -19,6 +18,8 @@ from devdoctor.types import (
     CommandAction,
     DeletePathAction,
     Entry,
+    Refusal,
+    RefusalKind,
     Report,
     Risk,
     ShellResult,
@@ -243,7 +244,7 @@ def _run_cleanup(
     report: Report,
     choices: dict[str, str],
     returncodes: dict[str, int],
-    refusals: dict[str, str] | None = None,
+    refusals: dict[str, Refusal] | None = None,
     steps: list[tuple[str, str]] | None = None,
 ):
     """Drive a cleanup: answer prompts by entry id, confirm, record executed entry ids.
@@ -341,7 +342,10 @@ def test_a_worktree_that_changed_is_skipped_and_its_contents_run():
     report, inside, owner, outside = _worktree_report()
 
     executed, results = _run_cleanup(
-        report, dict.fromkeys(_ids(report), "y"), {}, refusals={owner.id: "not integrated"}
+        report,
+        dict.fromkeys(_ids(report), "y"),
+        {},
+        refusals={owner.id: Refusal(RefusalKind.CHANGED, "not integrated")},
     )
 
     assert executed == [inside.id, outside.id]
@@ -353,6 +357,23 @@ def test_a_worktree_that_changed_is_skipped_and_its_contents_run():
     )
     assert results[inside.id].status == "ok"
     assert set(results) == set(_ids(report))
+
+
+def test_a_worktree_that_could_not_be_re_checked_is_skipped_with_its_own_message():
+    report, inside, owner, outside = _worktree_report()
+    refusal = Refusal(RefusalKind.UNVERIFIED, "git 2.35.8 is older than 2.36")
+
+    executed, results = _run_cleanup(
+        report, dict.fromkeys(_ids(report), "y"), {}, refusals={owner.id: refusal}
+    )
+
+    assert executed == [inside.id, outside.id]
+    assert results[owner.id] == CleanResult(
+        entry_id=owner.id,
+        status="skipped",
+        freed_bytes=0,
+        message="not removed: could not re-check this worktree (git 2.35.8 is older than 2.36)",
+    )
 
 
 def test_declined_worktrees_and_other_entries_are_never_verified():
@@ -390,7 +411,7 @@ def test_run_without_a_verifier_never_removes_a_worktree():
     )
 
     assert [(r.status, r.message) for r in results] == [
-        ("skipped", f"changed since the scan: {NO_VERIFIER_REASON}; rescan before cleaning")
+        ("skipped", "not removed: could not re-check this worktree (no verifier configured)")
     ]
 
 
@@ -404,13 +425,16 @@ def test_run_removes_a_worktree_the_verifier_accepts():
             ran.append(argv)
             return ShellResult(0, "", "")
 
+    def accept(entry):
+        verified.append(entry.id)
+
     results = run(
         _report(owner),
         shell=_Shell(),
         prompt_choice=lambda entry: "y",
         confirm=lambda summary: True,
         opts=CleanupOpts(execute=True),
-        verify=lambda entry: verified.append(entry.id),
+        verify=accept,
     )
 
     assert verified == [owner.id]
@@ -425,7 +449,7 @@ async def test_run_async_verifies_off_the_event_loop_thread():
 
     def verify(entry):
         verifier_threads.append(threading.get_ident())
-        return "integrated, uncommitted changes"
+        return Refusal(RefusalKind.CHANGED, "integrated, uncommitted changes")
 
     async def run_line(argv):
         raise AssertionError("no command may run")

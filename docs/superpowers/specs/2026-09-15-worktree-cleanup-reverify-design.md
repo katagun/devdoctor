@@ -52,14 +52,19 @@ Reproduced with git 2.50.1 during the PR 4 final review.
 - A new event, `VerifyRequired(entry: Entry)`, joins `CleanupEvent`.
 - In `_iter_execute`, immediately before `_run_actions(entry)` for an approved
   entry where `is_reclaimable_worktree(entry)` is true, the generator yields
-  `VerifyRequired(entry)` and receives `str | None`:
+  `VerifyRequired(entry)` and receives `Refusal | None` (#114):
   - **`None`:** the entry's actions run exactly as today.
-  - **a reason:** the entry resolves as
+  - **a `Refusal(kind, reason)`:** the entry resolves as
     `CleanResult(entry_id=entry.id, status="skipped", freed_bytes=0,
-    message=f"changed since the scan: {reason}; rescan before cleaning")`.
+    message=refusal_message(refusal))`, where the message depends on the kind:
+    - `RefusalKind.CHANGED` (the worktree is no longer what the scan offered):
+      `changed since the scan: <reason>; rescan before cleaning`;
+    - `RefusalKind.UNVERIFIED` (it could not be re-checked):
+      `not removed: could not re-check this worktree (<reason>)`.
+
     No `ExecuteStep` is yielded for it, and it is **not** recorded as removed,
     so approved entries inside its path run normally under the existing §6.4
-    rule.
+    rule. `Refusal` and `RefusalKind` live in `devdoctor.types`.
 - Nothing else yields `VerifyRequired`: not declined or skipped selections,
   advice entries, other providers' entries, or preview runs
   (`opts.execute is False`).
@@ -73,9 +78,9 @@ generator loop.
 
 | Adapter | Signature change | Answer |
 |---|---|---|
-| `cleanup.run` (CLI) | `verify: Callable[[Entry], str \| None] \| None = None` | `verify(entry)`, or `"cannot verify worktree removal"` when `verify` is `None` |
-| `cleanup.run_async` | `verify: Callable[[Entry], str \| None] \| None = None` | `await asyncio.to_thread(verify, entry)`, or the same refusal when `None` |
-| `web.cleanup_runner.CleanupRunner` | new field `verify: Callable[[Entry], str \| None] \| None = None` | `await asyncio.to_thread(self.verify, entry)`, or the same refusal when `None` |
+| `cleanup.run` (CLI) | `verify: Callable[[Entry], Refusal \| None] \| None = None` | `verify(entry)`, or `Refusal(UNVERIFIED, "no verifier configured")` when `verify` is `None` |
+| `cleanup.run_async` | `verify: Callable[[Entry], Refusal \| None] \| None = None` | `await asyncio.to_thread(verify, entry)`, or the same refusal when `None` |
+| `web.cleanup_runner.CleanupRunner` | new field `verify: Callable[[Entry], Refusal \| None] \| None = None` | `await asyncio.to_thread(self.verify, entry)`, or the same refusal when `None` |
 
 Wiring:
 
@@ -88,20 +93,22 @@ The web job keeps its existing uncontained scan at start (§6.4); verification
 covers the time spent waiting on prompts and confirmation. No new SSE event is
 added: a refusal reaches the browser as an ordinary result for that entry id.
 
-### 3.3 `GitWorktreeProvider.verify_removable(entry: Entry) -> str | None`
+### 3.3 `GitWorktreeProvider.verify_removable(entry: Entry) -> Refusal | None`
 
 1. **Parse the entry's action.** Exactly one `CommandAction` whose argv is
    `("git", "-C", <repo>, "worktree", "remove", <path>)`, with `<path>` equal to
    `str(entry.path)` and both `<repo>` and `<path>` absolute. Anything else
-   returns `"could not verify: unexpected cleanup action"`.
+   returns `UNVERIFIED "unexpected cleanup action"`.
 2. **Check git.** `GitRunner.version()`; if it is `None` or below 2.36, return
-   `"cannot verify: git version unknown"` or `"cannot verify: git <x.y.z> is
-   older than 2.36"`.
+   `UNVERIFIED "git version unknown"` or `UNVERIFIED "git <x.y.z> is older than
+   2.36"`.
 3. **Find the record.** `list_worktrees(git, <repo>)`; a failure returns
-   `"git error: <failure summary>"`. The record whose realpath equals the
-   entry's path realpath is the worktree; if there is none, or it is the primary
-   worktree, bare, prunable, or its directory is missing, return
-   `"no longer registered"`.
+   `UNVERIFIED "git worktree list failed: <failure summary>"`. The record whose
+   realpath equals the entry's path realpath is the worktree. If it is listed
+   (not primary or bare) but its directory cannot be read for a reason other
+   than not existing, return `UNVERIFIED "cannot access <path>: <reason>"`. If
+   there is no such record, or it is the primary worktree, bare, prunable, or
+   its directory is missing, return `CHANGED "no longer registered"`.
 4. **Recompute repository facts** with the same code the scan uses
    (`_repository_facts`): common dir, default branch, partial-clone check, and,
    when git supports `merge-tree --write-tree`, a merge-tree context in a
@@ -117,16 +124,17 @@ added: a refusal reaches the browser as an ordinary result for that entry id.
 6. **Re-read HEAD after classifying as integrated.** Once `_classify` settles
    on `WorktreeState.INTEGRATED`, re-list the repository (`list_worktrees`
    again) and re-find the worktree by realpath among *every* record, not only
-   the linked ones. Refuse with `"changed during verification"` if the listing
+   the linked ones. Refuse with `CHANGED "changed during verification"` if the listing
    fails, the worktree is gone, its HEAD differs from the HEAD read in step 3,
    or it is now locked or prunable. A HEAD move during verification is refused
    outright rather than re-classified against the new HEAD; §2.2's
    re-classification applies only to a HEAD that had already moved before the
    scan, not to one moving during this call.
 7. **Answer.** `WorktreeState.INTEGRATED`, once step 6 finds nothing changed,
-   returns `None`; every other state returns its label text (§5.2), for
-   example `not integrated` or `integrated, uncommitted changes`.
-8. **Never raise.** Any exception returns `f"could not verify: {exc}"`.
+   returns `None`. `WorktreeState.GIT_ERROR` returns `UNVERIFIED "git error"`;
+   every other state returns `CHANGED` with its label text (§5.2), for example
+   `not integrated` or `integrated, uncommitted changes`.
+8. **Never raise.** Any exception returns `UNVERIFIED str(exc)`.
 
 Verification follows the invocation contract (§4.3): write-free, offline,
 `--no-optional-locks`, local variables removed, 30 s per call.
@@ -135,14 +143,15 @@ Verification follows the invocation contract (§4.3): write-free, offline,
 
 | Failure | Answer | Outcome |
 |---|---|---|
-| Exception inside `verify_removable` | `could not verify: <exc>` | skipped |
-| git missing, unknown version, or below 2.36 | `cannot verify: …` | skipped |
-| `worktree list` fails or times out | `git error: <summary>` | skipped |
-| Worktree no longer listed, prunable, primary, bare, or missing | `no longer registered` | skipped |
-| Any git call during classification fails or times out | `git error` (state label) | skipped |
-| Worktree gone, locked, prunable, or its HEAD moved between classifying as integrated and the final re-read (§3.3 step 6) | `changed during verification` | skipped |
+| Exception inside `verify_removable` | `UNVERIFIED <exc>` | skipped |
+| git missing, unknown version, or below 2.36 | `UNVERIFIED git version unknown` / `git <x.y.z> is older than 2.36` | skipped |
+| `worktree list` fails or times out | `UNVERIFIED git worktree list failed: <summary>` | skipped |
+| Worktree still listed but its directory cannot be read | `UNVERIFIED cannot access <path>: <reason>` | skipped |
+| Worktree no longer listed, prunable, primary, bare, or missing | `CHANGED no longer registered` | skipped |
+| Any git call during classification fails or times out | `UNVERIFIED git error` (state label) | skipped |
+| Worktree gone, locked, prunable, or its HEAD moved between classifying as integrated and the final re-read (§3.3 step 6) | `CHANGED changed during verification` | skipped |
 | Temporary object directory cannot be created | falls back to `is-ancestor` (§4.4), which only under-reports integration | skipped unless integration is still proven |
-| Adapter given no verifier | `cannot verify worktree removal` | skipped |
+| Adapter given no verifier | `UNVERIFIED no verifier configured` | skipped |
 | Web job cancelled while verification runs | the thread finishes; the awaiting coroutine is cancelled, so the removal never starts | existing cancelled-job handling |
 
 ## 5. Remaining limitations (spec §11 amendment)
@@ -179,30 +188,47 @@ Verification follows the invocation contract (§4.3): write-free, offline,
   entries, immediately before their `ExecuteStep`; never for declined entries,
   advice entries, other providers, or preview runs.
 - `None` → the removal's `ExecuteStep` follows.
-- A reason → `skipped`, message
+- A `CHANGED` refusal → `skipped`, message
   `changed since the scan: <reason>; rescan before cleaning`, no `ExecuteStep`.
+- An `UNVERIFIED` refusal → `skipped`, message
+  `not removed: could not re-check this worktree (<reason>)`, no `ExecuteStep`.
 - A refused worktree's approved contents execute normally.
 
 ### 7.2 Adapters
 
 - `cleanup.run` sends `verify(entry)`; with `verify=None` the worktree is skipped
-  with `cannot verify worktree removal` and no command runs.
-- `CleanupRunner` answers through `asyncio.to_thread` and emits the skipped
-  result in its `done` event.
+  with `not removed: could not re-check this worktree (no verifier configured)`
+  and no command runs.
+- `cleanup.run_async` and `CleanupRunner` run the verifier on a thread other than
+  the event loop's, and `CleanupRunner` emits the skipped result in its `done`
+  event.
+- A web job cancelled while verification is blocked never starts the removal,
+  emits no `execute_start`, and reports `cancelled`.
 - `cli.clean` and `routes_clean.start_job` pass
   `GitWorktreeProvider(...).verify_removable`.
 
 ### 7.3 Provider, on real git (`tests/test_git_worktrees_provider.py`)
 
+Each answer is asserted as a full `Refusal(kind, reason)`.
+
 - Unchanged integrated clean worktree → `None`.
-- Commit on a detached HEAD after the scan → `not integrated`.
+- Commit on a detached HEAD after the scan → `CHANGED not integrated`.
+- Commit, or lock, landing during verification → `CHANGED changed during
+  verification`, with the commit still present.
 - Commit after the scan that is then merged into `origin/main` → `None`.
-- Untracked file after the scan → `integrated, uncommitted changes`.
+- Untracked file after the scan → `CHANGED integrated, uncommitted changes`.
 - Bare repository created inside the worktree after the scan →
-  `contains nested repository`.
-- Worktree removed and pruned after the scan → `no longer registered`.
-- Entry whose action is not the expected removal → `could not verify:
-  unexpected cleanup action`.
+  `CHANGED contains nested repository`.
+- Worktree removed and pruned, or deleted but not pruned, after the scan →
+  `CHANGED no longer registered`.
+- Worktree directory made unreadable after the scan → `UNVERIFIED cannot access
+  <path>: Permission denied` (skipped as root).
+- A git failure during classification → `UNVERIFIED git error`.
+- Entry whose action is not the expected removal → `UNVERIFIED unexpected
+  cleanup action`; `_removal_target` rejects relative paths and a mismatched
+  path.
+- git older than 2.36, an unknown git version, a failing `worktree list`, and an
+  internal exception → the matching `UNVERIFIED` reasons.
 - A `RecordingShell` shows every verification call is offline, runs no writing
   command, sets `GIT_OBJECT_DIRECTORY` only on merge-tree, and the temporary
   object directory is gone afterwards; `count-objects` is unchanged.
@@ -217,6 +243,8 @@ Verification follows the invocation contract (§4.3): write-free, offline,
 - **Web:** the same scenario through `POST /api/clean/jobs`, committing before
   confirmation; the job's result for the worktree is `skipped` and the commit is
   intact.
+- **Git's own refusal:** a verifier that accepts but dirties the worktree first
+  leaves git to refuse the removal (`error` with git's message).
 
 ## 8. Rollout
 
