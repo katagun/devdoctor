@@ -58,9 +58,43 @@ devdoctor providers                  # show registered providers and their avail
 
 Provider families now cover JavaScript (npm, pnpm, Yarn, Bun, and bounded
 `node_modules` discovery), Python/Conda, Go, Rust/Cargo, .NET/NuGet, Android,
-Xcode/iOS, containers, browsers, desktop applications, and local AI tooling.
-Project discovery is bounded to common code roots or the colon-separated paths
-in `DEVDOCTOR_PROJECT_ROOTS`.
+Xcode/iOS, containers, browsers, desktop applications, local AI tooling, and git
+worktrees. Project discovery is bounded to common code roots or the
+colon-separated paths in `DEVDOCTOR_PROJECT_ROOTS`.
+
+### Git worktrees
+
+Coding agents and `git worktree add` leave full checkouts behind, each with its
+own `node_modules`, virtualenvs and build output. The `git-worktrees` provider
+lists every linked worktree that the repositories under your project roots
+register, wherever it lives on disk, and classifies each one without writing to
+the repository or using the network (on git before 2.44, a partial clone may
+still fetch missing objects). It needs git 2.36 or later.
+
+| State | Offered as |
+|---|---|
+| integrated, clean, nothing nested inside | **reclaimable**: `git worktree remove <path>`, never `--force` |
+| integrated, uncommitted changes | advice |
+| contains nested repository | advice |
+| not integrated | advice |
+| locked, broken pointer, no default branch, git error, unverifiable | advice |
+
+*Integrated* means merging the worktree's HEAD into the default branch
+(`origin/HEAD`, then `origin/main`, then `origin/master`) would change nothing.
+`git merge-tree` detects this for squash and rebase merges too on git 2.38 or
+later; older git and partial clones detect only true merges and fast-forwards.
+A worktree holding another repository or worktree, even under an ignored path,
+is never offered, because `git worktree remove` would delete it. The contents of
+a removable worktree are counted once, under the worktree, instead of again by
+their own providers. Git re-checks for uncommitted changes when cleanup runs,
+so a worktree that gained uncommitted work after the scan is refused. If you
+commit in a worktree after scanning, rescan before cleaning
+([#110](https://github.com/katagun/devdoctor/issues/110)).
+
+```bash
+devdoctor scan --provider git-worktrees
+devdoctor clean --execute --provider git-worktrees
+```
 
 ## Web UI
 

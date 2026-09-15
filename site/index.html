@@ -236,6 +236,31 @@ a{color:inherit;text-decoration:none}
 .gauge-legend .sw{width:.7rem;height:.7rem;border-radius:3px;flex:none}
 .gauge-legend b{color:var(--text);font-family:"JetBrains Mono",monospace;margin-left:auto}
 
+/* worktree fan-out */
+.fanout svg{width:100%;height:auto;display:block}
+.fanout .edge{fill:none;stroke:var(--border-strong);stroke-width:1.4}
+.fanout .edge.reclaim{stroke:var(--reclaim)}
+.fanout .repo{fill:var(--surface-2);stroke:var(--accent);stroke-width:1.5}
+.fanout .repo-name{font:700 13px "JetBrains Mono",monospace;fill:var(--text)}
+.fanout .repo-ref{font:500 9.5px "JetBrains Mono",monospace;fill:var(--text-faint)}
+.fanout .box{stroke-width:1.4}
+.fanout .wt.reclaim .box{stroke:var(--reclaim);fill:color-mix(in srgb,var(--reclaim) 10%,var(--surface))}
+.fanout .wt.danger .box{stroke:var(--danger);fill:color-mix(in srgb,var(--danger) 8%,var(--surface))}
+.fanout .wt-name{font:500 10.5px "JetBrains Mono",monospace;fill:var(--text)}
+.fanout .wt-state{font:500 9px "JetBrains Mono",monospace}
+.fanout .wt.reclaim .wt-state{fill:color-mix(in srgb,var(--reclaim) 80%,var(--text))}
+.fanout .wt.danger .wt-state{fill:color-mix(in srgb,var(--danger) 80%,var(--text))}
+.fanout .nm{fill:var(--surface-2);stroke:var(--border-strong);stroke-width:1}
+.fanout .nm-text{font:500 8px "JetBrains Mono",monospace;fill:var(--text-faint)}
+@media (max-width:560px){
+  .fanout .nm,.fanout .nm-text{display:none}
+  .fanout .wt-name{font-size:15px}
+  .fanout .wt-state{font-size:14px}
+  .fanout .repo-name{font-size:17px}
+  .fanout .repo-ref{font-size:14px}
+  #worktrees .provs .chip{white-space:normal;text-align:left}
+}
+
 /* memory meter */
 .meter{margin-top:.4rem}
 .meter-top{display:flex;justify-content:space-between;align-items:baseline;font-size:.82rem;color:var(--text-dim);margin-bottom:.5rem}
@@ -352,7 +377,7 @@ a{color:inherit;text-decoration:none}
     <div class="hero-copy">
       <span class="eyebrow">Local dev-machine diagnostics</span>
       <h1>Your dev machine is hoarding caches it <span class="tint">never told you about.</span></h1>
-      <p class="lede">DevDoctor scans the caches, model weights, containers, and virtualenvs quietly eating your disk — then cleans them up on your terms. Diagnosis first. Nothing deleted until you say so.</p>
+      <p class="lede">DevDoctor scans the caches, model weights, containers, virtualenvs, and leftover git worktrees quietly eating your disk — then cleans them up on your terms. Diagnosis first. Nothing deleted until you say so.</p>
       <div class="hero-actions">
         <div class="cmd">
           <code><span class="pr">$ </span>uv tool install git+https://github.com/katagun/devdoctor</code>
@@ -365,7 +390,7 @@ a{color:inherit;text-decoration:none}
       </div>
       <div class="hero-meta">
         <div class="m"><b>2</b><span>disk &amp; memory, one tool</span></div>
-        <div class="m"><b>10+</b><span>cache providers</span></div>
+        <div class="m"><b>50+</b><span>providers</span></div>
         <div class="m"><b>0</b><span>bytes leave your machine</span></div>
       </div>
     </div>
@@ -488,15 +513,95 @@ a{color:inherit;text-decoration:none}
   </div>
 </section>
 
+<!-- WORKTREES -->
+<section class="section" id="worktrees" style="padding-top:0">
+  <div class="wrap split">
+    <div class="panel">
+      <div class="fanout">
+        <svg viewBox="0 0 420 260" role="img" aria-labelledby="fanoutTitle fanoutDesc">
+          <title id="fanoutTitle">One repository fanned out into six git worktrees</title>
+          <desc id="fanoutDesc">Each worktree carries its own node_modules. Two are integrated into the default branch and clean, marked reclaimable. Four are marked dangerous: one integrated with uncommitted changes, two not integrated, and one with a broken pointer.</desc>
+          <rect class="repo" x="14" y="110" width="112" height="40" rx="8"/>
+          <text class="repo-name" x="28" y="128">app</text>
+          <text class="repo-ref" x="28" y="142">origin/main</text>
+          <path class="edge reclaim" d="M126 130C162 130 160 25 196 25"/>
+          <g class="wt reclaim">
+            <rect class="box" x="196" y="8" width="216" height="34" rx="7"/>
+            <text class="wt-name" x="206" y="22">wt/fix-login</text>
+            <text class="wt-state" x="206" y="35">integrated · clean</text>
+            <rect class="nm" x="334" y="16" width="70" height="18" rx="4"/>
+            <text class="nm-text" x="369" y="28" text-anchor="middle">node_modules</text>
+          </g>
+          <path class="edge reclaim" d="M126 130C162 130 160 67 196 67"/>
+          <g class="wt reclaim">
+            <rect class="box" x="196" y="50" width="216" height="34" rx="7"/>
+            <text class="wt-name" x="206" y="64">wt/pr-327</text>
+            <text class="wt-state" x="206" y="77">integrated · clean</text>
+            <rect class="nm" x="334" y="58" width="70" height="18" rx="4"/>
+            <text class="nm-text" x="369" y="70" text-anchor="middle">node_modules</text>
+          </g>
+          <path class="edge" d="M126 130C162 130 160 109 196 109"/>
+          <g class="wt danger">
+            <rect class="box" x="196" y="92" width="216" height="34" rx="7"/>
+            <text class="wt-name" x="206" y="106">wt/agent-refactor</text>
+            <text class="wt-state" x="206" y="119">uncommitted changes</text>
+            <rect class="nm" x="334" y="100" width="70" height="18" rx="4"/>
+            <text class="nm-text" x="369" y="112" text-anchor="middle">node_modules</text>
+          </g>
+          <path class="edge" d="M126 130C162 130 160 151 196 151"/>
+          <g class="wt danger">
+            <rect class="box" x="196" y="134" width="216" height="34" rx="7"/>
+            <text class="wt-name" x="206" y="148">wt/spike-cache</text>
+            <text class="wt-state" x="206" y="161">not integrated</text>
+            <rect class="nm" x="334" y="142" width="70" height="18" rx="4"/>
+            <text class="nm-text" x="369" y="154" text-anchor="middle">node_modules</text>
+          </g>
+          <path class="edge" d="M126 130C162 130 160 193 196 193"/>
+          <g class="wt danger">
+            <rect class="box" x="196" y="176" width="216" height="34" rx="7"/>
+            <text class="wt-name" x="206" y="190">wt/codex-search</text>
+            <text class="wt-state" x="206" y="203">not integrated</text>
+            <rect class="nm" x="334" y="184" width="70" height="18" rx="4"/>
+            <text class="nm-text" x="369" y="196" text-anchor="middle">node_modules</text>
+          </g>
+          <path class="edge" d="M126 130C162 130 160 235 196 235"/>
+          <g class="wt danger">
+            <rect class="box" x="196" y="218" width="216" height="34" rx="7"/>
+            <text class="wt-name" x="206" y="232">wt/old-checkout</text>
+            <text class="wt-state" x="206" y="245">broken pointer</text>
+            <rect class="nm" x="334" y="226" width="70" height="18" rx="4"/>
+            <text class="nm-text" x="369" y="238" text-anchor="middle">node_modules</text>
+          </g>
+        </svg>
+      </div>
+      <div class="gauge-legend" style="margin-top:1.2rem">
+        <div class="li"><span class="sw" style="background:var(--border-strong)"></span>Worktree footprint <b>53.6 GB</b></div>
+        <div class="li"><span class="sw" style="background:var(--reclaim)"></span>Provably removable <b>9.3 GB</b></div>
+      </div>
+      <p class="lede" style="margin-top:1rem;font-size:.86rem">Measured on one developer's machine: 150 worktrees, 39 of them provably removable. Yours will differ, and footprint is never counted as reclaimable.</p>
+    </div>
+    <div>
+      <span class="eyebrow">Agent exhaust, verified</span>
+      <h2 class="head" style="font-size:clamp(1.6rem,3vw,2.2rem);margin-top:1rem">Merged is not the same as safe to delete.</h2>
+      <p class="lede" style="margin-top:1rem">Many coding agents check out a fresh git worktree for every task, and each one carries its own <code class="mono" style="font-size:.86em">node_modules</code>, virtualenv and build output. DevDoctor finds every worktree that repositories under your project roots register and proves which ones can go: integrated into the default branch, squash and rebase merges included (git&nbsp;2.38+), with no uncommitted changes and nothing nested inside. Only those are offered, through <code class="mono" style="font-size:.86em">git&nbsp;worktree&nbsp;remove</code> and never <code class="mono" style="font-size:.86em">--force</code>. Everything else stays advice.</p>
+      <div class="provs" style="margin-top:1.6rem">
+        <span class="chip reclaim">integrated &amp; clean — removable</span>
+        <span class="chip danger">not integrated, uncommitted or broken — advice only</span>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- PROVIDERS -->
 <section class="section" id="providers" style="padding-top:0">
   <div class="wrap">
     <div class="head">
       <span class="eyebrow">Knows where the bloat hides</span>
-      <h2>Built for the caches modern dev work leaves behind.</h2>
-      <p class="lede">Especially AI/ML work — model weights are the new disk sink. DevDoctor ships with providers for the usual offenders, plus a YAML-driven list you can extend for anything else.</p>
+      <h2>Built for what modern dev work, and your agents, leave behind.</h2>
+      <p class="lede">Especially AI-assisted work: model weights and agent worktrees are the new disk sinks. DevDoctor ships with providers for the usual offenders, plus a YAML-driven list you can extend for anything else.</p>
     </div>
     <div class="provs">
+      <span class="prov"><svg class="pi" viewBox="0 0 24 24" fill="none"><circle cx="6" cy="5" r="2" stroke="currentColor" stroke-width="1.4"/><circle cx="6" cy="19" r="2" stroke="currentColor" stroke-width="1.4"/><circle cx="18" cy="8" r="2" stroke="currentColor" stroke-width="1.4"/><path d="M6 7v10M18 10c0 4-6 3-10 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span><span class="pn">Git worktrees</span> <span class="ps">agent scratch space</span></span></span>
       <span class="prov"><svg class="pi" viewBox="0 0 24 24" fill="none"><rect x="3" y="10" width="4" height="4" stroke="currentColor" stroke-width="1.4"/><rect x="8" y="10" width="4" height="4" stroke="currentColor" stroke-width="1.4"/><rect x="13" y="10" width="4" height="4" stroke="currentColor" stroke-width="1.4"/><rect x="8" y="5.5" width="4" height="4" stroke="currentColor" stroke-width="1.4"/><path d="M18 12c2 0 3-1 3-1s0 4-4 5c-1.5 2-4 3-7 3-5 0-8-3-8-7h16Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span><span class="pn">Docker</span> <span class="ps">images · volumes · build cache</span></span></span>
       <span class="prov"><svg class="pi" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.4"/><circle cx="9" cy="10" r="1.3" fill="currentColor"/><circle cx="15" cy="10" r="1.3" fill="currentColor"/><path d="M8.5 15c1 1 5 1 7 0" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span><span class="pn">Hugging Face</span> <span class="ps">~/.cache/huggingface</span></span></span>
       <span class="prov"><svg class="pi" viewBox="0 0 24 24" fill="none"><path d="M12 3c3 0 5 2 5 5 2 1 3 3 3 5 0 4-4 8-8 8s-8-4-8-8c0-2 1-4 3-5 0-3 2-5 5-5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span><span class="pn">Ollama</span> <span class="ps">local model store</span></span></span>
