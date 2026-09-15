@@ -106,7 +106,8 @@ added: a refusal reaches the browser as an ordinary result for that entry id.
    `UNVERIFIED "git worktree list failed: <failure summary>"`. The record whose
    realpath equals the entry's path realpath is the worktree. If it is listed
    (not primary or bare) but its directory cannot be read for a reason other
-   than not existing, return `UNVERIFIED "cannot access <path>: <reason>"`. If
+   than not existing, return `UNVERIFIED "cannot access <path>: <reason>"`,
+   even when git marks it prunable (git's own stat of the directory failed). If
    there is no such record, or it is the primary worktree, bare, prunable, or
    its directory is missing, return `CHANGED "no longer registered"`.
 4. **Recompute repository facts** with the same code the scan uses
@@ -115,8 +116,8 @@ added: a refusal reaches the browser as an ordinary result for that entry id.
    temporary object directory created for this call and removed in a `finally`,
    exactly as in `discover()` (§4.3). It is called with no linked records, so
    `head_commit_times` receives no SHAs and runs no `git log`. Diagnostics the
-   provider records during verification are not surfaced; the answer string is
-   the only output.
+   provider records during verification are not surfaced; the returned `Refusal`
+   (or `None`) is the only output.
 5. **Classify** with `_classify(repository, record, registered)`, where
    `registered` is the realpaths of every record in this repository's listing.
    Worktrees registered by other repositories are still caught by the
@@ -146,7 +147,7 @@ Verification follows the invocation contract (§4.3): write-free, offline,
 | Exception inside `verify_removable` | `UNVERIFIED <exc>` | skipped |
 | git missing, unknown version, or below 2.36 | `UNVERIFIED git version unknown` / `git <x.y.z> is older than 2.36` | skipped |
 | `worktree list` fails or times out | `UNVERIFIED git worktree list failed: <summary>` | skipped |
-| Worktree still listed but its directory cannot be read | `UNVERIFIED cannot access <path>: <reason>` | skipped |
+| Worktree still listed but its directory cannot be read (even if git marks it prunable) | `UNVERIFIED cannot access <path>: <reason>` | skipped |
 | Worktree no longer listed, prunable, primary, bare, or missing | `CHANGED no longer registered` | skipped |
 | Any git call during classification fails or times out | `UNVERIFIED git error` (state label) | skipped |
 | Worktree gone, locked, prunable, or its HEAD moved between classifying as integrated and the final re-read (§3.3 step 6) | `CHANGED changed during verification` | skipped |

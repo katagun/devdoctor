@@ -453,7 +453,8 @@ def _inaccessible(records: list[WorktreeRecord], real: str) -> str | None:
     """Why a still-registered worktree directory cannot be read, if it cannot (#114).
 
     ``_linked_worktrees`` drops such a worktree with only a diagnostic, which would read
-    as "no longer registered"; this names the real reason.
+    as "no longer registered"; this names the real reason. Prunable records are checked
+    too, on purpose: git marks an unreadable worktree prunable because its own stat fails.
     """
     for record in records[1:]:
         if record.bare or _real(record.path) != real:
@@ -463,7 +464,7 @@ def _inaccessible(records: list[WorktreeRecord], real: str) -> str | None:
         except (FileNotFoundError, NotADirectoryError):
             return None
         except OSError as exc:
-            return f"cannot access {record.path}: {exc.strerror}"
+            return f"cannot access {record.path}: {exc.strerror or exc}"
     return None
 
 

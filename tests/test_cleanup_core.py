@@ -427,6 +427,9 @@ def test_run_removes_a_worktree_the_verifier_accepts():
 
     def accept(entry):
         verified.append(entry.id)
+        if entry.id != owner.id:
+            return Refusal(RefusalKind.UNVERIFIED, "unexpected entry")
+        return None
 
     results = run(
         _report(owner),
