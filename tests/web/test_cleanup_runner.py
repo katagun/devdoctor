@@ -1,8 +1,9 @@
 import asyncio
+from pathlib import Path
 
 import pytest
 
-from devdoctor.types import CleanupOpts, ShellResult
+from devdoctor.types import CleanupOpts, CommandAction, Entry, Risk, ShellResult
 from devdoctor.web.cleanup_runner import CleanupRunner
 from devdoctor.web.runner_registry import RunnerRegistry
 from tests.test_cleanup_async import _e, _report
@@ -185,3 +186,45 @@ async def test_runner_multi_entry_attributes_events_to_correct_entry():
     # Both entries should have an execute_start event with their own id.
     assert set(starts) == {"A", "B"}
     await asyncio.wait_for(task, timeout=1)
+
+
+async def test_runner_skips_a_worktree_its_verifier_refuses():
+    path = "/p/wt/feature"
+    owner = Entry(
+        provider="git-worktrees",
+        id=f"git-worktrees:{path}",
+        path=Path(path),
+        label="app/feature · integrated",
+        size_bytes=1_000,
+        mtime=None,
+        risk=Risk.RECLAIMABLE,
+        recipe=[],
+        actions=(CommandAction(("git", "-C", "/p/app", "worktree", "remove", path)),),
+    )
+    verified = []
+
+    async def fake_run_line(_argv):
+        raise AssertionError("no command may run")
+
+    def verify(entry):
+        verified.append(entry.id)
+        return "not integrated"
+
+    runner = CleanupRunner(
+        report=_report(owner), opts=CleanupOpts(execute=True), run_line=fake_run_line, verify=verify
+    )
+    task = asyncio.create_task(runner.run())
+    assert (await runner.events.get())["event"] == "prompt"
+    await runner.answer_prompt(entry_id=owner.id, choice="y")
+    assert (await runner.events.get())["event"] == "awaiting_confirm"
+    await runner.answer_confirm(True)
+    event = await asyncio.wait_for(runner.events.get(), timeout=5)
+    while event["event"] != "done":
+        event = await asyncio.wait_for(runner.events.get(), timeout=5)
+    results = await task
+
+    assert verified == [owner.id]
+    assert [r.status for r in results] == ["skipped"]
+    assert [(r["status"], r["message"]) for r in event["data"]["results"]] == [
+        ("skipped", "changed since the scan: not integrated; rescan before cleaning")
+    ]

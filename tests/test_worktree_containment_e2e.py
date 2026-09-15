@@ -1,5 +1,6 @@
 """End to end: git worktree containment through scan, CLI and web (spec §8.4)."""
 
+import asyncio
 from datetime import UTC, datetime
 
 import pytest
@@ -7,6 +8,7 @@ from click.testing import CliRunner
 from httpx import ASGITransport, AsyncClient
 
 from devdoctor import cleanup, discovery
+from devdoctor import cli as cli_module
 from devdoctor.cli import build_cli
 from devdoctor.ports import RealShell
 from devdoctor.providers.git_worktrees import GitWorktreeProvider
@@ -146,7 +148,7 @@ def test_cli_clean_execute_removes_an_integrated_worktree(integrated, empty_path
     assert str(worktree.path) not in repo.git("worktree", "list", "--porcelain")
 
 
-def test_a_worktree_changed_after_the_scan_is_refused_by_git(integrated):
+def test_a_worktree_changed_after_the_scan_is_skipped_at_cleanup(integrated):
     _, worktree = integrated
     report = _scan()
     (worktree.path / "late.txt").write_text("written after the scan\n")
@@ -157,9 +159,128 @@ def test_a_worktree_changed_after_the_scan_is_refused_by_git(integrated):
         prompt_choice=lambda entry: "y",
         confirm=lambda summary: True,
         opts=CleanupOpts(execute=True),
+        verify=GitWorktreeProvider(RealShell()).verify_removable,
+    )
+
+    [result] = [r for r in results if r.entry_id.startswith("git-worktrees:")]
+    assert result.status == "skipped"
+    assert result.message == (
+        "changed since the scan: integrated, uncommitted changes; rescan before cleaning"
+    )
+    assert worktree.path.exists()
+
+
+def test_git_still_refuses_a_worktree_dirtied_after_verification(integrated):
+    """Second line of defence (#110 final review): git's own check still guards removal.
+
+    Re-verification only catches a change up to the moment it runs; a change landing
+    between the verifier's answer and the `git worktree remove` call is still caught by
+    git itself, which refuses to remove a worktree holding untracked or modified files.
+    This should already pass on prior code — it documents that guarantee, it does not
+    add one.
+    """
+    _, worktree = integrated
+    report = _scan()
+
+    def verify(entry):
+        (worktree.path / "late.txt").write_text("written after verification\n")
+
+    results = cleanup.run(
+        report,
+        shell=RealShell(),
+        prompt_choice=lambda entry: "y",
+        confirm=lambda summary: True,
+        opts=CleanupOpts(execute=True),
+        verify=verify,
     )
 
     [result] = [r for r in results if r.entry_id.startswith("git-worktrees:")]
     assert result.status == "error"
     assert "untracked" in result.message
     assert worktree.path.exists()
+
+
+def _detached_integrated(git_fixture, tmp_path):
+    """An integrated, clean worktree on a detached HEAD, as agent tooling creates them."""
+    repo = git_fixture.repository(tmp_path / "projects" / "app")
+    worktree = repo.add_detached_worktree(tmp_path / "projects" / "wt" / "agent")
+    repo.publish()
+    return repo, worktree
+
+
+def test_cli_clean_skips_a_worktree_committed_to_while_the_prompt_waits(
+    git_fixture, tmp_path, empty_paths_yaml, monkeypatch
+):
+    repo, worktree = _detached_integrated(git_fixture, tmp_path)
+    late: list[str] = []
+    results = []
+
+    def prompt_choice(entry):
+        # The race #110 is about: work is committed after the scan, before removal.
+        late.append(worktree.commit("Late work", {"late.txt": "late\n"}))
+        return "y"
+
+    def recording_run(*args, **kwargs):
+        results.extend(cleanup.run(*args, **kwargs))
+        return results
+
+    monkeypatch.setattr(cli_module, "real_prompts", lambda console: (prompt_choice, lambda s: True))
+    monkeypatch.setattr(cli_module, "cleanup_run", recording_run)
+
+    outcome = CliRunner().invoke(build_cli(GitOnlyShell()), ["clean", "--execute"])
+
+    assert outcome.exit_code == 0, outcome.output
+    [result] = [r for r in results if r.entry_id.startswith("git-worktrees:")]
+    assert result.status == "skipped"
+    assert result.message == "changed since the scan: not integrated; rescan before cleaning"
+    assert worktree.path.exists()
+    assert repo.git("cat-file", "-t", late[0]) == "commit"
+
+
+async def test_web_cleanup_skips_a_worktree_committed_to_before_confirmation(
+    git_fixture, tmp_path, empty_paths_yaml, monkeypatch
+):
+    repo, worktree = _detached_integrated(git_fixture, tmp_path)
+    (tmp_path / "index.html").write_text("<!doctype html><title>t</title>")
+    app = build_app(GitOnlyShell(), allowed_hosts={"testserver"}, static_dir=tmp_path)
+    headers = {"Host": "testserver"}
+    registry = app.state.runner_registry
+    created = []
+    create = registry.create
+
+    def recording_create(factory):
+        created.append(create(factory))
+        return created[-1]
+
+    monkeypatch.setattr(registry, "create", recording_create)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        scan = (await client.get("/api/scan", headers=headers)).json()
+        [entry] = [e for e in scan["entries"] if e["provider"] == "git-worktrees"]
+        assert entry["risk"] == "reclaimable"
+
+        response = await client.post(
+            "/api/clean/jobs", json={"entry_ids": [entry["id"]]}, headers=headers
+        )
+        assert response.status_code == 200
+        [job] = created
+
+        event = await asyncio.wait_for(job.events.get(), timeout=10)
+        assert event["event"] == "prompt"
+        await job.answer_prompt(entry_id=entry["id"], choice="y")
+        event = await asyncio.wait_for(job.events.get(), timeout=10)
+        assert event["event"] == "awaiting_confirm"
+
+        late = worktree.commit("Late work", {"late.txt": "late\n"})
+        await job.answer_confirm(True)
+
+        while event["event"] != "done":
+            event = await asyncio.wait_for(job.events.get(), timeout=30)
+
+    [result] = [r for r in event["data"]["results"] if r["entry_id"] == entry["id"]]
+    assert result["status"] == "skipped"
+    assert result["message"] == "changed since the scan: not integrated; rescan before cleaning"
+    assert worktree.path.exists()
+    assert repo.git("cat-file", "-t", late) == "commit"

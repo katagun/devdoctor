@@ -92,8 +92,8 @@ added: a refusal reaches the browser as an ordinary result for that entry id.
 
 1. **Parse the entry's action.** Exactly one `CommandAction` whose argv is
    `("git", "-C", <repo>, "worktree", "remove", <path>)`, with `<path>` equal to
-   `str(entry.path)`. Anything else returns `"could not verify: unexpected
-   cleanup action"`.
+   `str(entry.path)` and both `<repo>` and `<path>` absolute. Anything else
+   returns `"could not verify: unexpected cleanup action"`.
 2. **Check git.** `GitRunner.version()`; if it is `None` or below 2.36, return
    `"cannot verify: git version unknown"` or `"cannot verify: git <x.y.z> is
    older than 2.36"`.
@@ -114,10 +114,19 @@ added: a refusal reaches the browser as an ordinary result for that entry id.
    `registered` is the realpaths of every record in this repository's listing.
    Worktrees registered by other repositories are still caught by the
    nested-repository walk through their `.git` files.
-6. **Answer.** `WorktreeState.INTEGRATED` returns `None`; every other state
-   returns its label text (§5.2), for example `not integrated` or
-   `integrated, uncommitted changes`.
-7. **Never raise.** Any exception returns `f"could not verify: {exc}"`.
+6. **Re-read HEAD after classifying as integrated.** Once `_classify` settles
+   on `WorktreeState.INTEGRATED`, re-list the repository (`list_worktrees`
+   again) and re-find the worktree by realpath among *every* record, not only
+   the linked ones. Refuse with `"changed during verification"` if the listing
+   fails, the worktree is gone, its HEAD differs from the HEAD read in step 3,
+   or it is now locked or prunable. A HEAD move during verification is refused
+   outright rather than re-classified against the new HEAD; §2.2's
+   re-classification applies only to a HEAD that had already moved before the
+   scan, not to one moving during this call.
+7. **Answer.** `WorktreeState.INTEGRATED`, once step 6 finds nothing changed,
+   returns `None`; every other state returns its label text (§5.2), for
+   example `not integrated` or `integrated, uncommitted changes`.
+8. **Never raise.** Any exception returns `f"could not verify: {exc}"`.
 
 Verification follows the invocation contract (§4.3): write-free, offline,
 `--no-optional-locks`, local variables removed, 30 s per call.
@@ -131,15 +140,20 @@ Verification follows the invocation contract (§4.3): write-free, offline,
 | `worktree list` fails or times out | `git error: <summary>` | skipped |
 | Worktree no longer listed, prunable, primary, bare, or missing | `no longer registered` | skipped |
 | Any git call during classification fails or times out | `git error` (state label) | skipped |
+| Worktree gone, locked, prunable, or its HEAD moved between classifying as integrated and the final re-read (§3.3 step 6) | `changed during verification` | skipped |
 | Temporary object directory cannot be created | falls back to `is-ancestor` (§4.4), which only under-reports integration | skipped unless integration is still proven |
 | Adapter given no verifier | `cannot verify worktree removal` | skipped |
 | Web job cancelled while verification runs | the thread finishes; the awaiting coroutine is cancelled, so the removal never starts | existing cancelled-job handling |
 
 ## 5. Remaining limitations (spec §11 amendment)
 
-- **Verify-to-remove window.** The gap between classification and removal
-  shrinks from minutes to the time between two subprocesses. A commit landing in
-  that instant can still be lost.
+- **Verify-to-remove window.** Verification re-reads HEAD after classifying
+  (§3.3 step 6), so the remaining window is from that final read to the start
+  of `git worktree remove` — one step and a process spawn. Git offers no lock
+  that stops a commit, so this window cannot be closed. An ignored nested
+  repository created after the nesting walk passed its directory, or after
+  verification, is deleted with the worktree; uncommitted changes made after
+  verification are still refused by git.
 - **Recipe script.** `devdoctor recipe` does not re-verify; review it against a
   fresh scan before uncommenting a worktree removal.
 

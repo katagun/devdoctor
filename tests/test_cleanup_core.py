@@ -1,12 +1,17 @@
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
 from devdoctor.cleanup import (
+    NO_VERIFIER_REASON,
     ConfirmRequired,
     EntryResolved,
     ExecuteStep,
     PromptRequired,
+    VerifyRequired,
     iter_cleanup_events,
+    run,
+    run_async,
 )
 from devdoctor.types import (
     CleanResult,
@@ -234,10 +239,21 @@ def _content(id_: str, path: Path) -> Entry:
     )
 
 
-def _run_cleanup(report: Report, choices: dict[str, str], returncodes: dict[str, int]):
-    """Drive a cleanup: answer prompts by entry id, confirm, record executed entry ids."""
+def _run_cleanup(
+    report: Report,
+    choices: dict[str, str],
+    returncodes: dict[str, int],
+    refusals: dict[str, str] | None = None,
+    steps: list[tuple[str, str]] | None = None,
+):
+    """Drive a cleanup: answer prompts by entry id, confirm, record executed entry ids.
+
+    ``refusals`` answers ``VerifyRequired`` by entry id (absent ids pass); ``steps``
+    records ("verify" | "execute", entry id) in order.
+    """
     executed: list[str] = []
     results = {}
+    steps = [] if steps is None else steps
     gen = iter_cleanup_events(report, CleanupOpts(execute=True))
     try:
         event = next(gen)
@@ -246,7 +262,11 @@ def _run_cleanup(report: Report, choices: dict[str, str], returncodes: dict[str,
                 event = gen.send(choices[event.entry.id])
             elif isinstance(event, ConfirmRequired):
                 event = gen.send(True)
+            elif isinstance(event, VerifyRequired):
+                steps.append(("verify", event.entry.id))
+                event = gen.send((refusals or {}).get(event.entry.id))
             elif isinstance(event, ExecuteStep):
+                steps.append(("execute", event.entry.id))
                 executed.append(event.entry.id)
                 event = gen.send(ShellResult(returncodes.get(event.entry.id, 0), "", "refused"))
             else:
@@ -306,3 +326,130 @@ def test_contents_run_when_the_worktree_is_declined():
 
 def _ids(report: Report) -> list[str]:
     return [entry.id for entry in report.entries]
+
+
+def test_a_worktree_is_verified_immediately_before_its_removal():
+    report, inside, owner, outside = _worktree_report()
+    steps: list[tuple[str, str]] = []
+
+    _run_cleanup(report, dict.fromkeys(_ids(report), "y"), {}, steps=steps)
+
+    assert steps == [("verify", owner.id), ("execute", owner.id), ("execute", outside.id)]
+
+
+def test_a_worktree_that_changed_is_skipped_and_its_contents_run():
+    report, inside, owner, outside = _worktree_report()
+
+    executed, results = _run_cleanup(
+        report, dict.fromkeys(_ids(report), "y"), {}, refusals={owner.id: "not integrated"}
+    )
+
+    assert executed == [inside.id, outside.id]
+    assert results[owner.id] == CleanResult(
+        entry_id=owner.id,
+        status="skipped",
+        freed_bytes=0,
+        message="changed since the scan: not integrated; rescan before cleaning",
+    )
+    assert results[inside.id].status == "ok"
+    assert set(results) == set(_ids(report))
+
+
+def test_declined_worktrees_and_other_entries_are_never_verified():
+    report, inside, owner, outside = _worktree_report()
+    steps: list[tuple[str, str]] = []
+
+    _run_cleanup(report, {inside.id: "y", owner.id: "n", outside.id: "y"}, {}, steps=steps)
+
+    assert [step for step in steps if step[0] == "verify"] == []
+
+
+def test_preview_never_verifies():
+    report, *_ = _worktree_report()
+    events = list(iter_cleanup_events(report, CleanupOpts(execute=False)))
+    assert not any(isinstance(event, VerifyRequired) for event in events)
+
+
+class _NoShell:
+    def run(self, argv, *, check=False, timeout=None, env=None):
+        raise AssertionError(f"no command may run: {argv}")
+
+    def which(self, binary):
+        return None
+
+
+def test_run_without_a_verifier_never_removes_a_worktree():
+    owner = _worktree_owner()
+
+    results = run(
+        _report(owner),
+        shell=_NoShell(),
+        prompt_choice=lambda entry: "y",
+        confirm=lambda summary: True,
+        opts=CleanupOpts(execute=True),
+    )
+
+    assert [(r.status, r.message) for r in results] == [
+        ("skipped", f"changed since the scan: {NO_VERIFIER_REASON}; rescan before cleaning")
+    ]
+
+
+def test_run_removes_a_worktree_the_verifier_accepts():
+    owner = _worktree_owner()
+    ran: list[list[str]] = []
+    verified: list[str] = []
+
+    class _Shell(_NoShell):
+        def run(self, argv, *, check=False, timeout=None, env=None):
+            ran.append(argv)
+            return ShellResult(0, "", "")
+
+    results = run(
+        _report(owner),
+        shell=_Shell(),
+        prompt_choice=lambda entry: "y",
+        confirm=lambda summary: True,
+        opts=CleanupOpts(execute=True),
+        verify=lambda entry: verified.append(entry.id),
+    )
+
+    assert verified == [owner.id]
+    assert ran == [list(owner.actions[0].argv)]
+    assert [r.status for r in results] == ["ok"]
+
+
+async def test_run_async_verifies_off_the_event_loop_thread():
+    owner = _worktree_owner()
+    loop_thread = threading.get_ident()
+    verifier_threads: list[int] = []
+
+    def verify(entry):
+        verifier_threads.append(threading.get_ident())
+        return "integrated, uncommitted changes"
+
+    async def run_line(argv):
+        raise AssertionError("no command may run")
+
+    async def prompt(entry):
+        return "y"
+
+    async def confirm(summary):
+        return True
+
+    results = await run_async(
+        _report(owner),
+        run_line=run_line,
+        prompt_choice=prompt,
+        confirm=confirm,
+        opts=CleanupOpts(execute=True),
+        verify=verify,
+    )
+
+    assert len(verifier_threads) == 1
+    assert verifier_threads[0] != loop_thread
+    assert [(r.status, r.message) for r in results] == [
+        (
+            "skipped",
+            "changed since the scan: integrated, uncommitted changes; rescan before cleaning",
+        )
+    ]

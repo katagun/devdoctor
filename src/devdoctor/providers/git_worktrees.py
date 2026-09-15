@@ -347,6 +347,79 @@ class GitWorktreeProvider(Provider):
             **_stat_kwargs(path),
         )
 
+    def verify_removable(self, entry: Entry) -> str | None:
+        """Re-classify ``entry`` against current state, immediately before removal (#110).
+
+        Returns None only if the worktree is still integrated and clean; otherwise the
+        state's label, or why it could not be verified. Never raises: a verifier must
+        answer, and every failure refuses the removal.
+        """
+        try:
+            return self._verify_removable(entry)
+        except Exception as exc:
+            return f"could not verify: {exc}"
+
+    def _verify_removable(self, entry: Entry) -> str | None:
+        target = _removal_target(entry)
+        if target is None:
+            return "could not verify: unexpected cleanup action"
+        repository, path = target
+        version, version_error = self._verified_version()
+        if version_error is not None:
+            return version_error
+        try:
+            records = list_worktrees(self._git, repository)
+        except GitQueryError as exc:
+            return f"git error: {exc}"
+        real = _real(path)
+        record = next(
+            (r for r in self._linked_worktrees(repository, records) if _real(r.path) == real),
+            None,
+        )
+        if record is None:
+            return "no longer registered"
+        registered = frozenset(_real(r.path) for r in records)
+        objects_dir = (
+            self._create_objects_dir() if supports_merge_tree_write_tree(version) else None
+        )
+        try:
+            facts = self._repository_facts(repository, [], objects_dir)
+            state, _ = self._classify(facts, record, registered)
+        finally:
+            if objects_dir is not None:
+                self._remove_objects_dir(objects_dir)
+        if state is not WorktreeState.INTEGRATED:
+            return state.value
+        return self._changed_during_verification(repository, real, record.head)
+
+    def _changed_during_verification(
+        self, repository: Path, real: str, head: str | None
+    ) -> str | None:
+        """Catch a commit, lock, or prune landing between classifying and this final read.
+
+        Re-lists the repository (every record, not only linked ones, so a worktree that
+        just became prunable or locked is still seen) and refuses unless the same
+        worktree is still there with the same HEAD it had when classification began.
+        """
+        try:
+            records = list_worktrees(self._git, repository)
+        except GitQueryError:
+            return "changed during verification"
+        record = next((r for r in records if _real(r.path) == real), None)
+        if record is None or record.head != head or record.locked or record.prunable:
+            return "changed during verification"
+        return None
+
+    def _verified_version(self) -> tuple[tuple[int, int, int] | None, str | None]:
+        """The installed git version, or why verification cannot use it."""
+        version = self._git.version()
+        if version is None:
+            return None, "cannot verify: git version unknown"
+        if not supports_worktree_list_z(version):
+            found = ".".join(map(str, version))
+            return None, f"cannot verify: git {found} is older than 2.36"
+        return version, None
+
     def _create_objects_dir(self) -> Path | None:
         try:
             return Path(tempfile.mkdtemp(prefix="devdoctor-merge-tree-"))
@@ -364,6 +437,26 @@ class GitWorktreeProvider(Provider):
             self.diagnostics.append(
                 f"git-worktrees: could not remove temporary object directory {path}: {exc}"
             )
+
+
+def _removal_target(entry: Entry) -> tuple[Path, Path] | None:
+    """The repository and worktree of an entry this provider offered for removal, or None.
+
+    Both paths must be absolute: a relative ``-C`` or worktree path would be resolved
+    against the verifying process's current directory instead of the one the scan meant.
+    """
+    if entry.path is None or len(entry.actions) != 1:
+        return None
+    [action] = entry.actions
+    if not isinstance(action, CommandAction):
+        return None
+    match action.argv:
+        case ("git", "-C", repository, "worktree", "remove", path) if path == str(entry.path):
+            repo_path = Path(repository)
+            if not repo_path.is_absolute() or not entry.path.is_absolute():
+                return None
+            return repo_path, entry.path
+    return None
 
 
 def _repositories(candidates: GitCandidates) -> list[Path]:
