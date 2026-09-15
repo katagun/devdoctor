@@ -221,9 +221,10 @@ async def test_runner_skips_a_worktree_its_verifier_refuses():
     event = await asyncio.wait_for(runner.events.get(), timeout=5)
     while event["event"] != "done":
         event = await asyncio.wait_for(runner.events.get(), timeout=5)
-    await task
+    results = await task
 
     assert verified == [owner.id]
+    assert [r.status for r in results] == ["skipped"]
     assert [(r["status"], r["message"]) for r in event["data"]["results"]] == [
         ("skipped", "changed since the scan: not integrated; rescan before cleaning")
     ]
