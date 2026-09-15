@@ -3,6 +3,7 @@ import shlex
 import shutil
 import subprocess
 import threading
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,7 @@ from devdoctor.ports import RealShell
 from devdoctor.providers import git_worktrees
 from devdoctor.providers._git import GitRunner, supports_merge_tree_write_tree
 from devdoctor.providers.git_worktrees import GitWorktreeProvider
-from devdoctor.types import AdviceAction, CommandAction, DiskUsage, Risk, ShellResult
+from devdoctor.types import AdviceAction, CommandAction, DiskUsage, Entry, Risk, ShellResult
 from tests.conftest import FakeShell
 
 needs_merge_tree = pytest.mark.skipif(
@@ -860,3 +861,160 @@ def test_integrated_worktree_holding_an_ignored_bare_repository_is_advice(
         check=False,
     )
     assert kept.stdout.strip() == "commit"
+
+
+# --- verification immediately before removal (#110) --------------------------------
+
+
+def _verify(path):
+    """Scan, then return a verifier and the worktree's reclaimable entry."""
+    entries, _ = _discover()
+    entry = _entry(entries, path)
+    assert entry.risk is Risk.RECLAIMABLE
+    return GitWorktreeProvider(RealShell()), entry
+
+
+def test_verify_accepts_an_unchanged_integrated_clean_worktree(app, projects):
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    _merge(app, worktree)
+    app.publish()
+    provider, entry = _verify(worktree.path)
+
+    assert provider.verify_removable(entry) is None
+
+
+def test_verify_refuses_a_commit_made_on_a_detached_head_after_the_scan(app, projects):
+    worktree = app.add_detached_worktree(projects / "wt" / "review")
+    app.publish()
+    provider, entry = _verify(worktree.path)
+
+    late = worktree.commit("Late work", {"late.txt": "late\n"})
+
+    assert provider.verify_removable(entry) == "not integrated"
+    assert app.git("cat-file", "-t", late) == "commit"
+
+
+def test_verify_accepts_a_later_commit_that_was_merged(app, projects):
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    _merge(app, worktree)
+    app.publish()
+    provider, entry = _verify(worktree.path)
+
+    worktree.commit("More", {"more.txt": "more\n"})
+    app.git("merge", "--no-ff", "-q", "-m", "Merge more", "feature")
+    app.publish()
+
+    assert provider.verify_removable(entry) is None
+
+
+def test_verify_refuses_an_untracked_file_added_after_the_scan(app, projects):
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    _merge(app, worktree)
+    app.publish()
+    provider, entry = _verify(worktree.path)
+
+    (worktree.path / "late.txt").write_text("late\n")
+
+    assert provider.verify_removable(entry) == "integrated, uncommitted changes"
+
+
+def test_verify_refuses_a_bare_repository_nested_after_the_scan(app, projects):
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    worktree.commit("Ignore vendor", {".gitignore": "vendor/\n"})
+    app.git("merge", "--no-ff", "-q", "-m", "Merge feature", "feature")
+    app.publish()
+    provider, entry = _verify(worktree.path)
+
+    subprocess.run(
+        ["git", "init", "--bare", "-q", str(worktree.path / "vendor" / "mirror.git")],
+        check=True,
+        capture_output=True,
+    )
+
+    assert provider.verify_removable(entry) == "contains nested repository"
+
+
+def test_verify_refuses_a_worktree_that_is_no_longer_registered(app, projects):
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    _merge(app, worktree)
+    app.publish()
+    provider, entry = _verify(worktree.path)
+
+    app.git("worktree", "remove", str(worktree.path))
+
+    assert provider.verify_removable(entry) == "no longer registered"
+
+
+def test_verify_refuses_an_entry_whose_action_is_not_the_removal(app, projects):
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    _merge(app, worktree)
+    app.publish()
+    provider, entry = _verify(worktree.path)
+    tampered = replace(entry, actions=(CommandAction(("git", "-C", "/elsewhere", "gc")),))
+
+    assert provider.verify_removable(tampered) == "could not verify: unexpected cleanup action"
+
+
+def test_verify_refuses_when_git_is_too_old():
+    version = ("git", "--no-optional-locks", "-C", "/", "version")
+    shell = FakeShell(responses={version: ShellResult(0, "git version 2.35.8\n", "")})
+    path = Path("/p/wt/feature")
+    entry = Entry(
+        provider="git-worktrees",
+        id=f"git-worktrees:{path}",
+        path=path,
+        label="app/feature · integrated",
+        size_bytes=1,
+        mtime=None,
+        risk=Risk.RECLAIMABLE,
+        recipe=[],
+        actions=(CommandAction(("git", "-C", "/p/app", "worktree", "remove", str(path))),),
+    )
+
+    assert (
+        GitWorktreeProvider(shell).verify_removable(entry)
+        == "cannot verify: git 2.35.8 is older than 2.36"
+    )
+
+
+def test_verify_never_raises(app, projects, monkeypatch):
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    _merge(app, worktree)
+    app.publish()
+    provider, entry = _verify(worktree.path)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(git_worktrees, "list_worktrees", boom)
+
+    assert provider.verify_removable(entry) == "could not verify: boom"
+
+
+@needs_merge_tree
+def test_verify_is_offline_and_write_free(app, projects):
+    worktree = app.add_worktree(projects / "wt" / "feature", "feature")
+    worktree.commit("Feature", {"feature.txt": "feature\n"})
+    app.commit("Feature (squashed)", {"feature.txt": "feature\n"})
+    app.publish()
+    _, entry = _verify(worktree.path)
+    before = app.object_counts()
+    shell = RecordingShell()
+
+    assert GitWorktreeProvider(shell).verify_removable(entry) is None
+
+    assert app.object_counts() == before
+    assert any("merge-tree" in argv for argv, _ in shell.calls)
+    writing = {"fetch", "gc", "prune", "repair", "update-ref"}
+    object_dirs = set()
+    for argv, env in shell.calls:
+        assert env is not None
+        assert env["GIT_NO_LAZY_FETCH"] == "1"
+        assert env["GIT_TERMINAL_PROMPT"] == "0"
+        assert not writing & set(argv)
+        assert not {"worktree", "remove"} <= set(argv)
+        if env.get("GIT_OBJECT_DIRECTORY"):
+            assert "merge-tree" in argv
+            object_dirs.add(env["GIT_OBJECT_DIRECTORY"])
+    [object_dir] = object_dirs
+    assert not Path(object_dir).exists()
