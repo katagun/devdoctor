@@ -332,8 +332,8 @@ The scan decides what is offered. Git never re-checks integration, so cleanup
 re-classifies each worktree immediately before `git worktree remove` runs
 (see [`2026-09-15-worktree-cleanup-reverify-design.md`](2026-09-15-worktree-cleanup-reverify-design.md),
 #110): a worktree that is no longer integrated, clean and free of nested
-repositories is skipped. Git then applies its own refusals above, and cleanup
-reports git's message as that entry's error.
+repositories, or that cannot be re-verified, is skipped. Git then applies its
+own refusals above, and cleanup reports git's message as that entry's error.
 
 ## 6. Containment, filters and cleanup
 
@@ -532,8 +532,11 @@ git never discovers a repository above the fixture.
 - `devdoctor clean --execute` on an integrated, clean worktree: the directory is
   gone, `git worktree list` no longer lists it, and its gitignored contents are
   gone.
-- **Changed between scan and cleanup:** a worktree made dirty after the scan is
-  refused by git, and its `CleanResult` is an error carrying git's message.
+- **Changed between scan and cleanup:** a worktree changed after the scan is
+  skipped by re-verification (`changed since the scan: <state>; rescan before
+  cleaning`), a commit made on a detached HEAD after the scan or during
+  verification is refused with the commit intact, and git still refuses a
+  worktree dirtied after verification (error carrying git's message).
 
 Tests select entries by provider, path or label, never by list position.
 
@@ -595,9 +598,13 @@ should land no later than PR 3.
   differently from git's recorded worktree path can miss containment, and those
   contents are counted and offered under their own provider as well.
 - **Verify-to-remove window.** Cleanup re-classifies a worktree immediately
-  before removing it (#110), which shrinks the gap between classification and
-  removal to the time between two subprocesses. A commit landing in that instant
-  can still be lost.
+  before removing it (#110), then re-reads HEAD after classifying it as
+  integrated; the remaining window is from that final read to the start of
+  `git worktree remove` — one step and a process spawn. Git offers no lock
+  that stops a commit, so the window cannot be closed. An ignored nested
+  repository created after the nesting walk passed its directory, or after
+  verification, is deleted with the worktree; uncommitted changes made after
+  verification are still refused by git.
 - **Recipe script.** `devdoctor recipe` does not re-verify; review it against a
   fresh scan before uncommenting a worktree removal.
 

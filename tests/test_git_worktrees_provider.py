@@ -894,6 +894,41 @@ def test_verify_refuses_a_commit_made_on_a_detached_head_after_the_scan(app, pro
     assert app.git("cat-file", "-t", late) == "commit"
 
 
+def test_verify_refuses_a_commit_made_during_verification(app, projects, monkeypatch):
+    """#110 final review: a commit landing after classification, not just after the scan."""
+    worktree = app.add_detached_worktree(projects / "wt" / "review")
+    app.publish()
+    provider, entry = _verify(worktree.path)
+    shas: list[str] = []
+    original_check_nesting = git_worktrees.check_nesting
+
+    def commit_then_check_nesting(*args, **kwargs):
+        # The nesting walk is the last classification step (spec §5.1), so this lands
+        # the commit after `_classify` has already decided the worktree is integrated.
+        shas.append(worktree.commit("Mid-check", {"mid.txt": "mid\n"}))
+        return original_check_nesting(*args, **kwargs)
+
+    monkeypatch.setattr(git_worktrees, "check_nesting", commit_then_check_nesting)
+
+    assert provider.verify_removable(entry) == "changed during verification"
+    assert app.git("cat-file", "-t", shas[0]) == "commit"
+
+
+def test_verify_refuses_a_worktree_locked_during_verification(app, projects, monkeypatch):
+    worktree = app.add_detached_worktree(projects / "wt" / "review")
+    app.publish()
+    provider, entry = _verify(worktree.path)
+    original_check_nesting = git_worktrees.check_nesting
+
+    def lock_then_check_nesting(*args, **kwargs):
+        app.git("worktree", "lock", str(worktree.path))
+        return original_check_nesting(*args, **kwargs)
+
+    monkeypatch.setattr(git_worktrees, "check_nesting", lock_then_check_nesting)
+
+    assert provider.verify_removable(entry) == "changed during verification"
+
+
 def test_verify_accepts_a_later_commit_that_was_merged(app, projects):
     worktree = app.add_worktree(projects / "wt" / "feature", "feature")
     _merge(app, worktree)
@@ -1018,3 +1053,59 @@ def test_verify_is_offline_and_write_free(app, projects):
             object_dirs.add(env["GIT_OBJECT_DIRECTORY"])
     [object_dir] = object_dirs
     assert not Path(object_dir).exists()
+
+
+# --- _removal_target hardening (#110 final review) ----------------------------------
+
+
+def _removal_entry(repository: str, action_path: str, entry_path: Path) -> Entry:
+    return Entry(
+        provider="git-worktrees",
+        id="x",
+        path=entry_path,
+        label="app/feature · integrated",
+        size_bytes=0,
+        mtime=None,
+        risk=Risk.RECLAIMABLE,
+        recipe=[],
+        actions=(CommandAction(("git", "-C", repository, "worktree", "remove", action_path)),),
+    )
+
+
+@pytest.mark.parametrize(
+    "repository, action_path, entry_path, expected",
+    [
+        pytest.param(
+            "repo",
+            "/p/wt/feature",
+            Path("/p/wt/feature"),
+            None,
+            id="relative-repository",
+        ),
+        pytest.param(
+            "/p/repo",
+            "wt/feature",
+            Path("wt/feature"),
+            None,
+            id="relative-entry-path",
+        ),
+        pytest.param(
+            "/p/repo",
+            "/p/wt/other",
+            Path("/p/wt/feature"),
+            None,
+            id="action-path-differs-from-entry-path",
+        ),
+        pytest.param(
+            "/p/repo",
+            "/p/wt/feature",
+            Path("/p/wt/feature"),
+            (Path("/p/repo"), Path("/p/wt/feature")),
+            id="well-formed-absolute-action",
+        ),
+    ],
+)
+def test_removal_target_requires_absolute_paths(repository, action_path, entry_path, expected):
+    entry = _removal_entry(repository, action_path, entry_path)
+
+    assert git_worktrees._removal_target(entry) == expected

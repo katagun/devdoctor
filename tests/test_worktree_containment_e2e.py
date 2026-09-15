@@ -170,6 +170,36 @@ def test_a_worktree_changed_after_the_scan_is_skipped_at_cleanup(integrated):
     assert worktree.path.exists()
 
 
+def test_git_still_refuses_a_worktree_dirtied_after_verification(integrated):
+    """Second line of defence (#110 final review): git's own check still guards removal.
+
+    Re-verification only catches a change up to the moment it runs; a change landing
+    between the verifier's answer and the `git worktree remove` call is still caught by
+    git itself, which refuses to remove a worktree holding untracked or modified files.
+    This should already pass on prior code — it documents that guarantee, it does not
+    add one.
+    """
+    _, worktree = integrated
+    report = _scan()
+
+    def verify(entry):
+        (worktree.path / "late.txt").write_text("written after verification\n")
+
+    results = cleanup.run(
+        report,
+        shell=RealShell(),
+        prompt_choice=lambda entry: "y",
+        confirm=lambda summary: True,
+        opts=CleanupOpts(execute=True),
+        verify=verify,
+    )
+
+    [result] = [r for r in results if r.entry_id.startswith("git-worktrees:")]
+    assert result.status == "error"
+    assert "untracked" in result.message
+    assert worktree.path.exists()
+
+
 def _detached_integrated(git_fixture, tmp_path):
     """An integrated, clean worktree on a detached HEAD, as agent tooling creates them."""
     repo = git_fixture.repository(tmp_path / "projects" / "app")
