@@ -59,6 +59,12 @@ entries under a versioned heading as described in
 
 ### Added
 
+- **Live scan progress in the web UI.** While a scan runs, the Disk page shows
+  how many providers have finished, the bytes found so far and which providers
+  are running, ahead of the countdown from past scans; the Dashboard's loading
+  label shows the provider count. The page reads a new server-sent-events
+  endpoint, `GET /api/scan/progress`, that mirrors the scan running in the
+  server; `GET /api/scan` is unchanged. (#117)
 - **Hermetic end-to-end tests for the web UI.** Playwright now drives a
   `devdoctor serve` started under a throwaway home, with one YAML cache and one
   node project as fixtures, and runs in CI: the disk table and its risk chips,
