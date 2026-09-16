@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDiskMosaicItems,
   buildMemoryMosaicItems,
+  diskPanelLoading,
   diskProviderHref,
   diskProviderTotals,
   memoryProviderHref,
@@ -140,3 +141,19 @@ function memory(
     rss_bytes: rssBytes,
   };
 }
+
+describe("diskPanelLoading", () => {
+  // The same rule gates the panel's loading state and the progress stream, so
+  // a background refetch with a cached summary opens no stream (#120 review).
+  it("is true only for a first load with no cached summary", () => {
+    expect(diskPanelLoading(true, undefined)).toBe(true);
+    expect(diskPanelLoading(true, null)).toBe(true);
+  });
+
+  it("is false once a summary is cached or the scan is not loading", () => {
+    const summary = { total_bytes: 1 } as Parameters<typeof diskPanelLoading>[1];
+    expect(diskPanelLoading(true, summary)).toBe(false);
+    expect(diskPanelLoading(false, undefined)).toBe(false);
+    expect(diskPanelLoading(false, summary)).toBe(false);
+  });
+});

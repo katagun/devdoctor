@@ -1,3 +1,4 @@
+import type { DiskDashboardSummary } from "@/hooks/useDashboard";
 import type { MemoryConsumerKind } from "@/hooks/useMemory";
 import { DISK_LABEL, MEMORY_LABEL } from "@/lib/resourceLabels";
 
@@ -203,4 +204,16 @@ function topWeightedItems(
       detail: `${hidden.length} item${hidden.length === 1 ? "" : "s"}`,
     },
   ];
+}
+
+/**
+ * Whether the disk panel is in its loading state: a first scan with no cached
+ * summary to show meanwhile. The progress stream is gated on the same rule, so
+ * a background refetch that keeps showing the cache opens no stream.
+ */
+export function diskPanelLoading(
+  isLoading: boolean,
+  summary: DiskDashboardSummary | null | undefined,
+): boolean {
+  return isLoading && !summary;
 }
