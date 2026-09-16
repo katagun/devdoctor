@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from devdoctor import cleanup as cleanup_mod
-from devdoctor import history_log
+from devdoctor import cleanup_audit, history_log
 from devdoctor.storage.base import StorageBackend
 from devdoctor.types import (
     AsyncRunLine,
@@ -17,7 +17,6 @@ from devdoctor.types import (
     Entry,
     Report,
     ShellResult,
-    estimated_reclaimable_bytes,
 )
 from devdoctor.web.subprocess_stream import OnChunk
 
@@ -50,6 +49,7 @@ class CleanupRunner:
     _pending_confirm: asyncio.Future[bool] | None = None
     _task: asyncio.Task[list[CleanResult]] | None = None
     _cancelled: bool = False
+    _plan: tuple[cleanup_mod.PlannedEntry, ...] = ()
 
     async def run(self) -> list[CleanResult]:
         results: list[CleanResult] = []
@@ -63,6 +63,7 @@ class CleanupRunner:
                         choice = await self._prompt_choice(event.entry)
                         event = gen.send(choice)
                     elif isinstance(event, cleanup_mod.ConfirmRequired):
+                        self._plan = event.plan
                         summary = cleanup_mod._confirm_summary(event)
                         confirmed = await self._confirm(summary)
                         event = gen.send(confirmed)
@@ -97,8 +98,10 @@ class CleanupRunner:
                             }
                             for r in results
                         ],
-                        "estimated_reclaimed_bytes": self._estimated_reclaimed_bytes(results),
-                        "bytes_verified": self._all_bytes_verified(results),
+                        "estimated_reclaimed_bytes": cleanup_audit.estimated_reclaimed_bytes(
+                            self.report.entries, results
+                        ),
+                        "bytes_verified": cleanup_audit.all_bytes_verified(results),
                         "cancelled": True,
                     },
                 }
@@ -129,29 +132,15 @@ class CleanupRunner:
     ) -> None:
         """Persist the job outcome to the audit log. Errors here are non-fatal."""
         try:
-            estimated_reclaimed = self._estimated_reclaimed_bytes(results)
-            payload: dict[str, Any] = {
-                "type": "cleanup",
-                "job_id": self.id,
-                "outcome": outcome,
-                # Compatibility key for audit readers written before explicit
-                # estimate semantics. New readers use the field below.
-                "total_freed_bytes": estimated_reclaimed,
-                "total_estimated_reclaimed_bytes": estimated_reclaimed,
-                "bytes_verified": self._all_bytes_verified(results),
-                "results": [
-                    {
-                        "entry_id": r.entry_id,
-                        "status": r.status,
-                        "freed_bytes": r.freed_bytes,
-                        "message": r.message,
-                        "bytes_verified": r.bytes_verified,
-                    }
-                    for r in results
-                ],
-            }
-            if error is not None:
-                payload["error"] = error
+            payload = cleanup_audit.build_event(
+                results,
+                outcome,
+                source="web",
+                plan=self._plan,
+                entries=self.report.entries,
+                job_id=self.id,
+                error=error,
+            )
             if self.storage is not None:
                 self.storage.append_audit_event(payload)
             else:
@@ -166,17 +155,6 @@ class CleanupRunner:
                 outcome,
                 exc_info=True,
             )
-
-    def _estimated_reclaimed_bytes(self, results: list[CleanResult]) -> int:
-        successful_ids = {result.entry_id for result in results if result.status == "ok"}
-        return estimated_reclaimable_bytes(
-            [entry for entry in self.report.entries if entry.id in successful_ids]
-        )
-
-    @staticmethod
-    def _all_bytes_verified(results: list[CleanResult]) -> bool:
-        successful = [result for result in results if result.status == "ok"]
-        return bool(successful) and all(result.bytes_verified for result in successful)
 
     async def _run_execute_step(
         self,
@@ -273,8 +251,10 @@ class CleanupRunner:
                         }
                         for r in results
                     ],
-                    "estimated_reclaimed_bytes": self._estimated_reclaimed_bytes(results),
-                    "bytes_verified": self._all_bytes_verified(results),
+                    "estimated_reclaimed_bytes": cleanup_audit.estimated_reclaimed_bytes(
+                        self.report.entries, results
+                    ),
+                    "bytes_verified": cleanup_audit.all_bytes_verified(results),
                 },
             }
         )
