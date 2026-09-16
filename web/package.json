@@ -17,7 +17,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
+    "test:e2e": "bun run build && playwright test",
     "gen:types": "openapi-typescript http://127.0.0.1:8731/openapi.json -o src/api/types.gen.ts",
     "lint": "eslint ."
   },

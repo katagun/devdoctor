@@ -43,3 +43,14 @@ jobs:
       - run: bun run typecheck
       - run: bun run test
       - run: bun run build
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - run: uv sync --extra web
+        working-directory: .
+      - run: bun run playwright install --with-deps chromium
+      - run: bun run test:e2e
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: failure()
+        with:
+          name: playwright-report
+          path: web/playwright-report
+          retention-days: 7

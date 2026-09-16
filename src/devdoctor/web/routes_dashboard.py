@@ -49,6 +49,12 @@ def _summary_to_info(summary: DiskDashboardSummary) -> DiskDashboardSummaryInfo:
         entry_count=summary.entry_count,
         entries=[_entry_to_info(entry) for entry in summary.entries],
         provider_totals=[_provider_total_to_info(total) for total in summary.provider_totals],
+        # Without these the UI falls back to total_bytes and shows the footprint as
+        # "estimated reclaimable" (#102).
+        total_footprint_bytes=summary.total_footprint_bytes,
+        total_reclaimable_bytes=summary.total_reclaimable_bytes,
+        total_shared_bytes=summary.total_shared_bytes,
+        unknown_reclaimable_entries=summary.unknown_reclaimable_entries,
     )
 
 
@@ -59,6 +65,9 @@ def _entry_to_info(entry: DiskDashboardEntry) -> DiskDashboardEntryInfo:
         label=entry.label,
         size_bytes=entry.size_bytes,
         risk=entry.risk,
+        footprint_bytes=entry.footprint_bytes,
+        reclaimable_bytes=entry.reclaimable_bytes,
+        shared_bytes=entry.shared_bytes,
     )
 
 
@@ -69,4 +78,7 @@ def _provider_total_to_info(
         provider=total.provider,
         bytes=total.bytes,
         count=total.count,
+        footprint_bytes=total.footprint_bytes,
+        reclaimable_bytes=total.reclaimable_bytes,
+        shared_bytes=total.shared_bytes,
     )

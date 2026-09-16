@@ -59,6 +59,11 @@ entries under a versioned heading as described in
 
 ### Added
 
+- **Hermetic end-to-end tests for the web UI.** Playwright now drives a
+  `devdoctor serve` started under a throwaway home, with one YAML cache and one
+  node project as fixtures, and runs in CI: the disk table and its risk chips,
+  the cleanup wizard up to its review step, the dashboard total, auto-snapshots,
+  and the providers page. (#105)
 - **Git worktrees provider (`git-worktrees`).** Finds the linked worktrees of
   repositories under the project roots, including worktrees those repositories
   register elsewhere, and classifies each one without writing to the repository
@@ -138,6 +143,13 @@ entries under a versioned heading as described in
 
 ### Fixed
 
+- **The dashboard's estimated reclaimable total no longer reads as zero.** The
+  cached disk summary the dashboard reads was written with the scan's reclaimable
+  and footprint figures but handed to the page without them, at the summary,
+  entry and provider level, so the tile showed the footprint until a live scan
+  finished. (#102)
+- **The cleanup button pluralises its count.** One selected row now reads
+  "clean up 1 item", not "1 items". (#106)
 - **Cleanup re-checks each git worktree immediately before removing it.** Git
   never re-checks whether a worktree is still integrated, so a commit made after
   the scan, especially on a detached HEAD, could be lost when cleanup removed the
