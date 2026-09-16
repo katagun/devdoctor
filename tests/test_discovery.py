@@ -473,7 +473,27 @@ def test_scan_with_no_available_providers_reports_only_scan_started() -> None:
     assert events == [discovery.ScanStarted(providers=())]
 
 
-def test_scan_survives_a_raising_progress_callback(caplog) -> None:
+class _RecordingLogger:
+    """Records `.warning(msg, *args)` calls the way `discovery.logger` does.
+
+    A real logger under caplog only works when the `devdoctor` logger tree
+    still propagates to the root handler caplog installs; CLI tests
+    (`test_cli.py`) invoke `configure_logging`, which sets
+    `propagate = False` on the `devdoctor` logger for the rest of the
+    process, so this test would fail whenever it runs after one of those
+    (order-dependent, and it does in the full suite). Monkeypatching
+    `discovery.logger` with this recorder sidesteps the logging tree
+    entirely, so the test needs no assumption about what ran before it.
+    """
+
+    def __init__(self) -> None:
+        self.warnings: list[str] = []
+
+    def warning(self, msg: str, *args: object, **kwargs: object) -> None:
+        self.warnings.append(msg % args if args else msg)
+
+
+def test_scan_survives_a_raising_progress_callback(monkeypatch) -> None:
     """A broken consumer is logged once per event and never changes the scan."""
     a = _FakeProvider(name="a", entries=[_fe(provider="a", size=100)])
     reference = discovery.scan([a], ScanFilters(), datetime.now(UTC))
@@ -481,15 +501,15 @@ def test_scan_survives_a_raising_progress_callback(caplog) -> None:
     def bad(event: discovery.ScanProgressEvent) -> None:
         raise ValueError("consumer bug")
 
-    with caplog.at_level("WARNING", logger="devdoctor.discovery"):
-        report = discovery.scan([a], ScanFilters(), datetime.now(UTC), on_progress=bad)
+    fake_logger = _RecordingLogger()
+    monkeypatch.setattr(discovery, "logger", fake_logger)
+    report = discovery.scan([a], ScanFilters(), datetime.now(UTC), on_progress=bad)
 
     assert [e.id for e in report.entries] == [e.id for e in reference.entries]
     assert report.total_bytes() == reference.total_bytes()
     assert [pt.name for pt in report.per_provider] == ["a"]
     # ScanStarted + ProviderStarted + ProviderFinished, each logged once.
-    failures = [r for r in caplog.records if "progress callback" in r.getMessage()]
-    assert len(failures) == 3
+    assert len(fake_logger.warnings) == 3
     assert {"ScanStarted", "ProviderStarted", "ProviderFinished"} == {
-        r.getMessage().split()[-1] for r in failures
+        msg.split()[-1] for msg in fake_logger.warnings
     }
