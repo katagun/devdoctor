@@ -18,6 +18,7 @@ export const PORT = 8731;
 export const CACHE_LABEL = "e2e-sample-cache";
 export const STORE_LABEL = "e2e-tool-store";
 export const PROJECT_NAME = "e2e-app";
+export const PROJECT_PROVIDER = "node-project-dependencies";
 export const CACHE_BYTES = 300_000;
 export const NODE_MODULES_BYTES = 200_000;
 export const STORE_BYTES = 100_000;

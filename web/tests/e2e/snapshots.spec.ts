@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { autoSnapshots } from "./fixture";
+import { PROJECT_NAME, PROJECT_PROVIDER, autoSnapshots } from "./fixture";
 
 test("a full scan writes an auto-snapshot and a filtered scan writes none (#103)", async ({
   page,
@@ -9,13 +9,16 @@ test("a full scan writes an auto-snapshot and a filtered scan writes none (#103)
   const afterFullScan = autoSnapshots();
   expect(afterFullScan.length).toBeGreaterThanOrEqual(1);
 
-  // Rows clear as soon as the filter changes, so wait for the filtered scan's
-  // response before checking that it wrote nothing.
+  // A provider-filtered scan is the one filter still answered by the server
+  // (risk chips filter in the page); wait for its response before checking
+  // that it wrote nothing.
   const filteredScan = page.waitForResponse(
-    (response) => /\/api\/(disk\/)?scan\?/.test(response.url()) && response.url().includes("risk="),
+    (response) =>
+      /\/api\/(disk\/)?scan\?/.test(response.url()) && response.url().includes("provider="),
   );
-  await page.getByRole("button", { name: "danger", exact: true }).click();
+  await page.goto(`/disk?provider=${PROJECT_PROVIDER}`);
   await filteredScan;
+  await expect(page.getByText(`${PROJECT_NAME}/node_modules`)).toBeVisible();
   await expect(page.getByText(/e2e-sample-cache/)).toHaveCount(0);
   expect(autoSnapshots()).toEqual(afterFullScan);
 

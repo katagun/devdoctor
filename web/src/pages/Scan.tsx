@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { ChevronDown, ChevronRight, LoaderCircle, Play, RefreshCw } from "lucide-react";
-import { CacheTable } from "@/components/CacheTable";
+import { CacheTable, type CacheTableRow } from "@/components/CacheTable";
 import { CleanupWizard } from "@/components/CleanupWizard";
 import { ColumnsPicker } from "@/components/ColumnsPicker";
 import { DiskPageHeader } from "@/components/DiskPageHeader";
@@ -13,10 +13,13 @@ import { useScan } from "@/hooks/useScan";
 import { useProviders } from "@/hooks/useProviders";
 import { useSelectedProviders } from "@/hooks/useSelectedProviders";
 import { cadenceMs, useSettings } from "@/hooks/useSettings";
+import { useCountdown } from "@/hooks/useCountdown";
 import { useScanETA } from "@/hooks/useScanETA";
 import { countNoun, formatMs, humanBytes, RiskValue, timeAgo } from "@/lib/format";
 import { diskProviderParam } from "@/lib/providerFilters";
-import { partitionByMinSize } from "@/lib/scanRows";
+import { filterByRisk, partitionByMinSize } from "@/lib/scanRows";
+
+const NO_ROWS: CacheTableRow[] = [];
 
 const RISK_CHIPS: Array<{ key: string; label: string; risks: RiskValue[] }> = [
   { key: "all", label: "all", risks: [] },
@@ -29,8 +32,11 @@ export default function Scan() {
   const [searchParams] = useSearchParams();
   const providerQuery = searchParams.get("provider")?.trim() || undefined;
   const [activeChip, setActiveChip] = useState<string>("all");
-  const riskParam =
-    activeChip === "all" ? undefined : RISK_CHIPS.find((c) => c.key === activeChip)?.risks.join(",");
+  // Risk chips narrow the rows already loaded; only provider changes rescan (#104).
+  const chipRisks = useMemo(
+    () => RISK_CHIPS.find((c) => c.key === activeChip)?.risks ?? [],
+    [activeChip],
+  );
 
   const { data: providers } = useProviders();
   const { disabled } = useSelectedProviders();
@@ -45,29 +51,25 @@ export default function Scan() {
   const manualOnly = settings.cadence === "manual";
 
   const { data, isLoading, error, refetch, isFetching } = useScan({
-    risk: riskParam,
     provider: effectiveProviderParam,
     staleTime,
     refetchOnMount: !manualOnly,
-    explicit: true,
-    // Cadence as the auto-snapshot rate limit. Without this, every filter
-    // chip change writes a new auto-snapshot because the queryKey changes
-    // (staleTime can't suppress fetches against a fresh key). The server
-    // honours the interval and quietly skips writes that fall inside it.
     snapshotMinIntervalMs: staleTime,
   });
 
   const eta = useScanETA();
+  const remainingMs = useCountdown(eta?.etaMs ?? null, isFetching);
 
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [wizardOpen, setWizardOpen] = useState(false);
   const [showHiddenRows, setShowHiddenRows] = useState(false);
 
-  const allRows = data?.rows ?? [];
+  const allRows = data?.rows ?? NO_ROWS;
+  const riskRows = useMemo(() => filterByRisk(allRows, chipRisks), [allRows, chipRisks]);
   const { visibleRows, hiddenRows, hiddenBytes, visibleBytes } = useMemo(
-    () => partitionByMinSize(allRows, settings.minSizeBytes),
-    [allRows, settings.minSizeBytes],
+    () => partitionByMinSize(riskRows, settings.minSizeBytes),
+    [riskRows, settings.minSizeBytes],
   );
 
   const selectedRows = visibleRows.filter((r) => selected.has(r.id));
@@ -155,7 +157,7 @@ export default function Scan() {
                   className="animate-spin"
                 />
                 rescanning…
-                {eta && eta.etaMs !== null && <> · ~{formatMs(eta.etaMs)}</>}
+                <ScanCountdown remainingMs={remainingMs} />
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5">
@@ -172,12 +174,12 @@ export default function Scan() {
         {isLoading && (
           <div className="p-8 text-text-muted font-mono text-sm animate-pulse">
             scanning…
-            {eta && eta.etaMs !== null && <> · ~{formatMs(eta.etaMs)}</>}
+            <ScanCountdown remainingMs={remainingMs} />
           </div>
         )}
         {!isLoading && !error && (
           <CacheTable
-            rows={showHiddenRows ? allRows : visibleRows}
+            rows={showHiddenRows ? riskRows : visibleRows}
             selected={selected}
             onToggle={toggle}
             density={settings.density}
@@ -189,7 +191,7 @@ export default function Scan() {
       <div className="px-4 py-2 border-t border-border bg-bg-elev-1 font-mono text-[11px] flex items-center justify-between gap-4 shrink-0">
         <span className="text-text-dim">
           <b className="text-text">
-            {showHiddenRows ? allRows.length : visibleRows.length}
+            {showHiddenRows ? riskRows.length : visibleRows.length}
           </b>{" "}
           shown ·{" "}
           <b className="text-text tabular-nums">
@@ -256,5 +258,18 @@ export default function Scan() {
         />
       )}
     </div>
+  );
+}
+
+/** Time left of the estimate from past scans; past zero, say so rather than
+ * hold a stale number (#104). */
+function ScanCountdown({ remainingMs }: { remainingMs: number | null }) {
+  if (remainingMs === null) return null;
+  if (remainingMs <= 0) return <> · longer than past scans</>;
+  return (
+    <>
+      {" "}
+      · ~{formatMs(remainingMs)} left, from past scans
+    </>
   );
 }

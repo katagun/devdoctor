@@ -143,6 +143,15 @@ entries under a versioned heading as described in
 
 ### Fixed
 
+- **Risk chips no longer rerun the scan, the estimate counts down, and the
+  Dashboard and Disk pages share one scan.** Each chip click used to send a new
+  `risk` filter to the server and wait for a full scan (minutes on a large
+  machine); the chips now narrow the rows already loaded, while the API and CLI
+  keep server-side filtering. The "scanning…" estimate now counts down from the
+  past-scan figure, uses the newest scan as a floor so a scan that grew is not
+  underestimated, and says when it has run longer than past scans. Opening the
+  Dashboard and then the Disk page runs one scan, not two. Streaming per-provider
+  progress is tracked in #117. (#104)
 - **The dashboard's estimated reclaimable total no longer reads as zero.** The
   cached disk summary the dashboard reads was written with the scan's reclaimable
   and footprint figures but handed to the page without them, at the summary,

@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { CacheTableRow } from "@/components/CacheTable";
-import { partitionByMinSize } from "@/lib/scanRows";
+import { filterByRisk, partitionByMinSize } from "@/lib/scanRows";
 
-function row(id: string, size: number, footprint: number | null = size): CacheTableRow {
+function row(
+  id: string,
+  size: number,
+  footprint: number | null = size,
+  risk: CacheTableRow["risk"] = "safe",
+): CacheTableRow {
   return {
     id,
     provider: "p",
@@ -12,7 +17,7 @@ function row(id: string, size: number, footprint: number | null = size): CacheTa
     footprint_bytes: footprint,
     reclaimable_bytes: footprint,
     shared_bytes: 0,
-    risk: "safe",
+    risk,
     mtime: null,
     recipeHint: "",
     owner: null,
@@ -43,5 +48,18 @@ describe("partitionByMinSize", () => {
     expect(result.visibleRows.map((r) => r.id)).toEqual(["worktree"]);
     expect(result.hiddenRows.map((r) => r.id)).toEqual(["small"]);
     expect(result.visibleBytes).toBe(0);
+  });
+});
+
+describe("filterByRisk", () => {
+  const rows = [row("s", 1, 1, "safe"), row("r", 2, 2, "reclaimable"), row("d", 3, 3, "dangerous")];
+
+  it("returns every row when no risks are selected", () => {
+    expect(filterByRisk(rows, [])).toBe(rows);
+  });
+
+  it("keeps only rows whose risk is selected", () => {
+    expect(filterByRisk(rows, ["dangerous"]).map((r) => r.id)).toEqual(["d"]);
+    expect(filterByRisk(rows, ["safe", "reclaimable"]).map((r) => r.id)).toEqual(["s", "r"]);
   });
 });

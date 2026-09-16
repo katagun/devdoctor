@@ -35,28 +35,22 @@ export interface UseScanOptions {
   // Cadence control — maps to React Query's staleTime. `Infinity` + refetchOnMount=false == manual only.
   staleTime?: number;
   refetchOnMount?: boolean;
-  /** When true, this scan writes an auto-snapshot. Set for the cold page
-   * load and explicit "Rescan now"; leave false/undefined for the pending
-   * re-fetches TanStack Query performs on its own. */
-  explicit?: boolean;
-  /** Minimum interval (ms) between auto-snapshot writes on the server.
-   * Filter-chip changes create new query keys and trigger fresh fetches —
-   * without this, every chip click would write another auto-snapshot
-   * regardless of the user's cadence preference. The server checks the
-   * most recent auto-snapshot's mtime and skips writes inside this window. */
+  /** Minimum interval (ms) between auto-snapshot writes on the server. Every
+   * scan asks for an auto-snapshot; the server checks the most recent one's
+   * mtime and skips writes inside this window, so the user's cadence holds
+   * however many pages or refetches ask. */
   snapshotMinIntervalMs?: number;
 }
 
+/**
+ * The scan query. Its key is the server-side filters alone, so every page
+ * asking for the same filters shares one request and one cached result — the
+ * Dashboard and the Disk page no longer run a scan each (#104).
+ */
 export function useScan(params: UseScanOptions = {}) {
-  const {
-    staleTime,
-    refetchOnMount,
-    explicit,
-    snapshotMinIntervalMs,
-    ...filters
-  } = params;
+  const { staleTime, refetchOnMount, snapshotMinIntervalMs, ...filters } = params;
   return useQuery({
-    queryKey: ["scan", filters, explicit ? "explicit" : "implicit"],
+    queryKey: ["scan", filters],
     staleTime,
     refetchOnMount,
     queryFn: async () => {
@@ -64,20 +58,18 @@ export function useScan(params: UseScanOptions = {}) {
       if (filters.risk) qs.set("risk", filters.risk);
       if (filters.minSize) qs.set("min_size", filters.minSize);
       if (filters.provider) qs.set("provider", filters.provider);
-      if (explicit) {
-        qs.set("snapshot", "true");
-        if (
-          snapshotMinIntervalMs !== undefined &&
-          Number.isFinite(snapshotMinIntervalMs) &&
-          snapshotMinIntervalMs > 0
-        ) {
-          qs.set("snapshot_min_interval_ms", String(Math.floor(snapshotMinIntervalMs)));
-        } else if (snapshotMinIntervalMs === Number.POSITIVE_INFINITY) {
-          // Manual cadence: signal "never auto-snapshot again if any exist".
-          qs.set("snapshot_min_interval_ms", String(Number.MAX_SAFE_INTEGER));
-        }
+      qs.set("snapshot", "true");
+      if (
+        snapshotMinIntervalMs !== undefined &&
+        Number.isFinite(snapshotMinIntervalMs) &&
+        snapshotMinIntervalMs > 0
+      ) {
+        qs.set("snapshot_min_interval_ms", String(Math.floor(snapshotMinIntervalMs)));
+      } else if (snapshotMinIntervalMs === Number.POSITIVE_INFINITY) {
+        // Manual cadence: signal "never auto-snapshot again if any exist".
+        qs.set("snapshot_min_interval_ms", String(Number.MAX_SAFE_INTEGER));
       }
-      const query = qs.toString() ? `?${qs}` : "";
+      const query = `?${qs}`;
       const raw = await apiFetch<ScanResponse>(`/scan${query}`);
       const rows: CacheTableRow[] = raw.entries.map((e) => {
         // null means the provider deliberately left the entry unmeasured (for
