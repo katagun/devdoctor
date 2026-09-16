@@ -27,5 +27,7 @@ export default defineConfig({
     url: `http://127.0.0.1:${PORT}/api/health`,
     reuseExistingServer: false,
     timeout: 120_000,
+    // SIGTERM before SIGKILL, so serve.ts gets to remove the fixture home.
+    gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
   },
 });
