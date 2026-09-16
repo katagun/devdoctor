@@ -51,3 +51,19 @@ def test_scan_updates_dashboard_disk_summary(tmp_path, monkeypatch) -> None:
     assert body["entry_count"] >= 1
     assert any(entry["provider"] == "sample-cache" for entry in body["entries"])
     assert any(total["provider"] == "sample-cache" for total in body["provider_totals"])
+
+
+def test_dashboard_disk_summary_carries_reclaimable_and_footprint_totals(
+    tmp_path, monkeypatch
+) -> None:
+    """#102: the mapper dropped the usage totals storage already saves, so the
+    dashboard fell back to the footprint and showed it as "estimated reclaimable"."""
+    client = _client(tmp_path, monkeypatch)
+    scan = client.get("/api/scan", headers={"Host": "testserver"}).json()
+
+    body = client.get("/api/dashboard/disk-summary", headers={"Host": "testserver"}).json()
+
+    assert body["total_reclaimable_bytes"] == scan["total_reclaimable_bytes"]
+    assert body["total_footprint_bytes"] == scan["total_footprint_bytes"]
+    assert body["total_shared_bytes"] == scan["total_shared_bytes"]
+    assert body["unknown_reclaimable_entries"] == scan["unknown_reclaimable_entries"]
