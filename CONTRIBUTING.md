@@ -44,7 +44,12 @@ cd web
 bun run typecheck
 bun run test
 bun run build
+bun run test:e2e   # Playwright against a hermetic `devdoctor serve`; needs `uv sync --extra web`
 ```
+
+The end-to-end suite builds a throwaway home under the OS temp directory and
+starts the server there, so it never scans your real caches. Run
+`bunx playwright install chromium` once to fetch the browser.
 
 A pre-commit hook config is included; enable it with
 `uv run --extra dev pre-commit install` to catch lint/format issues before you
