@@ -667,12 +667,17 @@ def _app(tmp_path: Path, monkeypatch):
     return build_app(shell, allowed_hosts={"testserver"}, static_dir=tmp_path)
 
 
-async def _progress_events(es, limit: int, timeout: float = 5.0) -> list[dict]:
-    """Read up to `limit` progress frames, skipping pings."""
+async def _progress_events(frames, limit: int, timeout: float = 5.0) -> list[dict]:
+    """Read up to `limit` progress frames from one long-lived `aiter_sse()` generator.
+
+    httpx allows one pass over a response body, so each test creates the
+    generator once (`frames = es.aiter_sse()`) and resumes it here; breaking out
+    of `async for` leaves an async generator suspended, not closed.
+    """
     seen: list[dict] = []
 
     async def read() -> None:
-        async for sse in es.aiter_sse():
+        async for sse in frames:
             if sse.event != "progress":
                 continue
             seen.append(json.loads(sse.data))
@@ -688,7 +693,8 @@ async def test_scan_progress_stream_sends_the_current_snapshot_first(tmp_path, m
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as c:
         async with aconnect_sse(c, "GET", "/api/scan/progress", timeout=10) as es:
             assert es.response.headers["content-type"].startswith("text/event-stream")
-            (first,) = await _progress_events(es, 1)
+            frames = es.aiter_sse()
+            (first,) = await _progress_events(frames, 1)
     assert first["status"] == "idle"
     assert first["scan_id"] == 0
 
@@ -698,22 +704,23 @@ async def test_scan_progress_stream_follows_the_hub_and_ends_on_done(tmp_path, m
     report = app.state.scan_progress.observer()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as c:
         async with aconnect_sse(c, "GET", "/api/scan/progress", timeout=10) as es:
-            (first,) = await _progress_events(es, 1)
+            frames = es.aiter_sse()
+            (first,) = await _progress_events(frames, 1)
             assert first["status"] == "idle"
 
             report(ScanStarted(providers=("a",)))
-            (running,) = await _progress_events(es, 1)
+            (running,) = await _progress_events(frames, 1)
             assert (running["status"], running["total"], running["done"]) == ("running", 1, 0)
 
             report(ProviderStarted("a"))
             report(ProviderFinished(ProviderTiming(name="a", bytes=42, entries=1, duration_ms=3)))
-            frames = await _progress_events(es, 2)
-            assert frames[-1]["status"] == "done"
-            assert frames[-1]["bytes"] == 42
+            latest = await _progress_events(frames, 2)
+            assert latest[-1]["status"] == "done"
+            assert latest[-1]["bytes"] == 42
 
             # The generator ends after the transition it observed: the stream is exhausted.
             rest = []
-            async for frame in es.aiter_sse():
+            async for frame in frames:
                 rest.append(frame)
             assert rest == []
 
@@ -729,12 +736,13 @@ async def test_scan_progress_stream_stays_open_after_an_initial_done(tmp_path, m
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as c:
         async with aconnect_sse(c, "GET", "/api/scan/progress", timeout=10) as es:
-            (first,) = await _progress_events(es, 1)
+            frames = es.aiter_sse()
+            (first,) = await _progress_events(frames, 1)
             assert first["status"] == "done"
 
             # A new scan starting afterwards still reaches this stream.
             hub.observer()(ScanStarted(providers=("b", "c")))
-            (running,) = await _progress_events(es, 1)
+            (running,) = await _progress_events(frames, 1)
             assert (running["status"], running["scan_id"], running["total"]) == ("running", 2, 2)
 
 
