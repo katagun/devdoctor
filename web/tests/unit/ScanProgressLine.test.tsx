@@ -33,7 +33,7 @@ describe("ScanProgressLine", () => {
 
   it("says finishing once every provider is done", () => {
     render(<ScanProgressLine progress={snap({ status: "done", done: 22, running: [] })} remainingMs={0} />);
-    expect(screen.getByText(/22\/22 providers · finishing…/)).toBeInTheDocument();
+    expect(screen.getByText(/22\/22 providers · 42.1G found · finishing…/)).toBeInTheDocument();
   });
 
   it("renders a labelled bar when asked", () => {
@@ -45,6 +45,11 @@ describe("ScanProgressLine", () => {
 
   it("renders no bar without a snapshot", () => {
     render(<ScanProgressLine progress={null} remainingMs={null} bar />);
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
+  it("renders no bar for a scan with no providers", () => {
+    render(<ScanProgressLine progress={snap({ total: 0, done: 0, running: [] })} remainingMs={null} bar />);
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
 });

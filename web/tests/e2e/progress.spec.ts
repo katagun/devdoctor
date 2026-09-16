@@ -53,12 +53,12 @@ test("the loading line says finishing once every provider is done (#117)", async
     route.fulfill({
       status: 200,
       contentType: "text/event-stream",
-      body: frame({ ...RUNNING, status: "done", done: 3, running: [] }),
+      body: frame(RUNNING) + frame({ ...RUNNING, status: "done", done: 3, running: [] }),
     }),
   );
   await page.goto("/disk");
 
-  await expect(page.getByText(/^scanning…/)).toContainText("3/3 providers · finishing…");
+  await expect(page.getByText(/^scanning…/)).toContainText("3/3 providers · 293.0K found · finishing…");
 });
 
 test("the server answers /api/scan/progress with an event stream (#117)", async ({ page }) => {

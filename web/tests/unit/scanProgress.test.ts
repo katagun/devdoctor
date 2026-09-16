@@ -37,6 +37,15 @@ describe("formatScanProgress", () => {
     );
   });
 
+  it("shows no suffix at exactly three running names, and +1 at exactly four", () => {
+    expect(formatScanProgress(snapshot({ running: ["a", "b", "c"] })).running).toBe(
+      "running: a, b, c",
+    );
+    expect(formatScanProgress(snapshot({ running: ["a", "b", "c", "d"] })).running).toBe(
+      "running: a, b, c +1",
+    );
+  });
+
   it("flags finishing once every provider is done", () => {
     const parts = formatScanProgress(snapshot({ status: "done", done: 22, running: [] }));
     expect(parts.finishing).toBe(true);

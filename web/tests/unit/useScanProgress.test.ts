@@ -19,8 +19,11 @@ class FakeEventSource {
     this.closed = true;
   }
   emit(type: string, data: unknown) {
+    this.emitRaw(type, JSON.stringify(data));
+  }
+  emitRaw(type: string, rawData: string) {
     for (const fn of this.listeners[type] ?? []) {
-      fn(new MessageEvent(type, { data: JSON.stringify(data) }));
+      fn(new MessageEvent(type, { data: rawData }));
     }
   }
 }
@@ -87,10 +90,28 @@ describe("useScanProgress", () => {
       initialProps: { active: true },
     });
     const es = FakeEventSource.instances[0];
+    act(() => es.emit("progress", snap({ status: "running", done: 1, running: ["b"] })));
     act(() => es.emit("progress", snap({ status: "done", done: 3, running: [] })));
     expect(es.closed).toBe(true);
     expect(result.current?.status).toBe("done");
     rerender({ active: false });
+    expect(result.current).toBeNull();
+  });
+
+  it("ignores a stale done before any running snapshot", () => {
+    const { result } = renderHook(() => useScanProgress(true));
+    const es = FakeEventSource.instances[0];
+    act(() => es.emit("progress", snap({ status: "done", done: 3, running: [], scan_id: 1 })));
+    expect(result.current).toBeNull();
+    expect(es.closed).toBe(false);
+    act(() => es.emit("progress", snap({ scan_id: 2, done: 1 })));
+    expect(result.current?.scan_id).toBe(2);
+  });
+
+  it("ignores a malformed payload", () => {
+    const { result } = renderHook(() => useScanProgress(true));
+    const es = FakeEventSource.instances[0];
+    expect(() => act(() => es.emitRaw("progress", "not json"))).not.toThrow();
     expect(result.current).toBeNull();
   });
 

@@ -19,11 +19,9 @@ export function ScanProgressLine({
   const words: string[] = [];
   if (parts) {
     words.push(parts.providers);
+    if (parts.found) words.push(parts.found);
     if (parts.finishing) words.push("finishing…");
-    else {
-      if (parts.found) words.push(parts.found);
-      if (parts.running) words.push(parts.running);
-    }
+    else if (parts.running) words.push(parts.running);
   }
   if (remainingMs !== null) {
     words.push(remainingMs <= 0 ? "longer than past scans" : `~${formatMs(remainingMs)} left, from past scans`);
@@ -31,7 +29,7 @@ export function ScanProgressLine({
   return (
     <>
       {words.map((word) => ` · ${word}`).join("")}
-      {bar && progress && (
+      {bar && progress && progress.total > 0 && (
         <div
           role="progressbar"
           aria-label="scan progress"
