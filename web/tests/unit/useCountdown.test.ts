@@ -44,4 +44,16 @@ describe("useCountdown", () => {
     rerender({ running: true });
     expect(result.current).toBe(3000);
   });
+
+  it("keeps the start anchored when the total arrives mid-run", () => {
+    // On a cold load the scan starts before the estimate query resolves.
+    const { result, rerender } = renderHook(
+      ({ total }) => useCountdown(total, true),
+      { initialProps: { total: null as number | null } },
+    );
+    expect(result.current).toBeNull();
+    act(() => void vi.advanceTimersByTime(2000));
+    rerender({ total: 5000 });
+    expect(result.current).toBe(3000);
+  });
 });
