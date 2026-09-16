@@ -12,6 +12,7 @@ from rich.table import Table
 from rich.text import Text
 
 from devdoctor.types import Choice, Confirm, DiffReport, Entry, PromptChoice, Report, Risk
+from devdoctor.units import estimated_bytes, human_bytes, human_bytes_or_unknown
 
 # Every C0 control char (incl. ESC 0x1b and newline) plus DEL. Rich's own
 # strip_control_codes intentionally keeps ESC, so we drop these ourselves.
@@ -172,27 +173,12 @@ def _risk_label(risk: Risk) -> str:
     }[risk]
 
 
-_BYTES_UNIT_STEP = 1024
 _DAYS_PER_MONTH = 30
 _DAYS_PER_YEAR = 365
 
-
-def _human_bytes(n: int) -> str:
-    sign = "-" if n < 0 else ""
-    value: float = float(abs(n))
-    for unit in ("B", "K", "M", "G", "T", "P"):
-        if value < _BYTES_UNIT_STEP or unit == "P":
-            return f"{sign}{value:.0f}{unit}" if unit == "B" else f"{sign}{value:.1f}{unit}"
-        value /= _BYTES_UNIT_STEP
-    return f"{sign}{value:.1f}P"
-
-
-def _human_bytes_or_unknown(n: int | None) -> str:
-    return "unknown" if n is None else _human_bytes(n)
-
-
-def _estimated_bytes(n: int | None) -> str:
-    return "unknown" if n is None else f"~{_human_bytes(n)}"
+_human_bytes = human_bytes
+_human_bytes_or_unknown = human_bytes_or_unknown
+_estimated_bytes = estimated_bytes
 
 
 def _staleness(mtime: float | None) -> str:
