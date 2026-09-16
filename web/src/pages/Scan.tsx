@@ -9,13 +9,15 @@ import { DiskPageHeader } from "@/components/DiskPageHeader";
 import { DomainToolTabs } from "@/components/DomainToolTabs";
 import { SparklineBar } from "@/components/SparklineBar";
 import { NavIcon } from "@/components/NavIcon";
+import { ScanProgressLine } from "@/components/ScanProgressLine";
 import { useScan } from "@/hooks/useScan";
 import { useProviders } from "@/hooks/useProviders";
+import { useScanProgress } from "@/hooks/useScanProgress";
 import { useSelectedProviders } from "@/hooks/useSelectedProviders";
 import { cadenceMs, useSettings } from "@/hooks/useSettings";
 import { useCountdown } from "@/hooks/useCountdown";
 import { useScanETA } from "@/hooks/useScanETA";
-import { countNoun, formatMs, humanBytes, RiskValue, timeAgo } from "@/lib/format";
+import { countNoun, humanBytes, RiskValue, timeAgo } from "@/lib/format";
 import { diskProviderParam } from "@/lib/providerFilters";
 import { filterByRisk, partitionByMinSize } from "@/lib/scanRows";
 
@@ -59,6 +61,7 @@ export default function Scan() {
 
   const eta = useScanETA();
   const remainingMs = useCountdown(eta?.etaMs ?? null, isFetching);
+  const progress = useScanProgress(isFetching);
 
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -157,7 +160,7 @@ export default function Scan() {
                   className="animate-spin"
                 />
                 rescanning…
-                <ScanCountdown remainingMs={remainingMs} />
+                <ScanProgressLine progress={progress} remainingMs={remainingMs} />
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5">
@@ -174,7 +177,7 @@ export default function Scan() {
         {isLoading && (
           <div className="p-8 text-text-muted font-mono text-sm animate-pulse">
             scanning…
-            <ScanCountdown remainingMs={remainingMs} />
+            <ScanProgressLine progress={progress} remainingMs={remainingMs} bar />
           </div>
         )}
         {!isLoading && !error && (
@@ -259,12 +262,4 @@ export default function Scan() {
       )}
     </div>
   );
-}
-
-/** Time left of the estimate from past scans; past zero, say so rather than
- * hold a stale number (#104). */
-function ScanCountdown({ remainingMs }: { remainingMs: number | null }) {
-  if (remainingMs === null) return null;
-  if (remainingMs <= 0) return <> · longer than past scans</>;
-  return <> · ~{formatMs(remainingMs)} left, from past scans</>;
 }

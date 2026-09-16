@@ -1,9 +1,17 @@
+import asyncio
+import json
+import socket
 from pathlib import Path
 
+from httpx import AsyncClient
+from httpx_sse import aconnect_sse
 from starlette.testclient import TestClient
 
+from devdoctor.discovery import ProviderFinished, ProviderStarted, ScanStarted
+from devdoctor.types import ProviderTiming
 from devdoctor.web.app import build_app
 from tests.conftest import FakeShell
+from tests.web.sse_server import run_server
 
 
 def _client(tmp_path: Path, monkeypatch) -> TestClient:
@@ -189,3 +197,130 @@ def test_filtered_scans_never_write_an_auto_snapshot(tmp_path, monkeypatch) -> N
     resp = client.get("/api/scan?snapshot=true", headers={"Host": "testserver"})
     assert resp.status_code == 200
     assert len(list(snapshot_dir.glob("*--auto.json"))) == 1
+
+
+def _app_for_port(tmp_path: Path, monkeypatch, port: int):
+    yaml = tmp_path / "paths.yaml"
+    yaml.write_text("[]\n")
+    monkeypatch.setenv("DEVDOCTOR_PATHS_YAML", str(yaml))
+    (tmp_path / "index.html").write_text("<!doctype html><title>t</title>")
+    shell = FakeShell(which_table={"ollama": None, "docker": None})
+    return build_app(shell, allowed_hosts={f"127.0.0.1:{port}"}, static_dir=tmp_path)
+
+
+def _bind_loopback_socket() -> tuple[socket.socket, int]:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("127.0.0.1", 0))
+    return sock, sock.getsockname()[1]
+
+
+async def _progress_events(frames, limit: int, timeout: float = 5.0) -> list[dict]:
+    """Read up to `limit` progress frames from one long-lived `aiter_sse()` generator.
+
+    httpx allows one pass over a response body, so each test creates the
+    generator once (`frames = es.aiter_sse()`) and resumes it here; breaking out
+    of `async for` leaves an async generator suspended, not closed.
+    """
+    seen: list[dict] = []
+
+    async def read() -> None:
+        async for sse in frames:
+            if sse.event != "progress":
+                continue
+            seen.append(json.loads(sse.data))
+            if len(seen) >= limit:
+                return
+
+    await asyncio.wait_for(read(), timeout)
+    return seen
+
+
+async def test_scan_progress_stream_sends_the_current_snapshot_first(tmp_path, monkeypatch):
+    sock, port = _bind_loopback_socket()
+    app = _app_for_port(tmp_path, monkeypatch, port)
+
+    with run_server(app, sock):
+        async with AsyncClient(base_url=f"http://127.0.0.1:{port}") as c:
+            async with aconnect_sse(c, "GET", "/api/scan/progress", timeout=10) as es:
+                assert es.response.headers["content-type"].startswith("text/event-stream")
+                frames = es.aiter_sse()
+                (first,) = await _progress_events(frames, 1)
+    assert first["status"] == "idle"
+    assert first["scan_id"] == 0
+
+
+async def test_scan_progress_stream_follows_the_hub_and_ends_on_done(tmp_path, monkeypatch):
+    sock, port = _bind_loopback_socket()
+    app = _app_for_port(tmp_path, monkeypatch, port)
+    report = app.state.scan_progress.observer()
+
+    with run_server(app, sock):
+        async with AsyncClient(base_url=f"http://127.0.0.1:{port}") as c:
+            async with aconnect_sse(c, "GET", "/api/scan/progress", timeout=10) as es:
+                frames = es.aiter_sse()
+                (first,) = await _progress_events(frames, 1)
+                assert first["status"] == "idle"
+
+                report(ScanStarted(providers=("a",)))
+                (running,) = await _progress_events(frames, 1)
+                assert (running["status"], running["total"], running["done"]) == (
+                    "running",
+                    1,
+                    0,
+                )
+
+                report(ProviderStarted("a"))
+                report(
+                    ProviderFinished(ProviderTiming(name="a", bytes=42, entries=1, duration_ms=3))
+                )
+                latest = await _progress_events(frames, 2)
+                assert latest[-1]["status"] == "done"
+                assert latest[-1]["bytes"] == 42
+
+                # The generator ends after the transition it observed: the stream is exhausted.
+                rest = []
+                async for frame in frames:
+                    rest.append(frame)
+                assert rest == []
+
+
+async def test_scan_progress_stream_stays_open_after_an_initial_done(tmp_path, monkeypatch):
+    sock, port = _bind_loopback_socket()
+    app = _app_for_port(tmp_path, monkeypatch, port)
+    hub = app.state.scan_progress
+    earlier = hub.observer()
+    earlier(ScanStarted(providers=("a",)))
+    earlier(ProviderStarted("a"))
+    earlier(ProviderFinished(ProviderTiming(name="a", bytes=1, entries=1, duration_ms=1)))
+    assert hub.snapshot().status == "done"
+
+    with run_server(app, sock):
+        async with AsyncClient(base_url=f"http://127.0.0.1:{port}") as c:
+            async with aconnect_sse(c, "GET", "/api/scan/progress", timeout=10) as es:
+                frames = es.aiter_sse()
+                (first,) = await _progress_events(frames, 1)
+                assert first["status"] == "done"
+
+                # A new scan starting afterwards still reaches this stream.
+                hub.observer()(ScanStarted(providers=("b", "c")))
+                (running,) = await _progress_events(frames, 1)
+                assert (running["status"], running["scan_id"], running["total"]) == (
+                    "running",
+                    2,
+                    2,
+                )
+
+
+def test_scan_route_reports_progress_to_the_hub(tmp_path, monkeypatch) -> None:
+    client = _client(tmp_path, monkeypatch)
+    hub = client.app.state.scan_progress
+    assert hub.snapshot().status == "idle"
+
+    resp = client.get("/api/scan", headers={"Host": "testserver"})
+
+    assert resp.status_code == 200
+    snap = hub.snapshot()
+    assert snap.scan_id == 1
+    assert snap.status == "done"
+    assert snap.done == snap.total == len(resp.json()["per_provider"])

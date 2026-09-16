@@ -110,6 +110,10 @@ Flags:
 - `--port N` — bind a specific port (0 = random free port, default).
 - `--no-browser` — do not auto-open the default browser.
 
+While a scan runs, the Disk page shows live progress — providers finished,
+bytes found so far and which providers are running — over
+`GET /api/scan/progress` (server-sent events).
+
 Dev loop:
 
 ```bash
