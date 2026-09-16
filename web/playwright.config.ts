@@ -1,9 +1,14 @@
 import { defineConfig } from "@playwright/test";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PORT } from "./tests/e2e/fixture";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+// One env file per run, shared with the web server and the workers through the
+// environment (both inherit it from this process).
+process.env.DEVDOCTOR_E2E_ENV_FILE ??= path.join(os.tmpdir(), `devdoctor-e2e-${process.pid}.json`);
 
 export default defineConfig({
   testDir: "./tests/e2e",

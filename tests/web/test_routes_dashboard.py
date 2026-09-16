@@ -67,3 +67,10 @@ def test_dashboard_disk_summary_carries_reclaimable_and_footprint_totals(
     assert body["total_footprint_bytes"] == scan["total_footprint_bytes"]
     assert body["total_shared_bytes"] == scan["total_shared_bytes"]
     assert body["unknown_reclaimable_entries"] == scan["unknown_reclaimable_entries"]
+    scan_by_id = {entry["id"]: entry for entry in scan["entries"]}
+    for entry in body["entries"]:
+        for key in ("footprint_bytes", "reclaimable_bytes", "shared_bytes"):
+            assert entry[key] == scan_by_id[entry["id"]][key], (entry["id"], key)
+    (sample,) = [t for t in body["provider_totals"] if t["provider"] == "sample-cache"]
+    assert sample["footprint_bytes"] == 512
+    assert sample["reclaimable_bytes"] == 512

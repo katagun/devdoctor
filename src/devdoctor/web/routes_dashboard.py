@@ -65,6 +65,9 @@ def _entry_to_info(entry: DiskDashboardEntry) -> DiskDashboardEntryInfo:
         label=entry.label,
         size_bytes=entry.size_bytes,
         risk=entry.risk,
+        footprint_bytes=entry.footprint_bytes,
+        reclaimable_bytes=entry.reclaimable_bytes,
+        shared_bytes=entry.shared_bytes,
     )
 
 
@@ -75,4 +78,7 @@ def _provider_total_to_info(
         provider=total.provider,
         bytes=total.bytes,
         count=total.count,
+        footprint_bytes=total.footprint_bytes,
+        reclaimable_bytes=total.reclaimable_bytes,
+        shared_bytes=total.shared_bytes,
     )

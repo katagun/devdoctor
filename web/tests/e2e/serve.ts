@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { PORT, buildFixture } from "./fixture";
+import { PORT, buildFixture, envFile } from "./fixture";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const env = buildFixture();
@@ -42,6 +42,7 @@ const server = spawn(devdoctor, ["serve", "--port", String(PORT), "--no-browser"
 function cleanup(): void {
   if (server.exitCode === null) server.kill("SIGTERM");
   fs.rmSync(env.DEVDOCTOR_E2E_ROOT, { recursive: true, force: true });
+  fs.rmSync(envFile(), { force: true });
 }
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {

@@ -144,8 +144,9 @@ entries under a versioned heading as described in
 ### Fixed
 
 - **The dashboard's estimated reclaimable total no longer reads as zero.** The
-  cached disk summary the dashboard reads was written with the scan's totals but
-  handed to the page without them, so the tile showed nothing until a full scan
+  cached disk summary the dashboard reads was written with the scan's reclaimable
+  and footprint figures but handed to the page without them, at the summary,
+  entry and provider level, so the tile showed the footprint until a live scan
   finished. (#102)
 - **The cleanup button pluralises its count.** One selected row now reads
   "clean up 1 item", not "1 items". (#106)

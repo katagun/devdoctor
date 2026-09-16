@@ -9,7 +9,13 @@ test("a full scan writes an auto-snapshot and a filtered scan writes none (#103)
   const afterFullScan = autoSnapshots();
   expect(afterFullScan.length).toBeGreaterThanOrEqual(1);
 
+  // Rows clear as soon as the filter changes, so wait for the filtered scan's
+  // response before checking that it wrote nothing.
+  const filteredScan = page.waitForResponse(
+    (response) => /\/api\/(disk\/)?scan\?/.test(response.url()) && response.url().includes("risk="),
+  );
   await page.getByRole("button", { name: "danger", exact: true }).click();
+  await filteredScan;
   await expect(page.getByText(/e2e-sample-cache/)).toHaveCount(0);
   expect(autoSnapshots()).toEqual(afterFullScan);
 
