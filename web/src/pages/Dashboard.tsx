@@ -8,6 +8,7 @@ import { useDiskDashboardSummary } from "@/hooks/useDashboard";
 import { useMemory, useMemoryProviders } from "@/hooks/useMemory";
 import { useProviders } from "@/hooks/useProviders";
 import { useScan } from "@/hooks/useScan";
+import { useScanProgress } from "@/hooks/useScanProgress";
 import { useSelectedMemoryProviders } from "@/hooks/useSelectedMemoryProviders";
 import { useSelectedProviders } from "@/hooks/useSelectedProviders";
 import { cadenceMs, useSettings } from "@/hooks/useSettings";
@@ -23,6 +24,7 @@ import {
 import { humanBytes, timeAgo } from "@/lib/format";
 import { diskProviderParam, memoryProviderIds } from "@/lib/providerFilters";
 import { DISK_LABEL, DISK_TITLE, MEMORY_LABEL, MEMORY_TITLE } from "@/lib/resourceLabels";
+import { formatScanProgress } from "@/lib/scanProgress";
 
 export default function Dashboard() {
   const { settings } = useSettings();
@@ -43,6 +45,7 @@ export default function Dashboard() {
     refetchOnMount: !manualOnly,
     snapshotMinIntervalMs: staleTime,
   });
+  const diskProgress = useScanProgress(disk.isFetching);
 
   const memoryProviders = useMemoryProviders();
   const selectedMemoryProviders = useSelectedMemoryProviders();
@@ -128,7 +131,10 @@ export default function Dashboard() {
             to="/disk"
             action={`open ${DISK_LABEL} scan`}
             loading={disk.isLoading && !diskSummary.data}
-            loadingLabel={diskHasNoCache ? "running first full scan…" : "loading…"}
+            loadingLabel={
+              (diskHasNoCache ? "running first full scan…" : "loading…") +
+              (diskProgress ? ` · ${formatScanProgress(diskProgress).providers}` : "")
+            }
             error={disk.error}
             refreshing={disk.isFetching && !!diskSummary.data}
             legend={[
