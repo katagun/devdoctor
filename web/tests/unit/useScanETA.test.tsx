@@ -157,4 +157,39 @@ describe("useScanETA", () => {
     expect(result.current.etaMs).toBeNull();
     expect(result.current.sampleSize).toBe(2);
   });
+
+  it("never estimates below the latest scan's own enabled-provider time", async () => {
+    // Three older scans agree on ~1100ms, but the newest one grew: it is the floor.
+    const older = (name: string, at: string) => ({
+      name, path: name, scanned_at: at,
+      hostname: "h", platform: "darwin", note: null, total_bytes: 0,
+      kind: "auto", duration_ms: 1100,
+      per_provider: [
+        { name: "ollama", bytes: 0, entries: 0, duration_ms: 200 },
+        { name: "hf",     bytes: 0, entries: 0, duration_ms: 300 },
+        { name: "docker", bytes: 0, entries: 0, duration_ms: 600 },
+      ],
+    });
+    const newest = {
+      name: "d", path: "d", scanned_at: "2026-04-24T12:03:00Z",
+      hostname: "h", platform: "darwin", note: null, total_bytes: 0,
+      kind: "auto", duration_ms: 9000,
+      per_provider: [
+        { name: "ollama", bytes: 0, entries: 0, duration_ms: 3000 },
+        { name: "hf",     bytes: 0, entries: 0, duration_ms: 300 },
+        { name: "docker", bytes: 0, entries: 0, duration_ms: 600 },
+        { name: "xcode",  bytes: 0, entries: 0, duration_ms: 5000 }, // disabled: not counted
+      ],
+    };
+    mockApiFetch.mockResolvedValue([
+      newest,
+      older("a", "2026-04-24T12:00:00Z"),
+      older("b", "2026-04-24T12:01:00Z"),
+      older("c", "2026-04-24T12:02:00Z"),
+    ]);
+    const { useScanETA } = await import("@/hooks/useScanETA");
+    const { result } = renderHook(() => useScanETA(), { wrapper });
+    await waitFor(() => expect(result.current.etaMs).not.toBeNull());
+    expect(result.current.etaMs).toBe(3900);
+  });
 });

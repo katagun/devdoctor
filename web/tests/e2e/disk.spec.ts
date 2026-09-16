@@ -9,14 +9,21 @@ test("the scan lists the fixture entries", async ({ page }) => {
   await expect(page.getByText(STORE_LABEL).first()).toBeVisible();
 });
 
-test("the safe chip narrows the table to safe entries", async ({ page }) => {
+test("the safe chip narrows the table without another scan (#104)", async ({ page }) => {
   await page.goto("/disk");
   await expect(page.getByText(`${PROJECT_NAME}/node_modules`)).toBeVisible();
+  const scans: string[] = [];
+  page.on("request", (request) => {
+    if (/\/api\/(disk\/)?scan(\?|$)/.test(request.url())) scans.push(request.url());
+  });
 
   await page.getByRole("button", { name: "safe", exact: true }).click();
 
   await expect(page.getByText(CACHE_LABEL).first()).toBeVisible();
   await expect(page.getByText(`${PROJECT_NAME}/node_modules`)).toHaveCount(0);
+  // The header still describes the whole scan.
+  await expect(page.locator("header").getByText(/3 caches/)).toBeVisible();
+  expect(scans).toEqual([]);
 });
 
 test("selecting one row reads 'clean up 1 item' and the review step runs nothing", async ({

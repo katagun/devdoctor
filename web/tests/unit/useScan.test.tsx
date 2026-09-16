@@ -114,6 +114,50 @@ describe("useScan", () => {
 
     await waitFor(() => expect(result.current.data).toBeTruthy());
 
-    expect(mockApiFetch).toHaveBeenCalledWith("/scan?provider=docker-vm-disk");
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/scan?provider=docker-vm-disk&snapshot=true&snapshot_min_interval_ms=300000",
+    );
+  });
+
+  it("asks every scan for an auto-snapshot, rate-limited by the cadence", async () => {
+    // Dashboard and Disk share one query, so neither may be the "implicit" one
+    // that skips the snapshot; the server's interval check keeps the cadence.
+    mockApiFetch.mockResolvedValue({
+      entries: [],
+      scanned_at: "2026-04-25T10:00:00Z",
+      hostname: "h",
+      platform: "darwin",
+      skipped_paths: [],
+    });
+    const { useScan } = await import("@/hooks/useScan");
+    const { result } = renderHook(() => useScan({ snapshotMinIntervalMs: 3_600_000 }), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.data).toBeTruthy());
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/scan?snapshot=true&snapshot_min_interval_ms=3600000",
+    );
+  });
+
+  it("never asks for auto-snapshots more often than every five minutes", async () => {
+    // The "live" cadence has a zero staleTime; without a floor every page mount
+    // and refresh would write a snapshot and fill the history with minutes.
+    mockApiFetch.mockResolvedValue({
+      entries: [],
+      scanned_at: "2026-04-25T10:00:00Z",
+      hostname: "h",
+      platform: "darwin",
+      skipped_paths: [],
+    });
+    const { useScan } = await import("@/hooks/useScan");
+    const { result } = renderHook(() => useScan({ snapshotMinIntervalMs: 0 }), { wrapper });
+
+    await waitFor(() => expect(result.current.data).toBeTruthy());
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/scan?snapshot=true&snapshot_min_interval_ms=300000",
+    );
   });
 });

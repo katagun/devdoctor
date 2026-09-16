@@ -10,7 +10,7 @@ import { useProviders } from "@/hooks/useProviders";
 import { useScan } from "@/hooks/useScan";
 import { useSelectedMemoryProviders } from "@/hooks/useSelectedMemoryProviders";
 import { useSelectedProviders } from "@/hooks/useSelectedProviders";
-import { useSettings } from "@/hooks/useSettings";
+import { cadenceMs, useSettings } from "@/hooks/useSettings";
 import {
   buildDiskMosaicItems,
   buildMemoryMosaicItems,
@@ -26,6 +26,7 @@ import { DISK_LABEL, DISK_TITLE, MEMORY_LABEL, MEMORY_TITLE } from "@/lib/resour
 
 export default function Dashboard() {
   const { settings } = useSettings();
+  const staleTime = cadenceMs(settings.cadence);
   const manualOnly = settings.cadence === "manual";
 
   const diskProviders = useProviders();
@@ -35,10 +36,12 @@ export default function Dashboard() {
     [diskProviders.data, selectedDiskProviders.disabled],
   );
   const diskSummary = useDiskDashboardSummary(diskProvider);
+  // Same options as the Disk page, so the two share one scan (#104).
   const disk = useScan({
     provider: diskProvider,
-    staleTime: 0,
+    staleTime,
     refetchOnMount: !manualOnly,
+    snapshotMinIntervalMs: staleTime,
   });
 
   const memoryProviders = useMemoryProviders();

@@ -27,3 +27,15 @@ export function partitionByMinSize(
     hiddenBytes: sum(hiddenRows),
   };
 }
+
+/**
+ * Narrow rows to the selected risks. An empty selection means "all" and returns
+ * the same array, so callers keyed on identity (memos) see no change.
+ */
+export function filterByRisk(
+  rows: CacheTableRow[],
+  risks: readonly CacheTableRow["risk"][],
+): CacheTableRow[] {
+  if (risks.length === 0) return rows;
+  return rows.filter((row) => risks.includes(row.risk));
+}
