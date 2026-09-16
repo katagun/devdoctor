@@ -100,6 +100,7 @@ describe("useScanProgress", () => {
     act(() => es.emit("progress", snap({ done: 2 })));
     act(() => es.onerror?.(new Event("error")));
     expect(result.current?.done).toBe(2);
+    expect(es.closed).toBe(true);
   });
 
   it("closes the stream on unmount", () => {

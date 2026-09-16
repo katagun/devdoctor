@@ -7,10 +7,10 @@ export const SCAN_PROGRESS_URL = "/api/scan/progress";
  * The running scan's latest progress snapshot while `active`, else null.
  *
  * Progress is decoration on top of the scan query: an error leaves the last
- * value in place and nothing reconnects; `idle` snapshots and any snapshot
- * from an older scan than one already shown are ignored, so a stale "done"
- * cannot flash before the new scan starts. The stream closes on `done`, on
- * `active` turning false, and on unmount.
+ * value in place and closes the stream to prevent reconnection; `idle` snapshots
+ * and any snapshot from an older scan than one already shown are ignored, so a
+ * stale "done" cannot flash before the new scan starts. The stream closes on
+ * `done`, on error, on `active` turning false, and on unmount.
  */
 export function useScanProgress(active: boolean): ScanProgressSnapshot | null {
   const [snapshot, setSnapshot] = useState<ScanProgressSnapshot | null>(null);
@@ -36,7 +36,8 @@ export function useScanProgress(active: boolean): ScanProgressSnapshot | null {
     };
     es.addEventListener("progress", onProgress);
     es.onerror = () => {
-      /* keep the last snapshot; the scan query is unaffected */
+      /* keep the last snapshot; close to prevent reconnection */
+      es.close();
     };
     return () => {
       es.removeEventListener("progress", onProgress);
