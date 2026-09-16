@@ -15,11 +15,12 @@ import { cadenceMs, useSettings } from "@/hooks/useSettings";
 import {
   buildDiskMosaicItems,
   buildMemoryMosaicItems,
+  diskPanelLoading,
   diskProviderHref,
   diskProviderTotals,
   memoryProviderHref,
-  type MosaicTone,
   topMemoryConsumers,
+  type MosaicTone,
 } from "@/lib/dashboard";
 import { humanBytes, timeAgo } from "@/lib/format";
 import { diskProviderParam, memoryProviderIds } from "@/lib/providerFilters";
@@ -45,7 +46,9 @@ export default function Dashboard() {
     refetchOnMount: !manualOnly,
     snapshotMinIntervalMs: staleTime,
   });
-  const diskProgress = useScanProgress(disk.isFetching);
+  const diskLoading = diskPanelLoading(disk.isLoading, diskSummary.data);
+  // Only the loading state shows progress, so only it opens the stream.
+  const diskProgress = useScanProgress(diskLoading);
 
   const memoryProviders = useMemoryProviders();
   const selectedMemoryProviders = useSelectedMemoryProviders();
@@ -130,7 +133,7 @@ export default function Dashboard() {
             eyebrow="largest safe and reclaimable entries"
             to="/disk"
             action={`open ${DISK_LABEL} scan`}
-            loading={disk.isLoading && !diskSummary.data}
+            loading={diskLoading}
             loadingLabel={
               (diskHasNoCache ? "running first full scan…" : "loading…") +
               (diskProgress ? ` · ${formatScanProgress(diskProgress).providers}` : "")
