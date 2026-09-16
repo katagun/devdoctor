@@ -1,4 +1,5 @@
 import dataclasses
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -404,3 +405,91 @@ def test_provider_totals_ignore_the_view_filters() -> None:
     report = _worktree_scan(ScanFilters(risks=frozenset({Risk.DANGEROUS})))
     assert {pt.name: pt.bytes for pt in report.per_provider} == unfiltered
     assert sum(pt.bytes for pt in report.per_provider) == 1_300
+
+
+def _collect_progress() -> tuple[list[discovery.ScanProgressEvent], discovery.ScanProgressCallback]:
+    """A thread-safe sink for progress events (providers report from worker threads)."""
+    events: list[discovery.ScanProgressEvent] = []
+    lock = threading.Lock()
+
+    def on_progress(event: discovery.ScanProgressEvent) -> None:
+        with lock:
+            events.append(event)
+
+    return events, on_progress
+
+
+def _index_of(events, predicate) -> int:
+    return next(i for i, e in enumerate(events) if predicate(e))
+
+
+def test_scan_reports_progress_per_available_provider() -> None:
+    events, on_progress = _collect_progress()
+    a = _FakeProvider(name="a", entries=[_fe(provider="a", size=100), _fe(provider="a", size=200)])
+    off = _Stub(FakeShell(), "off", [], available=False)
+    b = _FakeProvider(name="b", entries=[_fe(provider="b", size=500)])
+
+    discovery.scan([a, off, b], ScanFilters(), datetime.now(UTC), on_progress=on_progress)
+
+    # ScanStarted first, naming only the available providers, in provider order.
+    assert events[0] == discovery.ScanStarted(providers=("a", "b"))
+    started = sorted(e.name for e in events if isinstance(e, discovery.ProviderStarted))
+    assert started == ["a", "b"]
+    finished = {
+        e.timing.name: e.timing for e in events if isinstance(e, discovery.ProviderFinished)
+    }
+    assert set(finished) == {"a", "b"}
+    assert (finished["a"].entries, finished["a"].bytes) == (2, 300)
+    assert (finished["b"].entries, finished["b"].bytes) == (1, 500)
+    # Each provider starts before it finishes, whatever the thread interleaving.
+    for name in ("a", "b"):
+        i_started = _index_of(
+            events,
+            lambda e, n=name: isinstance(e, discovery.ProviderStarted) and e.name == n,
+        )
+        i_finished = _index_of(
+            events,
+            lambda e, n=name: isinstance(e, discovery.ProviderFinished) and e.timing.name == n,
+        )
+        assert i_started < i_finished
+
+
+def test_scan_reports_a_failed_provider_as_finished_with_zero_figures() -> None:
+    events, on_progress = _collect_progress()
+    boom = _Raising(FakeShell(), "boom", RuntimeError("disk gremlins"))
+
+    discovery.scan([boom], ScanFilters(), datetime.now(UTC), on_progress=on_progress)
+
+    finished = [e for e in events if isinstance(e, discovery.ProviderFinished)]
+    assert [(e.timing.name, e.timing.entries, e.timing.bytes) for e in finished] == [("boom", 0, 0)]
+
+
+def test_scan_with_no_available_providers_reports_only_scan_started() -> None:
+    events, on_progress = _collect_progress()
+    off = _Stub(FakeShell(), "off", [], available=False)
+
+    discovery.scan([off], ScanFilters(), datetime.now(UTC), on_progress=on_progress)
+
+    assert events == [discovery.ScanStarted(providers=())]
+
+
+def test_scan_survives_a_raising_progress_callback(caplog) -> None:
+    """A broken consumer is logged once per event and never changes the scan."""
+    a = _FakeProvider(name="a", entries=[_fe(provider="a", size=100)])
+    reference = discovery.scan([a], ScanFilters(), datetime.now(UTC))
+
+    def bad(event: discovery.ScanProgressEvent) -> None:
+        raise ValueError("consumer bug")
+
+    with caplog.at_level("WARNING", logger="devdoctor.discovery"):
+        report = discovery.scan([a], ScanFilters(), datetime.now(UTC), on_progress=bad)
+
+    assert [e.id for e in report.entries] == [e.id for e in reference.entries]
+    assert report.total_bytes() == reference.total_bytes()
+    assert [pt.name for pt in report.per_provider] == ["a"]
+    # ScanStarted + ProviderStarted + ProviderFinished, each logged once.
+    failures = [r for r in caplog.records if "progress callback" in r.getMessage()]
+    assert len(failures) == 3
+    assert {"ScanStarted", "ProviderStarted", "ProviderFinished"} == {
+        r.getMessage().split()[-1] for r in failures
+    }

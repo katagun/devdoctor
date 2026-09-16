@@ -5,9 +5,11 @@ import logging
 import socket
 import sys
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import partial
 
 from devdoctor.containment import contain_worktree_contents
 from devdoctor.providers.base import Provider
@@ -30,6 +32,46 @@ logger = logging.getLogger(__name__)
 # oversubscribing. The actual pool size is min(this, number of available
 # providers), so scans with few providers spin up correspondingly few threads.
 _MAX_WORKERS = 8
+
+
+@dataclass(frozen=True)
+class ScanStarted:
+    """Emitted once, before any provider runs; names the available providers in order."""
+
+    providers: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ProviderStarted:
+    """Emitted from the worker thread when a provider's discover() begins."""
+
+    name: str
+
+
+@dataclass(frozen=True)
+class ProviderFinished:
+    """Emitted from the worker thread when a provider returns or fails.
+
+    ``timing`` is what ``_discover_one`` computed: bytes and entries before
+    reconciliation and containment. Right for "found so far"; the report's
+    totals still come only from ``scan()``'s return value.
+    """
+
+    timing: ProviderTiming
+
+
+ScanProgressEvent = ScanStarted | ProviderStarted | ProviderFinished
+ScanProgressCallback = Callable[[ScanProgressEvent], None]
+
+
+def _notify(on_progress: ScanProgressCallback | None, event: ScanProgressEvent) -> None:
+    """Deliver one event; a consumer that raises is logged and can never alter a scan."""
+    if on_progress is None:
+        return
+    try:
+        on_progress(event)
+    except Exception:
+        logger.warning("scan progress callback failed on %s", type(event).__name__, exc_info=True)
 
 
 def _globally_unique(entry: Entry) -> Entry:
@@ -118,7 +160,7 @@ def _reconcile_shared_usage(entries: list[Entry]) -> list[Entry]:
     return reconciled
 
 
-def _discover_one(p: Provider) -> _ProviderResult:
+def _discover_one(p: Provider, on_progress: ScanProgressCallback | None = None) -> _ProviderResult:
     """Run a single provider's discover() and package its result.
 
     Runs on a worker thread. Times the call with time.monotonic() (immune to
@@ -126,6 +168,7 @@ def _discover_one(p: Provider) -> _ProviderResult:
     that raises is turned into a diagnostic note and contributes no entries, so
     one broken provider can't abort the whole scan.
     """
+    _notify(on_progress, ProviderStarted(p.name))
     t0 = time.monotonic()
     try:
         # Drop zero-byte entries before they reach the table. They represent
@@ -143,13 +186,15 @@ def _discover_one(p: Provider) -> _ProviderResult:
         # Preserve any notes the provider recorded before it raised, then append
         # the failure so it surfaces in Report.diagnostics instead of vanishing.
         diagnostics = [*p.diagnostics, msg]
-        return _ProviderResult(
+        result = _ProviderResult(
             entries=[],
             diagnostics=diagnostics,
             timing=ProviderTiming(name=p.name, bytes=0, entries=0, duration_ms=dt_ms),
         )
+        _notify(on_progress, ProviderFinished(result.timing))
+        return result
     dt_ms = int((time.monotonic() - t0) * 1000)
-    return _ProviderResult(
+    result = _ProviderResult(
         entries=provider_entries,
         # Drain anything the provider flagged during discover() (skipped paths,
         # failed commands) so it surfaces in the Report instead of vanishing.
@@ -164,6 +209,8 @@ def _discover_one(p: Provider) -> _ProviderResult:
             shared_bytes=sum(e.shared_bytes for e in provider_entries),
         ),
     )
+    _notify(on_progress, ProviderFinished(result.timing))
+    return result
 
 
 def scan(
@@ -172,6 +219,7 @@ def scan(
     now: datetime,
     *,
     contain: bool = True,
+    on_progress: ScanProgressCallback | None = None,
 ) -> Report:
     """Run every available provider, collect entries, apply filters, sort.
 
@@ -194,12 +242,18 @@ def scan(
     the view's filters, so a filtered scan never counts a byte twice (spec §6.3).
     The web cleanup scan passes ``contain=False``: it establishes current state for
     a selection, not what to display (spec §6.4).
+
+    ``on_progress`` receives ``ScanStarted`` once, then ``ProviderStarted``/
+    ``ProviderFinished`` per available provider from the worker threads; a raising
+    callback is logged and ignored (spec §3).
     """
     started_at = datetime.now(UTC)
     # Freeze the set (and order) of available providers up front; availability
     # is cheap and synchronous, and pinning it here keeps result reassembly
     # deterministic regardless of thread completion order.
     available = [p for p in providers if p.available()]
+
+    _notify(on_progress, ScanStarted(providers=tuple(p.name for p in available)))
 
     entries: list[Entry] = []
     per_provider: list[ProviderTiming] = []
@@ -211,7 +265,7 @@ def scan(
             # yields them in provider order no matter which thread finished
             # first. _discover_one swallows provider exceptions, so .result()
             # (inside map) never raises here.
-            results = list(executor.map(_discover_one, available))
+            results = list(executor.map(partial(_discover_one, on_progress=on_progress), available))
         for result in results:
             # Namespace each entry's provider-local id into a globally-unique
             # one so web selection and prompt/confirm routing can never cross
