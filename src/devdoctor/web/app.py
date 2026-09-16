@@ -26,6 +26,7 @@ from devdoctor.web.routes_memory import router as memory_router
 from devdoctor.web.routes_scan import router as scan_router
 from devdoctor.web.routes_settings import router as settings_router
 from devdoctor.web.runner_registry import RunnerRegistry
+from devdoctor.web.scan_progress import ScanProgressHub
 
 API_PREFIX = "/api"
 _API_ROOT = API_PREFIX.lstrip("/")
@@ -97,6 +98,9 @@ def build_app(
 
     # Single-slot registry for the active cleanup job.
     app.state.runner_registry = RunnerRegistry()
+
+    # Progress of the scan running in this process, for /api/scan/progress.
+    app.state.scan_progress = ScanProgressHub()
 
     # /api routers — subsequent tasks attach additional routers the same way.
     app.include_router(scan_router)

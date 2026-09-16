@@ -107,7 +107,8 @@ Rules:
   snapshot as JSON (`started_at` ISO-8601 or null; tuples as arrays).
 - Then, every 200 ms, compares the hub version with the last one sent and
   sends a new `progress` event on change.
-- Ends after a `running → done` transition it observed itself. An initial
+- Ends after a transition into `done` it observed itself (from `running`, or
+  straight from `idle` for a scan with no available providers). An initial
   snapshot that is already `done` or `idle` does not end the stream: the
   client's own scan may not have reached the server yet. The client closes the
   stream when its fetch completes, and a closed connection ends the generator

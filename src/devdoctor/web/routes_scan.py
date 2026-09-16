@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import json
 import logging
 import re
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from sse_starlette.sse import EventSourceResponse
 from starlette.responses import JSONResponse
 
 from devdoctor import cleanup as cleanup_mod
@@ -16,6 +19,7 @@ from devdoctor.providers.base import PathProvider
 from devdoctor.storage.base import StorageBackend
 from devdoctor.types import Report, Risk, ScanFilters, SnapshotKind
 from devdoctor.web.models import ProviderInfo, RecipeRequest, RecipeResponse
+from devdoctor.web.scan_progress import ScanProgressHub
 
 router = APIRouter(prefix="/api")
 
@@ -24,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 _SIZE_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([KMGT]?)$", re.IGNORECASE)
 _SIZE_MULT = {"": 1, "K": 1_000, "M": 1_000_000, "G": 1_000_000_000, "T": 1_000_000_000_000}
+_PROGRESS_POLL_S = 0.2
 
 
 def _parse_size(s: str) -> int:
@@ -58,7 +63,12 @@ def scan(
         providers=frozenset(provider.split(",")) if provider else None,
     )
     providers_list = registry.load_providers(request.app.state.shell)
-    report = discovery.scan(providers_list, filters, datetime.now(UTC))
+    report = discovery.scan(
+        providers_list,
+        filters,
+        datetime.now(UTC),
+        on_progress=request.app.state.scan_progress.observer(),
+    )
     storage: StorageBackend = request.app.state.storage
     # Only an unfiltered scan may be stored: a filtered report's totals cover part of
     # the disk, and would read as a drop in history (#103).
@@ -82,6 +92,33 @@ def scan(
             # still gets the scan; next scan will try again.
             logger.warning("scan: auto-snapshot write failed: %s", exc)
     return JSONResponse(content=_report_to_dict(report))
+
+
+@router.get("/scan/progress")
+async def scan_progress(request: Request) -> EventSourceResponse:
+    """Stream the running scan's progress as `progress` events (spec §5).
+
+    Sends the current snapshot at once, then a new one whenever the hub's
+    version changes. Ends only after a transition into `done` it observed
+    itself: an initial `done` or `idle` snapshot keeps the stream open because
+    the client's own scan may not have reached the server yet.
+    """
+    hub: ScanProgressHub = request.app.state.scan_progress
+
+    async def _stream() -> AsyncIterator[dict[str, str]]:
+        version, snapshot = hub.current()
+        yield {"event": "progress", "data": json.dumps(snapshot.to_json())}
+        while True:
+            await asyncio.sleep(_PROGRESS_POLL_S)
+            new_version, new_snapshot = hub.current()
+            if new_version == version:
+                continue
+            version, previous, snapshot = new_version, snapshot, new_snapshot
+            yield {"event": "progress", "data": json.dumps(snapshot.to_json())}
+            if previous.status != "done" and snapshot.status == "done":
+                return
+
+    return EventSourceResponse(_stream(), ping=10)
 
 
 def _should_write_auto_snapshot(
