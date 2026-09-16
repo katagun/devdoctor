@@ -27,6 +27,11 @@ export function humanBytes(n: number): string {
   return `${sign}${v.toFixed(1)}P`;
 }
 
+/** "1 item" / "2 items" — a count with its noun pluralised (#106). */
+export function countNoun(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
 export function formatMs(ms: number | null): string {
   if (ms === null || !Number.isFinite(ms) || ms < 0) return "—";
   if (ms < 1000) return `${Math.round(ms)}ms`;

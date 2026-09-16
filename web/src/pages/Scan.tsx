@@ -14,7 +14,7 @@ import { useProviders } from "@/hooks/useProviders";
 import { useSelectedProviders } from "@/hooks/useSelectedProviders";
 import { cadenceMs, useSettings } from "@/hooks/useSettings";
 import { useScanETA } from "@/hooks/useScanETA";
-import { formatMs, humanBytes, RiskValue, timeAgo } from "@/lib/format";
+import { countNoun, formatMs, humanBytes, RiskValue, timeAgo } from "@/lib/format";
 import { diskProviderParam } from "@/lib/providerFilters";
 import { partitionByMinSize } from "@/lib/scanRows";
 
@@ -232,7 +232,7 @@ export default function Scan() {
         >
           <span className="inline-flex items-center gap-1.5">
             <NavIcon icon={Play} size={12} />
-            clean up {selectedRows.length > 0 ? `${selectedRows.length} items` : ""}
+            clean up {selectedRows.length > 0 ? countNoun(selectedRows.length, "item") : ""}
           </span>
         </button>
       </div>

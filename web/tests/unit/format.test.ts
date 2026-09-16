@@ -8,6 +8,7 @@ import {
   timeAgo,
   formatAbsTime,
   formatMs,
+  countNoun,
 } from "@/lib/format";
 
 describe("humanBytes", () => {
@@ -142,5 +143,13 @@ describe("formatMs", () => {
     expect(formatMs(null)).toBe("—");
     expect(formatMs(-5)).toBe("—");
     expect(formatMs(Number.NaN)).toBe("—");
+  });
+});
+
+describe("countNoun", () => {
+  it("uses the singular for one and the plural otherwise", () => {
+    expect(countNoun(1, "item")).toBe("1 item");
+    expect(countNoun(2, "item")).toBe("2 items");
+    expect(countNoun(0, "item")).toBe("0 items");
   });
 });
