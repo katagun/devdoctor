@@ -12,16 +12,21 @@ export function useCountdown(totalMs: number | null, running: boolean): number |
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    if (!running) {
+    if (!running || totalMs === null) {
       setStartedAt(null);
       return;
     }
     const started = Date.now();
     setStartedAt(started);
     setNow(started);
-    const timer = setInterval(() => setNow(Date.now()), TICK_MS);
+    const timer = setInterval(() => {
+      const current = Date.now();
+      setNow(current);
+      // Past zero the text no longer changes; stop re-rendering the page.
+      if (current - started >= totalMs) clearInterval(timer);
+    }, TICK_MS);
     return () => clearInterval(timer);
-  }, [running]);
+  }, [running, totalMs]);
 
   if (totalMs === null || !running || startedAt === null) return null;
   return Math.max(0, totalMs - (now - startedAt));

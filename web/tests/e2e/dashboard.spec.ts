@@ -36,10 +36,10 @@ function recordScans(page: Page): string[] {
 }
 
 test("opening the disk page while the dashboard's scan runs joins it (#104)", async ({ page }) => {
-  // Hold the scan so it is still in flight when the disk page mounts; two
-  // pages used to send two requests here.
+  // Hold the scan so it is still in flight when the disk page mounts (long
+  // enough for a cold CI browser); two pages used to send two requests here.
   await page.route(SCAN_URL, (route) => {
-    setTimeout(() => void route.continue().catch(() => undefined), 1500);
+    setTimeout(() => void route.continue().catch(() => undefined), 5000);
   });
   const scans = recordScans(page);
   await page.goto("/dashboard");

@@ -55,7 +55,9 @@ export function useScanETA(): UseScanETAResult | null {
 
   // Medians lag when a scan grows (new roots, a provider that got slower), so
   // the newest scan's own time for the enabled providers is the floor (#104).
-  const newest = usable.reduce((a, b) => (b.scanned_at > a.scanned_at ? b : a));
+  const newest = usable.reduce((a, b) =>
+    Date.parse(b.scanned_at) > Date.parse(a.scanned_at) ? b : a,
+  );
   const newestMs = (newest.per_provider ?? [])
     .filter((pt) => isEnabled(pt.name))
     .reduce((sum, pt) => sum + pt.duration_ms, 0);

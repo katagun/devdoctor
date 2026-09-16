@@ -266,10 +266,5 @@ export default function Scan() {
 function ScanCountdown({ remainingMs }: { remainingMs: number | null }) {
   if (remainingMs === null) return null;
   if (remainingMs <= 0) return <> · longer than past scans</>;
-  return (
-    <>
-      {" "}
-      · ~{formatMs(remainingMs)} left, from past scans
-    </>
-  );
+  return <> · ~{formatMs(remainingMs)} left, from past scans</>;
 }

@@ -29,7 +29,6 @@ interface ScanResponse {
 }
 
 export interface UseScanOptions {
-  risk?: string;
   minSize?: string;
   provider?: string;
   // Cadence control — maps to React Query's staleTime. `Infinity` + refetchOnMount=false == manual only.
@@ -38,9 +37,13 @@ export interface UseScanOptions {
   /** Minimum interval (ms) between auto-snapshot writes on the server. Every
    * scan asks for an auto-snapshot; the server checks the most recent one's
    * mtime and skips writes inside this window, so the user's cadence holds
-   * however many pages or refetches ask. */
+   * however many pages or refetches ask. Never below AUTO_SNAPSHOT_FLOOR_MS. */
   snapshotMinIntervalMs?: number;
 }
+
+// The "live" cadence has a zero staleTime; without a floor every page mount and
+// refresh would write a snapshot and the history would hold minutes, not days.
+export const AUTO_SNAPSHOT_FLOOR_MS = 5 * 60_000;
 
 /**
  * The scan query. Its key is the server-side filters alone, so every page
@@ -55,19 +58,15 @@ export function useScan(params: UseScanOptions = {}) {
     refetchOnMount,
     queryFn: async () => {
       const qs = new URLSearchParams();
-      if (filters.risk) qs.set("risk", filters.risk);
       if (filters.minSize) qs.set("min_size", filters.minSize);
       if (filters.provider) qs.set("provider", filters.provider);
       qs.set("snapshot", "true");
-      if (
-        snapshotMinIntervalMs !== undefined &&
-        Number.isFinite(snapshotMinIntervalMs) &&
-        snapshotMinIntervalMs > 0
-      ) {
-        qs.set("snapshot_min_interval_ms", String(Math.floor(snapshotMinIntervalMs)));
-      } else if (snapshotMinIntervalMs === Number.POSITIVE_INFINITY) {
+      if (snapshotMinIntervalMs === Number.POSITIVE_INFINITY) {
         // Manual cadence: signal "never auto-snapshot again if any exist".
         qs.set("snapshot_min_interval_ms", String(Number.MAX_SAFE_INTEGER));
+      } else {
+        const interval = Math.max(snapshotMinIntervalMs ?? 0, AUTO_SNAPSHOT_FLOOR_MS);
+        qs.set("snapshot_min_interval_ms", String(Math.floor(interval)));
       }
       const query = `?${qs}`;
       const raw = await apiFetch<ScanResponse>(`/scan${query}`);

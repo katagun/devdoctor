@@ -150,8 +150,11 @@ entries under a versioned heading as described in
   keep server-side filtering. The "scanning…" estimate now counts down from the
   past-scan figure, uses the newest scan as a floor so a scan that grew is not
   underestimated, and says when it has run longer than past scans. Opening the
-  Dashboard and then the Disk page runs one scan, not two. Streaming per-provider
-  progress is tracked in #117. (#104)
+  Dashboard and then the Disk page runs one scan, not two: the Dashboard now
+  follows the scan cadence setting instead of always rescanning, and
+  auto-snapshots are written at most every five minutes whatever the cadence,
+  so the "Live" setting no longer fills the history with same-minute scans.
+  Streaming per-provider progress is tracked in #117. (#104)
 - **The dashboard's estimated reclaimable total no longer reads as zero.** The
   cached disk summary the dashboard reads was written with the scan's reclaimable
   and footprint figures but handed to the page without them, at the summary,
