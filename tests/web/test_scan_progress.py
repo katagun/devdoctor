@@ -74,6 +74,25 @@ def test_an_empty_scan_is_done_at_once() -> None:
     assert (snap.status, snap.total, snap.done) == ("done", 0, 0)
 
 
+def test_provider_events_from_a_newer_scan_are_ignored_until_it_starts() -> None:
+    """A newer scan's provider event that outruns its own ScanStarted (the pool
+    thread reports before the caller's ScanStarted lands) must not be applied to
+    the current scan, and must not bump the version."""
+    hub = ScanProgressHub()
+    current = hub.observer()
+    current(ScanStarted(providers=("a",)))
+    newer = hub.observer()
+    version = hub.version
+
+    newer(ProviderStarted("a"))
+    newer(ProviderFinished(_timing("a", entries=5, size=500)))
+
+    snap = hub.snapshot()
+    assert snap.scan_id == 1
+    assert (snap.done, snap.entries, snap.bytes, snap.running) == (0, 0, 0, ())
+    assert hub.version == version
+
+
 def test_unknown_provider_events_are_ignored() -> None:
     hub = ScanProgressHub()
     report = hub.observer()
