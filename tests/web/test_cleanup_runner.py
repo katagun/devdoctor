@@ -298,7 +298,8 @@ async def test_web_audit_event_names_its_source_and_plan():
     task = asyncio.create_task(runner.run())
     await _approve_and_confirm(runner, entry.id)
     await _events_until_done(runner)
-    await task
+    results = await task
+    assert [r.status for r in results] == ["ok"]
 
     events = build_storage().read_audit_events(limit=1)
     assert events[0]["source"] == "web"
