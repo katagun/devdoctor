@@ -6,6 +6,7 @@ from devdoctor.cleanup import build_script, run
 from devdoctor.types import (
     AdviceAction,
     CleanupOpts,
+    CommandAction,
     DeletePathAction,
     Entry,
     Report,
@@ -319,7 +320,7 @@ def test_build_script_newline_in_filename_cannot_inject_uncommented_lines():
     assert "\\n" in script
 
 
-def _events_of(report, opts, *, shell=None, prompt=None, confirm=None):
+def _events_of(report, opts, *, shell=None, prompt=None, confirm=None, verify=None):
     seen: list[object] = []
     results = run(
         report,
@@ -327,6 +328,7 @@ def _events_of(report, opts, *, shell=None, prompt=None, confirm=None):
         prompt_choice=prompt or (lambda entry: "y"),
         confirm=confirm or (lambda msg: True),
         opts=opts,
+        verify=verify,
         on_event=seen.append,
     )
     return seen, results
@@ -375,6 +377,52 @@ def test_confirm_required_carries_the_plan_in_execution_order() -> None:
     assert by_id["hint"].lines == ("echo 'run the tool yourself'",)
     assert by_id["hint"].estimate_bytes == 5
     # Execution order: the plan's order is the order EntryResolved arrives in.
+    resolved = [e.result.entry_id for e in seen if isinstance(e, cleanup.EntryResolved)]
+    assert resolved == [p.entry.id for p in confirm.plan]
+
+
+def test_plan_follows_execution_order_not_selection_order_for_worktrees() -> None:
+    """A discriminating case for the previous test: when every entry is a non-worktree,
+    ``_execution_order``'s sort key is identical for all of them, so ``confirm.plan`` would
+    equal ``confirm.approved`` even if ``_build_plan`` stopped calling ``_execution_order``
+    and just used ``selections`` as-is. Mix in a reclaimable git worktree, listed *after* a
+    plain entry in the report, to prove the plan actually reorders (spec §6.4) while
+    ``approved`` keeps selection order.
+    """
+    outside = _e(
+        "node-project-dependencies", "outside", 600, actions=(DeletePathAction(Path("/outside")),)
+    )
+    worktree = Entry(
+        provider="git-worktrees",
+        id="git-worktrees:/wt/feature",
+        path=Path("/wt/feature"),
+        label="app/feature · integrated",
+        size_bytes=1_000,
+        mtime=None,
+        risk=Risk.RECLAIMABLE,
+        recipe=[],
+        actions=(CommandAction(("git", "-C", "/app", "worktree", "remove", "/wt/feature")),),
+    )
+    shell = FakeShell(
+        responses={
+            ("rm", "-rf", "--", "/outside"): ShellResult(0, "", ""),
+            ("git", "-C", "/app", "worktree", "remove", "/wt/feature"): ShellResult(0, "", ""),
+        }
+    )
+    # Report lists the plain entry before the worktree; the adapter needs a verifier to
+    # actually remove a reclaimable worktree (VerifyRequired), so answer "proceed" (None).
+    seen, _ = _events_of(
+        _report(outside, worktree),
+        CleanupOpts(execute=True),
+        shell=shell,
+        verify=lambda entry: None,
+    )
+
+    (confirm,) = [e for e in seen if isinstance(e, cleanup.ConfirmRequired)]
+    # Selection order matches the report: outside, then the worktree.
+    assert [e.id for e in confirm.approved] == [outside.id, worktree.id]
+    # But the plan follows execution order: the reclaimable worktree runs first.
+    assert [p.entry.id for p in confirm.plan] == [worktree.id, outside.id]
     resolved = [e.result.entry_id for e in seen if isinstance(e, cleanup.EntryResolved)]
     assert resolved == [p.entry.id for p in confirm.plan]
 
