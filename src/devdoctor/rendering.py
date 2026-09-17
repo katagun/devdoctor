@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import shutil
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 from rich.prompt import Confirm as RichConfirm
@@ -24,10 +25,8 @@ from devdoctor.discovery import ProviderFinished, ProviderStarted, ScanProgressE
 from devdoctor.types import (
     Choice,
     CleanResult,
-    Confirm,
     DiffReport,
     Entry,
-    PromptChoice,
     Report,
     Risk,
 )
@@ -147,35 +146,89 @@ def render_diff_table(console: Console, diff: DiffReport) -> None:
     console.print(table)
 
 
-def real_prompts(console: Console) -> tuple[PromptChoice, Confirm]:
-    """Build the real Rich-backed prompt callables."""
+def _as_int(value: object) -> int:
+    return value if isinstance(value, int) else 0
 
-    def prompt_choice(entry: Entry) -> Choice:
-        header = Text()
-        header.append(_strip_controls(entry.provider), style="bold")
-        header.append(
-            f" — {_strip_controls(entry.label)}  "
-            f"(footprint={_human_bytes_or_unknown(entry.footprint_bytes)}, "
-            f"estimated reclaimable={_estimated_bytes(entry.reclaimable_bytes)}, "
-            f"risk={_risk_label(entry.risk)})"
+
+def _as_list(value: object) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def render_history(console: Console, events: Sequence[Mapping[str, object]]) -> None:
+    if not events:
+        console.print(Text("no cleanup runs recorded"))
+        return
+    table = Table(title="cleanup runs (newest first)")
+    columns = (
+        "#",
+        "when",
+        "source",
+        "outcome",
+        "ok",
+        "failed",
+        "skipped",
+        "est. reclaimed",
+        "free Δ",
+    )
+    right_aligned = ("#", "ok", "failed", "skipped")
+    for name in columns:
+        table.add_column(name, justify="right" if name in right_aligned else "left")
+    for i, e in enumerate(events, 1):
+        results = _as_list(e.get("results"))
+        ok = sum(r.get("status") == "ok" for r in results)
+        failed = sum(r.get("status") == "error" for r in results)
+        table.add_row(
+            str(i),
+            _strip_controls(str(e.get("at", ""))[:19].replace("T", " ")),
+            str(e.get("source", "web")),
+            str(e.get("outcome", "")),
+            f"{ok} ok",
+            str(failed),
+            str(len(results) - ok - failed),
+            f"~{_human_bytes(_as_int(e.get('total_estimated_reclaimed_bytes')))}",
+            _free_delta(e),
         )
-        console.print(header)
-        recipes = entry.recipe_lines()
-        recipe_hint = _strip_controls(recipes[0]) if recipes else "(no cleanup action)"
-        console.print(Text(f"  → {recipe_hint}"))
-        raw = Prompt.ask(
-            "[y]es / [n]o / [a]ll-in-provider / [s]kip-provider / [q]uit",
-            console=console,
-            choices=["y", "n", "a", "s", "q"],
-            default="n",
-            show_choices=False,
+    console.print(table)
+
+
+def render_history_run(console: Console, event: Mapping[str, object]) -> None:
+    reclaimed = _human_bytes(_as_int(event.get("total_estimated_reclaimed_bytes")))
+    console.print(
+        Text(
+            f"{str(event.get('at', ''))[:19].replace('T', ' ')} · {event.get('source', 'web')} · "
+            f"{event.get('outcome', '')} · ~{reclaimed} "
+            f"estimated reclaimed · free {_free_delta(event)}",
+            style="bold",
         )
-        return raw  # type: ignore[return-value]
+    )
+    plan = _as_list(event.get("plan"))
+    results = {r.get("entry_id"): r for r in _as_list(event.get("results"))}
+    table = Table(show_lines=False)
+    for name in ("#", "provider", "path", "est.", "action", "status", "message"):
+        table.add_column(name, overflow="fold" if name in ("path", "message") else "ellipsis")
+    for i, p in enumerate(plan, 1):
+        r = results.get(p.get("entry_id"), {})
+        actions = p.get("actions") or []
+        table.add_row(
+            str(i),
+            _safe_cell(str(p.get("provider", ""))),
+            _safe_cell(str(p.get("path") or p.get("label") or "")),
+            _estimated_bytes(p.get("estimate_bytes")).lstrip("~"),
+            _safe_cell(actions[0] if actions else "(no cleanup action)"),
+            str(r.get("status", "")),
+            _safe_cell(str(r.get("message") or "")),
+        )
+    if not plan:
+        table.add_row("(no plan recorded)", "", "", "", "", "", "")
+    console.print(table)
 
-    def confirm(message: str) -> bool:
-        return RichConfirm.ask(message, console=console, default=False)
 
-    return prompt_choice, confirm
+def _free_delta(event: Mapping[str, object]) -> str:
+    before, after = event.get("free_before_bytes"), event.get("free_after_bytes")
+    if not isinstance(before, int) or not isinstance(after, int):
+        return "—"
+    delta = after - before
+    return f"{'+' if delta >= 0 else '-'}{_human_bytes(abs(delta))}"
 
 
 _MAX_RUNNING_NAMES = 3
