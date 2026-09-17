@@ -381,6 +381,24 @@ def test_confirm_required_carries_the_plan_in_execution_order() -> None:
     assert resolved == [p.entry.id for p in confirm.plan]
 
 
+def test_confirm_required_carries_the_skipped_selections() -> None:
+    """Selection-phase skips (dangerous/declined/provider-skip/quit) must reach the
+    presenter on ConfirmRequired itself — they're resolved later, from _iter_execute,
+    well after ConfirmRequired has already been observed (spec §4.3)."""
+    safe = _e("a", "safe", 100, Risk.SAFE)
+    dangerous = _e("a", "danger", 200, Risk.DANGEROUS)
+    shell = FakeShell(responses={("rm", "-rf", "/safe"): ShellResult(0, "", "")})
+    seen, _ = _events_of(
+        _report(safe, dangerous), CleanupOpts(execute=True, yes_safe=True), shell=shell
+    )
+
+    (confirm,) = [e for e in seen if isinstance(e, cleanup.ConfirmRequired)]
+    assert confirm.skipped == (
+        cleanup.SkippedEntry(dangerous, "dangerous (pass --allow-dangerous to include)"),
+    )
+    assert [p.entry.id for p in confirm.plan] == [safe.id]
+
+
 def test_plan_follows_execution_order_not_selection_order_for_worktrees() -> None:
     """A discriminating case for the previous test: when every entry is a non-worktree,
     ``_execution_order``'s sort key is identical for all of them, so ``confirm.plan`` would

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import shutil
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -184,8 +184,19 @@ _SNAPSHOT_HINT = (
 )
 
 
+def _group_reasons(reasons: Iterable[str]) -> str:
+    """Group repeated reason strings into ``"N reason, M other-reason"``, in first-seen order."""
+    counts: dict[str, int] = {}
+    for reason in reasons:
+        counts[reason] = counts.get(reason, 0) + 1
+    return ", ".join(f"{n} {_strip_controls(reason)}" for reason, n in counts.items())
+
+
 class CleanupPresenter:
     """Every line `devdoctor clean` prints, driven by cleanup and scan events (spec §4).
+
+    Serves the ``--execute`` path only: the preview (dry-run) path renders the report
+    table directly and never touches this class.
 
     It only observes: a failure here is logged by the core and the run continues.
     """
@@ -197,7 +208,7 @@ class CleanupPresenter:
         self.status_text = ""
         self.plan: tuple[PlannedEntry, ...] = ()
         self._index: dict[str, int] = {}
-        self._pre_skipped: list[CleanResult] = []
+        self._plan_printed = False
         self._scan_total = 0
         self._scan_done = 0
         self._scan_running: list[str] = []
@@ -206,7 +217,7 @@ class CleanupPresenter:
 
     @contextmanager
     def scanning(self) -> Iterator[None]:
-        self._set_status("scanning…")
+        self._start_status("scanning…")
         try:
             yield
         finally:
@@ -235,7 +246,7 @@ class CleanupPresenter:
 
     @contextmanager
     def executing(self) -> Iterator[None]:
-        self._set_status("cleaning…")
+        self._start_status("cleaning…")
         try:
             yield
         finally:
@@ -245,15 +256,16 @@ class CleanupPresenter:
         if isinstance(event, ConfirmRequired):
             self.plan = event.plan
             self._index = {p.entry.id: i + 1 for i, p in enumerate(event.plan)}
+            self._plan_printed = True
             self._print_plan(event)
         elif isinstance(event, ExecuteStep):
             n = self._index.get(event.entry.id, 0)
             self._set_status(f"[{n}/{len(self.plan)}] running: {_strip_controls(event.line)}")
         elif isinstance(event, EntryResolved):
-            if not self.plan:
-                self._pre_skipped.append(event.result)
-            elif event.result.entry_id in self._index:
+            if event.result.entry_id in self._index:
                 self._print_result(event.result)
+            # Ids outside the plan are selection-phase skips: already summarised on
+            # ConfirmRequired's ``skipped``, or (nothing approved) in summary().
         # PromptRequired and VerifyRequired need no output here.
 
     def _print_plan(self, event: ConfirmRequired) -> None:
@@ -282,15 +294,9 @@ class CleanupPresenter:
                 _safe_cell(action),
             )
         self._console.print(table)
-        skipped = self._skipped_summary()
+        skipped = _group_reasons(s.reason for s in event.skipped)
         if skipped:
             self._console.print(Text(f"Not in this run: {skipped}", style="dim"))
-
-    def _skipped_summary(self) -> str:
-        counts: dict[str, int] = {}
-        for r in self._pre_skipped:
-            counts[r.message or "skipped"] = counts.get(r.message or "skipped", 0) + 1
-        return ", ".join(f"{n} {_strip_controls(msg)}" for msg, n in counts.items())
 
     def _print_result(self, result: CleanResult) -> None:
         n = self._index[result.entry_id]
@@ -321,6 +327,9 @@ class CleanupPresenter:
             f"estimated reclaimable={_estimated_bytes(entry.reclaimable_bytes)}, "
             f"risk={_risk_label(entry.risk)})"
         )
+        was_active = self._status is not None
+        if was_active:
+            self._clear_status()
         self._console.print(header)
         recipes = entry.recipe_lines()
         recipe_hint = _strip_controls(recipes[0]) if recipes else "(no cleanup action)"
@@ -332,10 +341,18 @@ class CleanupPresenter:
             default="n",
             show_choices=False,
         )
+        if was_active:
+            self._start_status(self.status_text)
         return raw  # type: ignore[return-value]
 
     def confirm(self, message: str) -> bool:
-        return RichConfirm.ask(message, console=self._console, default=False)
+        was_active = self._status is not None
+        if was_active:
+            self._clear_status()
+        result = RichConfirm.ask(message, console=self._console, default=False)
+        if was_active:
+            self._start_status(self.status_text)
+        return result
 
     # -- summary --------------------------------------------------------------
 
@@ -348,17 +365,24 @@ class CleanupPresenter:
     ) -> None:
         ok = sum(r.status == "ok" for r in results)
         failed = sum(r.status == "error" for r in results)
-        skipped = len(results) - ok - failed
+        skipped = sum(r.status == "skipped" for r in results)
+        previewed = sum(r.status == "dry_run" for r in results)
         reclaimed = sum(r.freed_bytes for r in results if r.status == "ok")
         planned = sum(p.estimate_bytes or 0 for p in self.plan)
+        counts = f"Done: {ok} ok · {failed} failed · {skipped} skipped"
+        if previewed:
+            counts += f" · {previewed} previewed"
         self._console.print(
             Text(
-                f"Done: {ok} ok · {failed} failed · {skipped} skipped — "
+                f"{counts} — "
                 f"~{_human_bytes(reclaimed)} estimated reclaimed of "
                 f"~{_human_bytes(planned)} planned",
                 style="bold",
             )
         )
+        if not self._plan_printed and skipped:
+            skip_messages = (r.message or "skipped" for r in results if r.status == "skipped")
+            self._console.print(Text(f"Nothing to clean: {_group_reasons(skip_messages)}"))
         tail = ""
         if free_before is not None and free_after is not None:
             delta = free_after - free_before
@@ -372,7 +396,7 @@ class CleanupPresenter:
             free_before is not None
             and free_after is not None
             and reclaimed
-            and free_after - free_before < reclaimed
+            and free_after - free_before < reclaimed / 2
         ):
             self._console.print(Text(_SNAPSHOT_HINT, style="yellow"))
 
@@ -385,12 +409,20 @@ class CleanupPresenter:
         home = str(self._home)
         return "~" + text[len(home) :] if text == home or text.startswith(home + "/") else text
 
-    def _set_status(self, text: str) -> None:
+    def _start_status(self, text: str) -> None:
+        """Create and start a ``Status``. Only ``scanning()``/``executing()`` (and the
+        prompt/confirm pause-resume) may call this — it's the only place a background
+        render thread is spun up."""
         self.status_text = text
-        if self._status is None:
-            self._status = self._console.status(text)
-            self._status.start()
-        else:
+        self._status = self._console.status(text)
+        self._status.start()
+
+    def _set_status(self, text: str) -> None:
+        """Update the status text. Safe to call with no active ``Status`` (e.g. outside
+        ``scanning()``/``executing()``): ``status_text`` still reflects the latest
+        event, but no background render thread is created."""
+        self.status_text = text
+        if self._status is not None:
             self._status.update(text)
 
     def _clear_status(self) -> None:

@@ -5,7 +5,13 @@ from pathlib import Path
 
 from rich.console import Console
 
-from devdoctor.cleanup import ConfirmRequired, EntryResolved, ExecuteStep, PlannedEntry
+from devdoctor.cleanup import (
+    ConfirmRequired,
+    EntryResolved,
+    ExecuteStep,
+    PlannedEntry,
+    SkippedEntry,
+)
 from devdoctor.discovery import ProviderFinished, ProviderStarted, ScanStarted
 from devdoctor.rendering import CleanupPresenter, render_diff_table, render_report_table
 from devdoctor.types import (
@@ -144,22 +150,14 @@ def test_plan_table_lists_every_entry_with_human_sizes_and_the_command() -> None
     uv = _entry("uv", 5_600_000_000)
     hint = _entry("hint", 0, provider="docker-vm-disk", risk=Risk.RECLAIMABLE)
     hint = dataclasses.replace(hint, actions=(AdviceAction("shrink the disk image"),))
-    p.on_event(
-        EntryResolved(
-            CleanResult(
-                entry_id="x",
-                status="skipped",
-                freed_bytes=0,
-                message="dangerous (pass --allow-dangerous to include)",
-            )
-        )
-    )
+    dangerous = _entry("x", 1, risk=Risk.DANGEROUS)
     p.on_event(
         ConfirmRequired(
             approved=[uv, hint],
             total_bytes=5_600_000_000,
             unknown_entries=1,
             plan=(_planned(uv), _planned(hint, None)),
+            skipped=(SkippedEntry(dangerous, "dangerous (pass --allow-dangerous to include)"),),
         )
     )
 
@@ -223,12 +221,12 @@ def test_summary_states_estimates_and_the_free_space_delta() -> None:
         CleanResult(entry_id="pip", status="ok", freed_bytes=700_000_000),
         CleanResult(entry_id="x", status="skipped", freed_bytes=0, message="declined"),
     ]
-    p.summary(results, free_before=70_000_000_000, free_after=70_500_000_000)
+    p.summary(results, free_before=70_000_000_000, free_after=70_200_000_000)
 
     out = console.export_text()
     assert "Done: 1 ok · 1 failed · 1 skipped" in out
     assert "~667.6M estimated reclaimed of ~5.9G planned" in out
-    assert "free space 65.2G → 65.7G (+476.8M)" in out
+    assert "free space 65.2G → 65.4G (+190.7M)" in out
     assert "APFS local snapshots can hold freed blocks" in out
     assert "recorded: devdoctor history" in out
 
@@ -245,6 +243,52 @@ def test_summary_omits_the_snapshot_hint_when_space_was_freed() -> None:
     )
     out = console.export_text()
     assert "APFS" not in out and "free space" in out
+
+
+def test_summary_omits_the_snapshot_hint_when_delta_is_exactly_half_reclaimed() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    pip = _entry("pip", 700_000_000, provider="pip-cache")
+    p.on_event(ConfirmRequired(approved=[pip], total_bytes=700_000_000, plan=(_planned(pip),)))
+    p.summary(
+        [CleanResult(entry_id="pip", status="ok", freed_bytes=700_000_000)],
+        free_before=1_000_000_000,
+        free_after=1_000_000_000 + 350_000_000,  # exactly reclaimed / 2
+    )
+    out = console.export_text()
+    assert "APFS" not in out
+
+
+def test_summary_states_nothing_to_clean_when_nothing_was_approved() -> None:
+    # No ConfirmRequired at all: nothing was approved, so the plan was never printed.
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    results = [
+        CleanResult(
+            entry_id="x",
+            status="skipped",
+            freed_bytes=0,
+            message="dangerous (pass --allow-dangerous to include)",
+        ),
+        CleanResult(entry_id="y", status="skipped", freed_bytes=0, message="declined"),
+    ]
+    p.summary(results, free_before=None, free_after=None)
+    out = console.export_text()
+    assert "Nothing to clean: 1 dangerous (pass --allow-dangerous to include), 1 declined" in out
+
+
+def test_summary_counts_dry_run_as_previewed_not_skipped() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    results = [
+        CleanResult(
+            entry_id="x", status="dry_run", freed_bytes=100, message="byte count is an estimate"
+        )
+    ]
+    p.summary(results, free_before=None, free_after=None)
+    out = console.export_text()
+    assert "0 skipped" in out
+    assert "1 previewed" in out
 
 
 def test_summary_without_disk_figures_omits_the_delta() -> None:
@@ -276,3 +320,21 @@ def test_control_characters_never_reach_the_console() -> None:
     evil = _entry("x\x1b]0;pwned\x07y", 10)
     p.on_event(ConfirmRequired(approved=[evil], total_bytes=10, plan=(_planned(evil),)))
     assert "\x1b" not in console.export_text()
+
+
+def test_execute_step_outside_executing_updates_text_without_a_status_thread() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    uv = _entry("uv", 100)
+    p.on_event(ConfirmRequired(approved=[uv], total_bytes=100, plan=(_planned(uv),)))
+    p.on_event(ExecuteStep(entry=uv, action=uv.actions[0]))
+    assert p._status is None
+    assert p.status_text.startswith("[1/1] running:")
+
+
+def test_executing_creates_a_status_that_is_gone_after_the_block() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    with p.executing():
+        assert p._status is not None
+    assert p._status is None

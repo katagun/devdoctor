@@ -49,6 +49,20 @@ class PromptRequired:
     entry: Entry
 
 
+@dataclass(frozen=True)
+class SkippedEntry:
+    """One candidate that will not run in this cleanup, and why (spec §4.3).
+
+    Selection-phase skips (dangerous, declined, provider-skip, quit) are decided
+    before ``ConfirmRequired`` is yielded, but only resolved into ``EntryResolved``
+    later, from ``_iter_execute`` — well after the observer has already seen and
+    acted on ``ConfirmRequired``. The presenter needs them on the event itself.
+    """
+
+    entry: Entry
+    reason: str
+
+
 @dataclass
 class ConfirmRequired:
     approved: list[Entry]
@@ -56,6 +70,8 @@ class ConfirmRequired:
     unknown_entries: int = 0
     # The approved entries in execution order, with what will run (spec §3.2).
     plan: tuple[PlannedEntry, ...] = ()
+    # Non-approved candidates, in selection order, with the reason each was skipped.
+    skipped: tuple[SkippedEntry, ...] = ()
 
 
 @dataclass
@@ -178,6 +194,7 @@ def iter_cleanup_events(report: Report, opts: CleanupOpts) -> Generator[CleanupE
         total_bytes=total_bytes,
         unknown_entries=unknown_entries,
         plan=_build_plan(selections),
+        skipped=_build_skipped(selections),
     )
     if not confirmed:
         yield from _resolve_aborted(selections)
@@ -286,6 +303,15 @@ def _build_plan(selections: list[tuple[Entry, SelectionState]]) -> tuple[Planned
         )
         for entry, state in _execution_order(selections)
         if state == "approved"
+    )
+
+
+def _build_skipped(selections: list[tuple[Entry, SelectionState]]) -> tuple[SkippedEntry, ...]:
+    """Non-approved candidates, in selection order, with why each was skipped."""
+    return tuple(
+        SkippedEntry(entry=entry, reason=_to_result(entry, state).message or state)
+        for entry, state in selections
+        if state != "approved"
     )
 
 
