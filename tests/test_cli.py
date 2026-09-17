@@ -2,6 +2,7 @@ import json
 import sys
 from pathlib import Path
 
+import click.testing
 from click.testing import CliRunner
 
 from devdoctor.cli import build_cli
@@ -131,6 +132,32 @@ def _fixture(tmp_path: Path, monkeypatch) -> Path:
     return cache
 
 
+def _reclaimable_fixture(tmp_path: Path, monkeypatch) -> Path:
+    """A YAML provider with one reclaimable (not safe) cache; returns the cache path."""
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "blob.bin").write_bytes(b"x" * 4096)
+    yaml = tmp_path / "p.yaml"
+    yaml.write_text(
+        f"""- name: sample-cache
+  description: sample
+  risk: reclaimable
+  platforms: [darwin, linux]
+  paths: ["{cache}"]
+  recipe: "rm -rf {{path}}"
+"""
+    )
+    monkeypatch.setenv("DEVDOCTOR_PATHS_YAML", str(yaml))
+    return cache
+
+
+class InterruptingShell(FakeShell):
+    """A FakeShell whose run() raises KeyboardInterrupt, as Ctrl-C mid-command would."""
+
+    def run(self, argv, *, check=False, timeout=None, env=None):
+        raise KeyboardInterrupt
+
+
 def test_clean_execute_prints_plan_progress_failure_and_records_the_run(tmp_path, monkeypatch):
     cache = _fixture(tmp_path, monkeypatch)
     shell = FakeShell(
@@ -143,10 +170,14 @@ def test_clean_execute_prints_plan_progress_failure_and_records_the_run(tmp_path
     )
 
     assert result.exit_code == 2, result.output
-    assert "Cleanup plan — 1 entries" in result.output
+    assert "Cleanup plan — 1 entry" in result.output
     assert "sample-cache" in result.output and "rm -rf --" in result.output
     assert "[1/1] ✗ sample-cache" in result.output
-    assert "failed: rm: cannot remove: boom" in result.output
+    # CliRunner's console is 80 columns and tmp_path is long, so the on-screen line
+    # truncates the failure text (F3); the full message still lands in the audit
+    # event below, which is the authoritative record spec §4.3 calls for.
+    assert "failed:" in result.output
+    assert "…" in result.output
     assert "Done: 0 ok · 1 failed · 0 skipped" in result.output
     assert "bytes" not in result.output.split("Done:")[1]
 
@@ -180,6 +211,60 @@ def test_clean_risk_filter_scopes_the_run(tmp_path, monkeypatch):
     assert "Cleanup plan" not in result.output
     assert shell.calls == []
     assert cache.exists()
+
+
+def test_clean_declined_at_confirm_records_an_aborted_outcome(tmp_path, monkeypatch):
+    _fixture(tmp_path, monkeypatch)
+    # CliRunner swaps in its own stdin object once invoke() starts, so the isatty
+    # patch on today's sys.stdin (in _fixture) never reaches it; patch the class
+    # CliRunner actually uses instead so the confirm-on-a-terminal gate lets us in.
+    monkeypatch.setattr(click.testing._NamedTextIOWrapper, "isatty", lambda self: True)
+    shell = FakeShell(which_table={"ollama": None, "docker": None})
+    # --yes-safe auto-approves the safe entry, but not the final confirm — "n"
+    # declines it there.
+    result = CliRunner().invoke(
+        build_cli(shell),
+        ["clean", "--execute", "--yes-safe", "--provider", "sample-cache"],
+        input="n\n",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert shell.calls == []
+    (event,) = build_storage().read_audit_events(limit=1)
+    assert event["outcome"] == "aborted"
+    assert event["results"][0]["message"] == "aborted at confirm"
+
+
+def test_clean_yes_without_a_tty_or_yes_safe_quits_at_the_per_entry_prompt(tmp_path, monkeypatch):
+    cache = _reclaimable_fixture(tmp_path, monkeypatch)
+    shell = FakeShell(which_table={"ollama": None, "docker": None})
+    # --yes only skips the final confirm; a reclaimable (not safe) entry still needs
+    # a per-entry prompt, and CliRunner's stdin is never a tty to answer it on.
+    result = CliRunner().invoke(
+        build_cli(shell), ["clean", "--execute", "--yes", "--provider", "sample-cache"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "quitting" in result.output
+    assert shell.calls == []
+    assert cache.exists()
+    (event,) = build_storage().read_audit_events(limit=1)
+    assert event["outcome"] == "aborted"
+
+
+def test_clean_ctrl_c_mid_run_records_interrupted_and_exits_130(tmp_path, monkeypatch):
+    cache = _fixture(tmp_path, monkeypatch)
+    shell = InterruptingShell(which_table={"ollama": None, "docker": None})
+    result = CliRunner().invoke(
+        build_cli(shell),
+        ["clean", "--execute", "--yes-safe", "--yes", "--provider", "sample-cache"],
+    )
+
+    assert result.exit_code == 130, result.output
+    assert "Done:" in result.output
+    assert cache.exists()
+    (event,) = build_storage().read_audit_events(limit=1)
+    assert event["outcome"] == "interrupted"
 
 
 def test_history_lists_runs_and_shows_one(tmp_path, monkeypatch):

@@ -13,7 +13,12 @@ from devdoctor.cleanup import (
     SkippedEntry,
 )
 from devdoctor.discovery import ProviderFinished, ProviderStarted, ScanStarted
-from devdoctor.rendering import CleanupPresenter, render_diff_table, render_report_table
+from devdoctor.rendering import (
+    CleanupPresenter,
+    render_diff_table,
+    render_history_run,
+    render_report_table,
+)
 from devdoctor.types import (
     AdviceAction,
     CleanResult,
@@ -170,6 +175,17 @@ def test_plan_table_lists_every_entry_with_human_sizes_and_the_command() -> None
     assert p.plan[0].entry.id == "uv"
 
 
+def test_plan_table_shows_unknown_for_an_entry_with_no_estimate() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    uv = _entry("uv", 100)
+    planned = PlannedEntry(entry=uv, actions=uv.actions, estimate_bytes=None)
+    p.on_event(ConfirmRequired(approved=[uv], total_bytes=0, plan=(planned,)))
+
+    out = console.export_text()
+    assert "unknown" in out
+
+
 def test_progress_lines_show_status_and_the_failure_reason() -> None:
     console = _console()
     p = CleanupPresenter(console, home=HOME)
@@ -207,6 +223,25 @@ def test_progress_lines_show_status_and_the_failure_reason() -> None:
     assert "[2/2] ✓ pip-cache" in out and "~667.6M" in out
 
 
+def test_a_very_long_failure_line_is_truncated_to_fit_one_line() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    uv = _entry("uv", 100)
+    p.on_event(ConfirmRequired(approved=[uv], total_bytes=100, plan=(_planned(uv),)))
+    p.on_event(
+        EntryResolved(CleanResult(entry_id="uv", status="error", freed_bytes=0, message="e" * 500))
+    )
+
+    out = console.export_text()
+    # If the detail wrapped onto a second physical line, that continuation line
+    # would also be a run of "e"s; there must be exactly one such line, and it
+    # must end with the truncation marker rather than a raw run of 500 "e"s.
+    e_lines = [ln for ln in out.splitlines() if "eee" in ln]
+    assert len(e_lines) == 1
+    assert e_lines[0].rstrip().endswith("…")
+    assert "e" * 500 not in out
+
+
 def test_summary_states_estimates_and_the_free_space_delta() -> None:
     console = _console()
     p = CleanupPresenter(console, home=HOME)
@@ -229,6 +264,23 @@ def test_summary_states_estimates_and_the_free_space_delta() -> None:
     assert "free space 65.2G → 65.4G (+190.7M)" in out
     assert "APFS local snapshots can hold freed blocks" in out
     assert "recorded: devdoctor history" in out
+
+
+def test_summary_reclaimed_bytes_overrides_the_sum_of_freed_bytes() -> None:
+    # The audit's estimate (hard-link de-duplicated) can differ from the raw sum
+    # of freed_bytes across results; when given, it wins (F7).
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    pip = _entry("pip", 700_000_000, provider="pip-cache")
+    p.on_event(ConfirmRequired(approved=[pip], total_bytes=700_000_000, plan=(_planned(pip),)))
+    p.summary(
+        [CleanResult(entry_id="pip", status="ok", freed_bytes=700_000_000)],
+        free_before=None,
+        free_after=None,
+        reclaimed_bytes=1,
+    )
+    out = console.export_text()
+    assert "~1B estimated reclaimed" in out
 
 
 def test_summary_omits_the_snapshot_hint_when_space_was_freed() -> None:
@@ -338,3 +390,30 @@ def test_executing_creates_a_status_that_is_gone_after_the_block() -> None:
     with p.executing():
         assert p._status is not None
     assert p._status is None
+
+
+def test_render_history_run_falls_back_to_results_for_events_recorded_before_the_plan() -> None:
+    # Events written before `plan` was added to the audit record (pre-#126) only
+    # have `results`; render those instead of an empty "(no plan recorded)" table.
+    console = _console()
+    event = {
+        "type": "cleanup",
+        "job_id": "abc",
+        "outcome": "ok",
+        "total_estimated_reclaimed_bytes": 100,
+        "results": [
+            {
+                "entry_id": "x",
+                "status": "ok",
+                "freed_bytes": 100,
+                "message": "done",
+                "bytes_verified": False,
+            }
+        ],
+    }
+    render_history_run(console, event)
+
+    out = console.export_text()
+    assert "x" in out
+    assert "ok" in out
+    assert "(no plan recorded)" not in out

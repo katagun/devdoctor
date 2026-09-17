@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import shutil
+import threading
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import click
 from rich.console import Console
 from rich.prompt import Confirm as RichConfirm
 from rich.prompt import Prompt
@@ -195,30 +197,50 @@ def render_history_run(console: Console, event: Mapping[str, object]) -> None:
     reclaimed = _human_bytes(_as_int(event.get("total_estimated_reclaimed_bytes")))
     console.print(
         Text(
-            f"{str(event.get('at', ''))[:19].replace('T', ' ')} · {event.get('source', 'web')} · "
-            f"{event.get('outcome', '')} · ~{reclaimed} "
+            f"{_strip_controls(str(event.get('at', ''))[:19].replace('T', ' '))} · "
+            f"{_strip_controls(str(event.get('source', 'web')))} · "
+            f"{_strip_controls(str(event.get('outcome', '')))} · ~{reclaimed} "
             f"estimated reclaimed · free {_free_delta(event)}",
             style="bold",
         )
     )
     plan = _as_list(event.get("plan"))
-    results = {r.get("entry_id"): r for r in _as_list(event.get("results"))}
-    table = Table(show_lines=False)
-    for name in ("#", "provider", "path", "est.", "action", "status", "message"):
-        table.add_column(name, overflow="fold" if name in ("path", "message") else "ellipsis")
-    for i, p in enumerate(plan, 1):
-        r = results.get(p.get("entry_id"), {})
-        actions = p.get("actions") or []
-        table.add_row(
-            str(i),
-            _safe_cell(str(p.get("provider", ""))),
-            _safe_cell(str(p.get("path") or p.get("label") or "")),
-            _estimated_bytes(p.get("estimate_bytes")).lstrip("~"),
-            _safe_cell(actions[0] if actions else "(no cleanup action)"),
-            str(r.get("status", "")),
-            _safe_cell(str(r.get("message") or "")),
-        )
-    if not plan:
+    results = _as_list(event.get("results"))
+    if plan:
+        by_id = {r.get("entry_id"): r for r in results}
+        table = Table(show_lines=False)
+        for name in ("#", "provider", "path", "est.", "action", "status", "message"):
+            table.add_column(name, overflow="fold" if name in ("path", "message") else "ellipsis")
+        for i, p in enumerate(plan, 1):
+            r = by_id.get(p.get("entry_id"), {})
+            actions = p.get("actions") or []
+            table.add_row(
+                str(i),
+                _safe_cell(str(p.get("provider", ""))),
+                _safe_cell(str(p.get("path") or p.get("label") or "")),
+                _estimated_bytes(p.get("estimate_bytes")).lstrip("~"),
+                _safe_cell(actions[0] if actions else "(no cleanup action)"),
+                str(r.get("status", "")),
+                _safe_cell(str(r.get("message") or "")),
+            )
+    elif results:
+        # Events written before the plan was recorded on the audit event (pre-#126)
+        # only have `results`; render those instead of an empty "(no plan recorded)" table.
+        table = Table(show_lines=False)
+        for name in ("#", "provider", "path", "status", "message"):
+            table.add_column(name, overflow="fold" if name in ("path", "message") else "ellipsis")
+        for i, r in enumerate(results, 1):
+            table.add_row(
+                str(i),
+                _safe_cell(str(r.get("provider") or "—")),
+                _safe_cell(str(r.get("path") or r.get("label") or r.get("entry_id") or "")),
+                str(r.get("status", "")),
+                _safe_cell(str(r.get("message") or "")),
+            )
+    else:
+        table = Table(show_lines=False)
+        for name in ("#", "provider", "path", "est.", "action", "status", "message"):
+            table.add_column(name, overflow="fold" if name in ("path", "message") else "ellipsis")
         table.add_row("(no plan recorded)", "", "", "", "", "", "")
     console.print(table)
 
@@ -265,6 +287,9 @@ class CleanupPresenter:
         self._scan_total = 0
         self._scan_done = 0
         self._scan_running: list[str] = []
+        # discovery.scan runs providers on a thread pool, so ProviderStarted/Finished
+        # events can land on different executor threads; guard the counters they mutate.
+        self._scan_lock = threading.Lock()
 
     # -- scan phase -------------------------------------------------------
 
@@ -277,21 +302,25 @@ class CleanupPresenter:
             self._clear_status()
 
     def scan_progress(self, event: ScanProgressEvent) -> None:
-        if isinstance(event, ScanStarted):
-            self._scan_total, self._scan_done, self._scan_running = len(event.providers), 0, []
-        elif isinstance(event, ProviderStarted):
-            self._scan_running.append(event.name)
-        elif isinstance(event, ProviderFinished):
-            self._scan_done += 1
-            if event.timing.name in self._scan_running:
-                self._scan_running.remove(event.timing.name)
-        if self._scan_total and self._scan_done == self._scan_total:
+        # discovery.scan delivers these from its executor threads; only the counter
+        # mutation needs the lock, not the (thread-safe) Rich status update below.
+        with self._scan_lock:
+            if isinstance(event, ScanStarted):
+                self._scan_total, self._scan_done, self._scan_running = len(event.providers), 0, []
+            elif isinstance(event, ProviderStarted):
+                self._scan_running.append(event.name)
+            elif isinstance(event, ProviderFinished):
+                self._scan_done += 1
+                if event.timing.name in self._scan_running:
+                    self._scan_running.remove(event.timing.name)
+            total, done, running = self._scan_total, self._scan_done, list(self._scan_running)
+        if total and done == total:
             self._set_status("scanning… reconciling")
             return
-        text = f"scanning… {self._scan_done}/{self._scan_total} providers"
-        if self._scan_running:
-            names = ", ".join(self._scan_running[:_MAX_RUNNING_NAMES])
-            more = len(self._scan_running) - _MAX_RUNNING_NAMES
+        text = f"scanning… {done}/{total} providers"
+        if running:
+            names = ", ".join(running[:_MAX_RUNNING_NAMES])
+            more = len(running) - _MAX_RUNNING_NAMES
             text += f" · running: {names}" + (f" +{more}" if more > 0 else "")
         self._set_status(text)
 
@@ -323,7 +352,8 @@ class CleanupPresenter:
 
     def _print_plan(self, event: ConfirmRequired) -> None:
         total = len(event.plan)
-        title = f"Cleanup plan — {total} entries, ~{_human_bytes(event.total_bytes)} estimated"
+        noun = "entry" if total == 1 else "entries"
+        title = f"Cleanup plan — {total} {noun}, ~{_human_bytes(event.total_bytes)} estimated"
         if event.unknown_entries:
             title += f" (+{event.unknown_entries} unknown)"
         table = Table(title=title, show_lines=False)
@@ -366,7 +396,14 @@ class CleanupPresenter:
         line = Text(f"[{n}/{len(self.plan)}] {mark} ")
         line.append(_strip_controls(planned.entry.provider).ljust(22))
         line.append(_strip_controls(self._short_path(planned.entry)).ljust(40) + "  ")
-        line.append(_strip_controls(detail))
+        # Spec §4.3: first line only, truncated to what's left of the console width
+        # after the columns already printed above — otherwise a long stderr line
+        # wraps onto a second physical line instead of reading as one entry.
+        detail = _strip_controls(detail)
+        budget = max(20, self._console.width - line.cell_len)
+        if len(detail) > budget:
+            detail = detail[: budget - 1] + "…"
+        line.append(detail)
         self._console.print(line)
 
     # -- prompts ------------------------------------------------------------
@@ -387,13 +424,19 @@ class CleanupPresenter:
         recipes = entry.recipe_lines()
         recipe_hint = _strip_controls(recipes[0]) if recipes else "(no cleanup action)"
         self._console.print(Text(f"  → {recipe_hint}"))
-        raw = Prompt.ask(
-            "[y]es / [n]o / [a]ll-in-provider / [s]kip-provider / [q]uit",
-            console=self._console,
-            choices=["y", "n", "a", "s", "q"],
-            default="n",
-            show_choices=False,
-        )
+        try:
+            raw = Prompt.ask(
+                "[y]es / [n]o / [a]ll-in-provider / [s]kip-provider / [q]uit",
+                console=self._console,
+                choices=["y", "n", "a", "s", "q"],
+                default="n",
+                show_choices=False,
+            )
+        except (EOFError, click.exceptions.Abort):
+            self._print_no_terminal()
+            if was_active:
+                self._start_status(self.status_text)
+            return "q"
         if was_active:
             self._start_status(self.status_text)
         return raw  # type: ignore[return-value]
@@ -402,10 +445,24 @@ class CleanupPresenter:
         was_active = self._status is not None
         if was_active:
             self._clear_status()
-        result = RichConfirm.ask(message, console=self._console, default=False)
+        try:
+            result = RichConfirm.ask(message, console=self._console, default=False)
+        except (EOFError, click.exceptions.Abort):
+            self._print_no_terminal()
+            if was_active:
+                self._start_status(self.status_text)
+            return False
         if was_active:
             self._start_status(self.status_text)
         return result
+
+    def _print_no_terminal(self) -> None:
+        self._console.print(
+            Text(
+                "no terminal to answer prompts on; quitting "
+                "(pass --yes-safe for unattended safe runs)"
+            )
+        )
 
     # -- summary --------------------------------------------------------------
 
@@ -415,12 +472,17 @@ class CleanupPresenter:
         *,
         free_before: int | None,
         free_after: int | None,
+        reclaimed_bytes: int | None = None,
     ) -> None:
         ok = sum(r.status == "ok" for r in results)
         failed = sum(r.status == "error" for r in results)
         skipped = sum(r.status == "skipped" for r in results)
         previewed = sum(r.status == "dry_run" for r in results)
-        reclaimed = sum(r.freed_bytes for r in results if r.status == "ok")
+        reclaimed = (
+            reclaimed_bytes
+            if reclaimed_bytes is not None
+            else sum(r.freed_bytes for r in results if r.status == "ok")
+        )
         planned = sum(p.estimate_bytes or 0 for p in self.plan)
         counts = f"Done: {ok} ok · {failed} failed · {skipped} skipped"
         if previewed:

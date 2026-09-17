@@ -115,6 +115,8 @@ def _free_bytes() -> int | None:
     Walks up to the nearest existing ancestor first: a non-existent (but
     otherwise valid) $HOME — as tests pin it, or a fresh account — would
     otherwise make ``disk_usage`` raise even though the volume is readable.
+    Note this means a missing $HOME mount can silently report the free space
+    of whatever volume holds its nearest existing ancestor (e.g. `/`) instead.
     """
     path = Path.home()
     try:
@@ -125,18 +127,38 @@ def _free_bytes() -> int | None:
         return None
 
 
+# Selection-phase skip messages (cleanup._resolve_aborted / _to_result) that mean
+# "nothing ran": the confirm was declined, or the user quit the per-entry prompts.
+_ABORTED_MESSAGES = frozenset({"aborted at confirm", "quit before confirm"})
+
+
+def _run_outcome(results: list[CleanResult]) -> str:
+    """Return "aborted" when the run never reached execution; "ok" otherwise (spec §7).
+
+    A completed run that includes failed entries is still "ok" — that ruling
+    stands; only a run with zero ok/error results (nothing executed) and at
+    least one confirm-decline/quit message counts as "aborted".
+    """
+    if any(r.status in ("ok", "error") for r in results):
+        return "ok"
+    if any(r.message in _ABORTED_MESSAGES for r in results):
+        return "aborted"
+    return "ok"
+
+
 def _record_run(
     report: Report,
     presenter: CleanupPresenter,
     results: list[CleanResult],
     free_before: int | None,
     free_after: int | None,
+    outcome: str | None = None,
 ) -> None:
     """Append the run to the audit log the web UI shares; never fails the run."""
     try:
         event = cleanup_audit.build_event(
             results,
-            "ok",
+            outcome or _run_outcome(results),
             source="cli",
             plan=presenter.plan,
             entries=report.entries,
@@ -254,7 +276,10 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         "--yes",
         "yes_all",
         is_flag=True,
-        help="Skip the final confirmation; the plan still prints. For scripts and agents.",
+        help=(
+            "Skip the final confirmation; the plan still prints. "
+            "Unattended runs also need --yes-safe."
+        ),
     )
     @click.option(
         "--allow-dangerous",
@@ -290,24 +315,38 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
             console.print("[dim]Preview only — re-run with --execute to perform cleanup.[/]")
             return
         free_before = _free_bytes()
-        with presenter.executing():
-            results = cleanup_run(
-                report,
-                shell=ctx.obj["shell"],
-                prompt_choice=presenter.prompt_choice,
-                confirm=(lambda _message: True) if yes_all else presenter.confirm,
-                opts=CleanupOpts(
-                    execute=True,
-                    yes_safe=yes_safe,
-                    allow_dangerous=allow_dangerous,
-                    providers=frozenset(providers) if providers else None,
-                ),
-                # Re-check each worktree immediately before removing it (#110).
-                verify=GitWorktreeProvider(ctx.obj["shell"]).verify_removable,
-                on_event=presenter.on_event,
-            )
+        try:
+            with presenter.executing():
+                results = cleanup_run(
+                    report,
+                    shell=ctx.obj["shell"],
+                    prompt_choice=presenter.prompt_choice,
+                    confirm=(lambda _message: True) if yes_all else presenter.confirm,
+                    opts=CleanupOpts(
+                        execute=True,
+                        yes_safe=yes_safe,
+                        allow_dangerous=allow_dangerous,
+                        providers=frozenset(providers) if providers else None,
+                    ),
+                    # Re-check each worktree immediately before removing it (#110).
+                    verify=GitWorktreeProvider(ctx.obj["shell"]).verify_removable,
+                    on_event=presenter.on_event,
+                )
+        except KeyboardInterrupt:
+            # A run interrupted mid-flight still gets a summary line and an audit
+            # record — silence here is exactly what spec issue #126 complains about.
+            free_after = _free_bytes()
+            presenter.summary([], free_before=free_before, free_after=free_after)
+            _record_run(report, presenter, [], free_before, free_after, outcome="interrupted")
+            sys.exit(130)
         free_after = _free_bytes()
-        presenter.summary(results, free_before=free_before, free_after=free_after)
+        reclaimed_bytes = cleanup_audit.estimated_reclaimed_bytes(report.entries, results)
+        presenter.summary(
+            results,
+            free_before=free_before,
+            free_after=free_after,
+            reclaimed_bytes=reclaimed_bytes,
+        )
         _record_run(report, presenter, results, free_before, free_after)
         if any(r.status == "error" for r in results):
             sys.exit(2)

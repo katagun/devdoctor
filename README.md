@@ -50,7 +50,8 @@ devdoctor providers                  # show registered providers and their avail
 Before anything runs, `clean --execute` prints the plan — every entry with its
 path, risk, estimated reclaim and the exact command — and asks once. While it
 runs, each entry prints a line as it finishes (`✓` done, `✗` failed with the
-command's error, `–` skipped with the reason). The summary states estimated
+command's error, `-` skipped with the reason, `·` advice-only — no command was
+run). The summary states estimated
 reclaimed versus planned and the measured free-space change; sizes are
 estimates, DevDoctor does not measure freed bytes. Every run is recorded;
 `devdoctor history` reads it back. On macOS, freed blocks can stay held by

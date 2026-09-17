@@ -234,12 +234,10 @@ def test_cli_clean_skips_a_worktree_committed_to_while_the_prompt_waits(
     monkeypatch.setattr(
         cli_module.CleanupPresenter, "prompt_choice", lambda self, entry: prompt_choice(entry)
     )
-    monkeypatch.setattr(cli_module.CleanupPresenter, "confirm", lambda self, message: True)
     monkeypatch.setattr(cli_module, "cleanup_run", recording_run)
 
     # CliRunner's stdin is never a real tty, so --yes is required to get past the
-    # confirm-on-a-terminal gate; the patched CleanupPresenter.confirm above still
-    # stands in for the (now skipped) final confirmation either way.
+    # confirm-on-a-terminal gate.
     outcome = CliRunner().invoke(build_cli(GitOnlyShell()), ["clean", "--execute", "--yes"])
 
     assert outcome.exit_code == 0, outcome.output
