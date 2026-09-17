@@ -1,17 +1,38 @@
 from __future__ import annotations
 
 import shutil
-from collections.abc import Iterator
+import threading
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
+import click
 from rich.console import Console
 from rich.prompt import Confirm as RichConfirm
 from rich.prompt import Prompt
+from rich.status import Status
 from rich.table import Table
 from rich.text import Text
 
-from devdoctor.types import Choice, Confirm, DiffReport, Entry, PromptChoice, Report, Risk
+from devdoctor.cleanup import (
+    CleanupEvent,
+    ConfirmRequired,
+    EntryResolved,
+    ExecuteStep,
+    PlannedEntry,
+)
+from devdoctor.discovery import ProviderFinished, ProviderStarted, ScanProgressEvent, ScanStarted
+from devdoctor.types import (
+    Choice,
+    CleanResult,
+    DiffReport,
+    Entry,
+    Report,
+    Risk,
+)
+from devdoctor.units import estimated_bytes, human_bytes, human_bytes_or_unknown
 
 # Every C0 control char (incl. ESC 0x1b and newline) plus DEL. Rich's own
 # strip_control_codes intentionally keeps ESC, so we drop these ourselves.
@@ -127,10 +148,267 @@ def render_diff_table(console: Console, diff: DiffReport) -> None:
     console.print(table)
 
 
-def real_prompts(console: Console) -> tuple[PromptChoice, Confirm]:
-    """Build the real Rich-backed prompt callables."""
+def _as_int(value: object) -> int:
+    return value if isinstance(value, int) else 0
 
-    def prompt_choice(entry: Entry) -> Choice:
+
+def _as_list(value: object) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def render_history(console: Console, events: Sequence[Mapping[str, object]]) -> None:
+    if not events:
+        console.print(Text("no cleanup runs recorded"))
+        return
+    table = Table(title="cleanup runs (newest first)")
+    columns = (
+        "#",
+        "when",
+        "source",
+        "outcome",
+        "ok",
+        "failed",
+        "skipped",
+        "est. reclaimed",
+        "free Δ",
+    )
+    right_aligned = ("#", "ok", "failed", "skipped")
+    for name in columns:
+        table.add_column(name, justify="right" if name in right_aligned else "left")
+    for i, e in enumerate(events, 1):
+        results = _as_list(e.get("results"))
+        ok = sum(r.get("status") == "ok" for r in results)
+        failed = sum(r.get("status") == "error" for r in results)
+        table.add_row(
+            str(i),
+            _strip_controls(str(e.get("at", ""))[:19].replace("T", " ")),
+            str(e.get("source", "web")),
+            str(e.get("outcome", "")),
+            f"{ok} ok",
+            str(failed),
+            str(len(results) - ok - failed),
+            f"~{_human_bytes(_as_int(e.get('total_estimated_reclaimed_bytes')))}",
+            _free_delta(e),
+        )
+    console.print(table)
+
+
+def render_history_run(console: Console, event: Mapping[str, object]) -> None:
+    reclaimed = _human_bytes(_as_int(event.get("total_estimated_reclaimed_bytes")))
+    console.print(
+        Text(
+            f"{_strip_controls(str(event.get('at', ''))[:19].replace('T', ' '))} · "
+            f"{_strip_controls(str(event.get('source', 'web')))} · "
+            f"{_strip_controls(str(event.get('outcome', '')))} · ~{reclaimed} "
+            f"estimated reclaimed · free {_free_delta(event)}",
+            style="bold",
+        )
+    )
+    plan = _as_list(event.get("plan"))
+    results = _as_list(event.get("results"))
+    if plan:
+        by_id = {r.get("entry_id"): r for r in results}
+        table = Table(show_lines=False)
+        for name in ("#", "provider", "path", "est.", "action", "status", "message"):
+            table.add_column(name, overflow="fold" if name in ("path", "message") else "ellipsis")
+        for i, p in enumerate(plan, 1):
+            r = by_id.get(p.get("entry_id"), {})
+            actions = p.get("actions") or []
+            table.add_row(
+                str(i),
+                _safe_cell(str(p.get("provider", ""))),
+                _safe_cell(str(p.get("path") or p.get("label") or "")),
+                _estimated_bytes(p.get("estimate_bytes")).lstrip("~"),
+                _safe_cell(actions[0] if actions else "(no cleanup action)"),
+                str(r.get("status", "")),
+                _safe_cell(str(r.get("message") or "")),
+            )
+    elif results:
+        # Events written before the plan was recorded on the audit event (pre-#126)
+        # only have `results`; render those instead of an empty "(no plan recorded)" table.
+        table = Table(show_lines=False)
+        for name in ("#", "provider", "path", "status", "message"):
+            table.add_column(name, overflow="fold" if name in ("path", "message") else "ellipsis")
+        for i, r in enumerate(results, 1):
+            table.add_row(
+                str(i),
+                _safe_cell(str(r.get("provider") or "—")),
+                _safe_cell(str(r.get("path") or r.get("label") or r.get("entry_id") or "")),
+                str(r.get("status", "")),
+                _safe_cell(str(r.get("message") or "")),
+            )
+    else:
+        table = Table(show_lines=False)
+        for name in ("#", "provider", "path", "est.", "action", "status", "message"):
+            table.add_column(name, overflow="fold" if name in ("path", "message") else "ellipsis")
+        table.add_row("(no plan recorded)", "", "", "", "", "", "")
+    console.print(table)
+
+
+def _free_delta(event: Mapping[str, object]) -> str:
+    before, after = event.get("free_before_bytes"), event.get("free_after_bytes")
+    if not isinstance(before, int) or not isinstance(after, int):
+        return "—"
+    delta = after - before
+    return f"{'+' if delta >= 0 else '-'}{_human_bytes(abs(delta))}"
+
+
+_MAX_RUNNING_NAMES = 3
+_SNAPSHOT_HINT = (
+    'APFS local snapshots can hold freed blocks; see docs "why did my free space not change"'
+)
+
+
+def _group_reasons(reasons: Iterable[str]) -> str:
+    """Group repeated reason strings into ``"N reason, M other-reason"``, in first-seen order."""
+    counts: dict[str, int] = {}
+    for reason in reasons:
+        counts[reason] = counts.get(reason, 0) + 1
+    return ", ".join(f"{n} {_strip_controls(reason)}" for reason, n in counts.items())
+
+
+class CleanupPresenter:
+    """Every line `devdoctor clean` prints, driven by cleanup and scan events (spec §4).
+
+    Serves the ``--execute`` path only: the preview (dry-run) path renders the report
+    table directly and never touches this class.
+
+    It only observes: a failure here is logged by the core and the run continues.
+    """
+
+    def __init__(self, console: Console, *, home: Path | None = None) -> None:
+        self._console = console
+        self._home = home or Path.home()
+        self._status: Status | None = None
+        self.status_text = ""
+        self.plan: tuple[PlannedEntry, ...] = ()
+        self._index: dict[str, int] = {}
+        self._plan_printed = False
+        self._scan_total = 0
+        self._scan_done = 0
+        self._scan_running: list[str] = []
+        # discovery.scan runs providers on a thread pool, so ProviderStarted/Finished
+        # events can land on different executor threads; guard the counters they mutate.
+        self._scan_lock = threading.Lock()
+
+    # -- scan phase -------------------------------------------------------
+
+    @contextmanager
+    def scanning(self) -> Iterator[None]:
+        self._start_status("scanning…")
+        try:
+            yield
+        finally:
+            self._clear_status()
+
+    def scan_progress(self, event: ScanProgressEvent) -> None:
+        # discovery.scan delivers these from its executor threads; only the counter
+        # mutation needs the lock, not the (thread-safe) Rich status update below.
+        with self._scan_lock:
+            if isinstance(event, ScanStarted):
+                self._scan_total, self._scan_done, self._scan_running = len(event.providers), 0, []
+            elif isinstance(event, ProviderStarted):
+                self._scan_running.append(event.name)
+            elif isinstance(event, ProviderFinished):
+                self._scan_done += 1
+                if event.timing.name in self._scan_running:
+                    self._scan_running.remove(event.timing.name)
+            total, done, running = self._scan_total, self._scan_done, list(self._scan_running)
+        if total and done == total:
+            self._set_status("scanning… reconciling")
+            return
+        text = f"scanning… {done}/{total} providers"
+        if running:
+            names = ", ".join(running[:_MAX_RUNNING_NAMES])
+            more = len(running) - _MAX_RUNNING_NAMES
+            text += f" · running: {names}" + (f" +{more}" if more > 0 else "")
+        self._set_status(text)
+
+    # -- cleanup events ---------------------------------------------------
+
+    @contextmanager
+    def executing(self) -> Iterator[None]:
+        self._start_status("cleaning…")
+        try:
+            yield
+        finally:
+            self._clear_status()
+
+    def on_event(self, event: CleanupEvent) -> None:
+        if isinstance(event, ConfirmRequired):
+            self.plan = event.plan
+            self._index = {p.entry.id: i + 1 for i, p in enumerate(event.plan)}
+            self._plan_printed = True
+            self._print_plan(event)
+        elif isinstance(event, ExecuteStep):
+            n = self._index.get(event.entry.id, 0)
+            self._set_status(f"[{n}/{len(self.plan)}] running: {_strip_controls(event.line)}")
+        elif isinstance(event, EntryResolved):
+            if event.result.entry_id in self._index:
+                self._print_result(event.result)
+            # Ids outside the plan are selection-phase skips: already summarised on
+            # ConfirmRequired's ``skipped``, or (nothing approved) in summary().
+        # PromptRequired and VerifyRequired need no output here.
+
+    def _print_plan(self, event: ConfirmRequired) -> None:
+        total = len(event.plan)
+        noun = "entry" if total == 1 else "entries"
+        title = f"Cleanup plan — {total} {noun}, ~{_human_bytes(event.total_bytes)} estimated"
+        if event.unknown_entries:
+            title += f" (+{event.unknown_entries} unknown)"
+        table = Table(title=title, show_lines=False)
+        table.add_column("#", justify="right")
+        table.add_column("provider", style="cyan")
+        table.add_column("risk", justify="center")
+        table.add_column("est.", justify="right")
+        table.add_column("path", overflow="fold")
+        table.add_column("action", overflow="ellipsis")
+        for i, planned in enumerate(event.plan, 1):
+            lines = planned.lines
+            action = lines[0] if lines else "(no cleanup action)"
+            if len(lines) > 1:
+                action += f" (+{len(lines) - 1} more)"
+            table.add_row(
+                str(i),
+                _safe_cell(planned.entry.provider),
+                _risk_label(planned.entry.risk),
+                _estimated_bytes(planned.estimate_bytes).lstrip("~"),
+                _safe_cell(self._short_path(planned.entry)),
+                _safe_cell(action),
+            )
+        self._console.print(table)
+        skipped = _group_reasons(s.reason for s in event.skipped)
+        if skipped:
+            self._console.print(Text(f"Not in this run: {skipped}", style="dim"))
+
+    def _print_result(self, result: CleanResult) -> None:
+        n = self._index[result.entry_id]
+        planned = self.plan[n - 1]
+        mark = {"ok": "✓", "error": "✗", "skipped": "-"}.get(result.status, "·")
+        if result.status == "skipped" and result.message == "advice only; no command executed":
+            mark = "·"
+        first_line = (result.message or "").splitlines()[0] if result.message else ""
+        detail = {
+            "ok": f"~{_human_bytes(result.freed_bytes)}" if result.freed_bytes else "done",
+            "error": f"failed: {first_line}",
+            "skipped": first_line if mark == "·" else f"skipped: {first_line}",
+        }.get(result.status, first_line)
+        line = Text(f"[{n}/{len(self.plan)}] {mark} ")
+        line.append(_strip_controls(planned.entry.provider).ljust(22))
+        line.append(_strip_controls(self._short_path(planned.entry)).ljust(40) + "  ")
+        # Spec §4.3: first line only, truncated to what's left of the console width
+        # after the columns already printed above — otherwise a long stderr line
+        # wraps onto a second physical line instead of reading as one entry.
+        detail = _strip_controls(detail)
+        budget = max(20, self._console.width - line.cell_len)
+        if len(detail) > budget:
+            detail = detail[: budget - 1] + "…"
+        line.append(detail)
+        self._console.print(line)
+
+    # -- prompts ------------------------------------------------------------
+
+    def prompt_choice(self, entry: Entry) -> Choice:
         header = Text()
         header.append(_strip_controls(entry.provider), style="bold")
         header.append(
@@ -139,23 +417,133 @@ def real_prompts(console: Console) -> tuple[PromptChoice, Confirm]:
             f"estimated reclaimable={_estimated_bytes(entry.reclaimable_bytes)}, "
             f"risk={_risk_label(entry.risk)})"
         )
-        console.print(header)
+        was_active = self._status is not None
+        if was_active:
+            self._clear_status()
+        self._console.print(header)
         recipes = entry.recipe_lines()
         recipe_hint = _strip_controls(recipes[0]) if recipes else "(no cleanup action)"
-        console.print(Text(f"  → {recipe_hint}"))
-        raw = Prompt.ask(
-            "[y]es / [n]o / [a]ll-in-provider / [s]kip-provider / [q]uit",
-            console=console,
-            choices=["y", "n", "a", "s", "q"],
-            default="n",
-            show_choices=False,
-        )
+        self._console.print(Text(f"  → {recipe_hint}"))
+        try:
+            raw = Prompt.ask(
+                "[y]es / [n]o / [a]ll-in-provider / [s]kip-provider / [q]uit",
+                console=self._console,
+                choices=["y", "n", "a", "s", "q"],
+                default="n",
+                show_choices=False,
+            )
+        except (EOFError, click.exceptions.Abort):
+            self._print_no_terminal()
+            if was_active:
+                self._start_status(self.status_text)
+            return "q"
+        if was_active:
+            self._start_status(self.status_text)
         return raw  # type: ignore[return-value]
 
-    def confirm(message: str) -> bool:
-        return RichConfirm.ask(message, console=console, default=False)
+    def confirm(self, message: str) -> bool:
+        was_active = self._status is not None
+        if was_active:
+            self._clear_status()
+        try:
+            result = RichConfirm.ask(message, console=self._console, default=False)
+        except (EOFError, click.exceptions.Abort):
+            self._print_no_terminal()
+            if was_active:
+                self._start_status(self.status_text)
+            return False
+        if was_active:
+            self._start_status(self.status_text)
+        return result
 
-    return prompt_choice, confirm
+    def _print_no_terminal(self) -> None:
+        self._console.print(
+            Text(
+                "no terminal to answer prompts on; quitting "
+                "(pass --yes-safe for unattended safe runs)"
+            )
+        )
+
+    # -- summary --------------------------------------------------------------
+
+    def summary(
+        self,
+        results: Sequence[CleanResult],
+        *,
+        free_before: int | None,
+        free_after: int | None,
+        reclaimed_bytes: int | None = None,
+    ) -> None:
+        ok = sum(r.status == "ok" for r in results)
+        failed = sum(r.status == "error" for r in results)
+        skipped = sum(r.status == "skipped" for r in results)
+        previewed = sum(r.status == "dry_run" for r in results)
+        reclaimed = (
+            reclaimed_bytes
+            if reclaimed_bytes is not None
+            else sum(r.freed_bytes for r in results if r.status == "ok")
+        )
+        planned = sum(p.estimate_bytes or 0 for p in self.plan)
+        counts = f"Done: {ok} ok · {failed} failed · {skipped} skipped"
+        if previewed:
+            counts += f" · {previewed} previewed"
+        self._console.print(
+            Text(
+                f"{counts} — "
+                f"~{_human_bytes(reclaimed)} estimated reclaimed of "
+                f"~{_human_bytes(planned)} planned",
+                style="bold",
+            )
+        )
+        if not self._plan_printed and skipped:
+            skip_messages = (r.message or "skipped" for r in results if r.status == "skipped")
+            self._console.print(Text(f"Nothing to clean: {_group_reasons(skip_messages)}"))
+        tail = ""
+        if free_before is not None and free_after is not None:
+            delta = free_after - free_before
+            sign = "+" if delta >= 0 else "-"
+            tail = (
+                f"free space {_human_bytes(free_before)} → {_human_bytes(free_after)} "
+                f"({sign}{_human_bytes(abs(delta))}) · "
+            )
+        self._console.print(Text(f"{tail}recorded: devdoctor history"))
+        if (
+            free_before is not None
+            and free_after is not None
+            and reclaimed
+            and free_after - free_before < reclaimed / 2
+        ):
+            self._console.print(Text(_SNAPSHOT_HINT, style="yellow"))
+
+    # -- helpers ---------------------------------------------------------------
+
+    def _short_path(self, entry: Entry) -> str:
+        if entry.path is None:
+            return entry.label
+        text = str(entry.path)
+        home = str(self._home)
+        return "~" + text[len(home) :] if text == home or text.startswith(home + "/") else text
+
+    def _start_status(self, text: str) -> None:
+        """Create and start a ``Status``. Only ``scanning()``/``executing()`` (and the
+        prompt/confirm pause-resume) may call this — it's the only place a background
+        render thread is spun up."""
+        self.status_text = text
+        self._status = self._console.status(text)
+        self._status.start()
+
+    def _set_status(self, text: str) -> None:
+        """Update the status text. Safe to call with no active ``Status`` (e.g. outside
+        ``scanning()``/``executing()``): ``status_text`` still reflects the latest
+        event, but no background render thread is created."""
+        self.status_text = text
+        if self._status is not None:
+            self._status.update(text)
+
+    def _clear_status(self) -> None:
+        if self._status is not None:
+            self._status.stop()
+            self._status = None
 
 
 @contextmanager
@@ -172,27 +560,12 @@ def _risk_label(risk: Risk) -> str:
     }[risk]
 
 
-_BYTES_UNIT_STEP = 1024
 _DAYS_PER_MONTH = 30
 _DAYS_PER_YEAR = 365
 
-
-def _human_bytes(n: int) -> str:
-    sign = "-" if n < 0 else ""
-    value: float = float(abs(n))
-    for unit in ("B", "K", "M", "G", "T", "P"):
-        if value < _BYTES_UNIT_STEP or unit == "P":
-            return f"{sign}{value:.0f}{unit}" if unit == "B" else f"{sign}{value:.1f}{unit}"
-        value /= _BYTES_UNIT_STEP
-    return f"{sign}{value:.1f}P"
-
-
-def _human_bytes_or_unknown(n: int | None) -> str:
-    return "unknown" if n is None else _human_bytes(n)
-
-
-def _estimated_bytes(n: int | None) -> str:
-    return "unknown" if n is None else f"~{_human_bytes(n)}"
+_human_bytes = human_bytes
+_human_bytes_or_unknown = human_bytes_or_unknown
+_estimated_bytes = estimated_bytes
 
 
 def _staleness(mtime: float | None) -> str:

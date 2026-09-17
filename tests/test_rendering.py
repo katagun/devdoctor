@@ -1,11 +1,35 @@
+import dataclasses
 from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 
 from rich.console import Console
 
-from devdoctor.rendering import render_diff_table, render_report_table
-from devdoctor.types import DiffReport, DiffRow, Entry, Report, Risk
+from devdoctor.cleanup import (
+    ConfirmRequired,
+    EntryResolved,
+    ExecuteStep,
+    PlannedEntry,
+    SkippedEntry,
+)
+from devdoctor.discovery import ProviderFinished, ProviderStarted, ScanStarted
+from devdoctor.rendering import (
+    CleanupPresenter,
+    render_diff_table,
+    render_history_run,
+    render_report_table,
+)
+from devdoctor.types import (
+    AdviceAction,
+    CleanResult,
+    DeletePathAction,
+    DiffReport,
+    DiffRow,
+    Entry,
+    ProviderTiming,
+    Report,
+    Risk,
+)
 
 
 def _rep(*entries) -> Report:
@@ -96,3 +120,300 @@ def test_render_diff_table_shows_deltas():
     assert "a" in out
     assert "b" in out
     assert "-80" in out
+
+
+HOME = Path("/Users/me")
+
+
+def _console() -> Console:
+    return Console(record=True, width=140, force_terminal=False, color_system=None)
+
+
+def _entry(id_: str, size: int | None, risk: Risk = Risk.SAFE, provider: str = "uv-cache") -> Entry:
+    path = HOME / ".cache" / id_
+    return Entry(
+        provider=provider,
+        id=id_,
+        path=path,
+        label=str(path),
+        size_bytes=size or 0,
+        mtime=None,
+        risk=risk,
+        recipe=[],
+        actions=(DeletePathAction(path, recursive=True),),
+    )
+
+
+def _planned(entry: Entry, estimate: int | None = None) -> PlannedEntry:
+    est = entry.size_bytes if estimate is None else estimate
+    return PlannedEntry(entry=entry, actions=entry.actions, estimate_bytes=est)
+
+
+def test_plan_table_lists_every_entry_with_human_sizes_and_the_command() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    uv = _entry("uv", 5_600_000_000)
+    hint = _entry("hint", 0, provider="docker-vm-disk", risk=Risk.RECLAIMABLE)
+    hint = dataclasses.replace(hint, actions=(AdviceAction("shrink the disk image"),))
+    dangerous = _entry("x", 1, risk=Risk.DANGEROUS)
+    p.on_event(
+        ConfirmRequired(
+            approved=[uv, hint],
+            total_bytes=5_600_000_000,
+            unknown_entries=1,
+            plan=(_planned(uv), _planned(hint, None)),
+            skipped=(SkippedEntry(dangerous, "dangerous (pass --allow-dangerous to include)"),),
+        )
+    )
+
+    out = console.export_text()
+    assert "Cleanup plan — 2 entries, ~5.2G estimated (+1 unknown)" in out
+    assert "uv-cache" in out and "~/.cache/uv" in out and "5.2G" in out
+    assert "rm -rf -- /Users/me/.cache/uv" in out
+    assert "docker-vm-disk" in out and "unknown" in out and "echo 'shrink the disk image'" in out
+    assert "Not in this run: 1 dangerous (pass --allow-dangerous to include)" in out
+    assert p.plan[0].entry.id == "uv"
+
+
+def test_plan_table_shows_unknown_for_an_entry_with_no_estimate() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    uv = _entry("uv", 100)
+    planned = PlannedEntry(entry=uv, actions=uv.actions, estimate_bytes=None)
+    p.on_event(ConfirmRequired(approved=[uv], total_bytes=0, plan=(planned,)))
+
+    out = console.export_text()
+    assert "unknown" in out
+
+
+def test_progress_lines_show_status_and_the_failure_reason() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    uv, pip = _entry("uv", 5_600_000_000), _entry("pip", 700_000_000, provider="pip-cache")
+    p.on_event(
+        ConfirmRequired(
+            approved=[uv, pip], total_bytes=6_300_000_000, plan=(_planned(uv), _planned(pip))
+        )
+    )
+    p.on_event(ExecuteStep(entry=uv, action=uv.actions[0]))
+    p.on_event(
+        EntryResolved(
+            CleanResult(
+                entry_id="uv",
+                status="error",
+                freed_bytes=0,
+                message="error: failed to clean\nsecond line",
+            )
+        )
+    )
+    p.on_event(
+        EntryResolved(
+            CleanResult(
+                entry_id="pip",
+                status="ok",
+                freed_bytes=700_000_000,
+                message="cleanup succeeded; byte count is an estimate",
+            )
+        )
+    )
+
+    out = console.export_text()
+    assert "[1/2] ✗ uv-cache" in out and "failed: error: failed to clean" in out
+    assert "second line" not in out
+    assert "[2/2] ✓ pip-cache" in out and "~667.6M" in out
+
+
+def test_a_very_long_failure_line_is_truncated_to_fit_one_line() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    uv = _entry("uv", 100)
+    p.on_event(ConfirmRequired(approved=[uv], total_bytes=100, plan=(_planned(uv),)))
+    p.on_event(
+        EntryResolved(CleanResult(entry_id="uv", status="error", freed_bytes=0, message="e" * 500))
+    )
+
+    out = console.export_text()
+    # If the detail wrapped onto a second physical line, that continuation line
+    # would also be a run of "e"s; there must be exactly one such line, and it
+    # must end with the truncation marker rather than a raw run of 500 "e"s.
+    e_lines = [ln for ln in out.splitlines() if "eee" in ln]
+    assert len(e_lines) == 1
+    assert e_lines[0].rstrip().endswith("…")
+    assert "e" * 500 not in out
+
+
+def test_summary_states_estimates_and_the_free_space_delta() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    uv, pip = _entry("uv", 5_600_000_000), _entry("pip", 700_000_000, provider="pip-cache")
+    p.on_event(
+        ConfirmRequired(
+            approved=[uv, pip], total_bytes=6_300_000_000, plan=(_planned(uv), _planned(pip))
+        )
+    )
+    results = [
+        CleanResult(entry_id="uv", status="error", freed_bytes=0, message="boom"),
+        CleanResult(entry_id="pip", status="ok", freed_bytes=700_000_000),
+        CleanResult(entry_id="x", status="skipped", freed_bytes=0, message="declined"),
+    ]
+    p.summary(results, free_before=70_000_000_000, free_after=70_200_000_000)
+
+    out = console.export_text()
+    assert "Done: 1 ok · 1 failed · 1 skipped" in out
+    assert "~667.6M estimated reclaimed of ~5.9G planned" in out
+    assert "free space 65.2G → 65.4G (+190.7M)" in out
+    assert "APFS local snapshots can hold freed blocks" in out
+    assert "recorded: devdoctor history" in out
+
+
+def test_summary_reclaimed_bytes_overrides_the_sum_of_freed_bytes() -> None:
+    # The audit's estimate (hard-link de-duplicated) can differ from the raw sum
+    # of freed_bytes across results; when given, it wins (F7).
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    pip = _entry("pip", 700_000_000, provider="pip-cache")
+    p.on_event(ConfirmRequired(approved=[pip], total_bytes=700_000_000, plan=(_planned(pip),)))
+    p.summary(
+        [CleanResult(entry_id="pip", status="ok", freed_bytes=700_000_000)],
+        free_before=None,
+        free_after=None,
+        reclaimed_bytes=1,
+    )
+    out = console.export_text()
+    assert "~1B estimated reclaimed" in out
+
+
+def test_summary_omits_the_snapshot_hint_when_space_was_freed() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    pip = _entry("pip", 700_000_000, provider="pip-cache")
+    p.on_event(ConfirmRequired(approved=[pip], total_bytes=700_000_000, plan=(_planned(pip),)))
+    p.summary(
+        [CleanResult(entry_id="pip", status="ok", freed_bytes=700_000_000)],
+        free_before=1_000_000_000,
+        free_after=1_700_000_000,
+    )
+    out = console.export_text()
+    assert "APFS" not in out and "free space" in out
+
+
+def test_summary_omits_the_snapshot_hint_when_delta_is_exactly_half_reclaimed() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    pip = _entry("pip", 700_000_000, provider="pip-cache")
+    p.on_event(ConfirmRequired(approved=[pip], total_bytes=700_000_000, plan=(_planned(pip),)))
+    p.summary(
+        [CleanResult(entry_id="pip", status="ok", freed_bytes=700_000_000)],
+        free_before=1_000_000_000,
+        free_after=1_000_000_000 + 350_000_000,  # exactly reclaimed / 2
+    )
+    out = console.export_text()
+    assert "APFS" not in out
+
+
+def test_summary_states_nothing_to_clean_when_nothing_was_approved() -> None:
+    # No ConfirmRequired at all: nothing was approved, so the plan was never printed.
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    results = [
+        CleanResult(
+            entry_id="x",
+            status="skipped",
+            freed_bytes=0,
+            message="dangerous (pass --allow-dangerous to include)",
+        ),
+        CleanResult(entry_id="y", status="skipped", freed_bytes=0, message="declined"),
+    ]
+    p.summary(results, free_before=None, free_after=None)
+    out = console.export_text()
+    assert "Nothing to clean: 1 dangerous (pass --allow-dangerous to include), 1 declined" in out
+
+
+def test_summary_counts_dry_run_as_previewed_not_skipped() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    results = [
+        CleanResult(
+            entry_id="x", status="dry_run", freed_bytes=100, message="byte count is an estimate"
+        )
+    ]
+    p.summary(results, free_before=None, free_after=None)
+    out = console.export_text()
+    assert "0 skipped" in out
+    assert "1 previewed" in out
+
+
+def test_summary_without_disk_figures_omits_the_delta() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    p.on_event(ConfirmRequired(approved=[], total_bytes=0, plan=()))
+    p.summary([], free_before=None, free_after=None)
+    out = console.export_text()
+    assert "Done: 0 ok · 0 failed · 0 skipped" in out and "free space" not in out
+
+
+def test_scan_progress_updates_the_spinner_text() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    with p.scanning():
+        p.scan_progress(ScanStarted(providers=("a", "b", "c", "d")))
+        p.scan_progress(ProviderStarted("a"))
+        p.scan_progress(ProviderStarted("b"))
+        assert p.status_text == "scanning… 0/4 providers · running: a, b"
+        p.scan_progress(
+            ProviderFinished(ProviderTiming(name="a", bytes=1, entries=1, duration_ms=1))
+        )
+        assert p.status_text == "scanning… 1/4 providers · running: b"
+
+
+def test_control_characters_never_reach_the_console() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    evil = _entry("x\x1b]0;pwned\x07y", 10)
+    p.on_event(ConfirmRequired(approved=[evil], total_bytes=10, plan=(_planned(evil),)))
+    assert "\x1b" not in console.export_text()
+
+
+def test_execute_step_outside_executing_updates_text_without_a_status_thread() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    uv = _entry("uv", 100)
+    p.on_event(ConfirmRequired(approved=[uv], total_bytes=100, plan=(_planned(uv),)))
+    p.on_event(ExecuteStep(entry=uv, action=uv.actions[0]))
+    assert p._status is None
+    assert p.status_text.startswith("[1/1] running:")
+
+
+def test_executing_creates_a_status_that_is_gone_after_the_block() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    with p.executing():
+        assert p._status is not None
+    assert p._status is None
+
+
+def test_render_history_run_falls_back_to_results_for_events_recorded_before_the_plan() -> None:
+    # Events written before `plan` was added to the audit record (pre-#126) only
+    # have `results`; render those instead of an empty "(no plan recorded)" table.
+    console = _console()
+    event = {
+        "type": "cleanup",
+        "job_id": "abc",
+        "outcome": "ok",
+        "total_estimated_reclaimed_bytes": 100,
+        "results": [
+            {
+                "entry_id": "x",
+                "status": "ok",
+                "freed_bytes": 100,
+                "message": "done",
+                "bytes_verified": False,
+            }
+        ],
+    }
+    render_history_run(console, event)
+
+    out = console.export_text()
+    assert "x" in out
+    assert "ok" in out
+    assert "(no plan recorded)" not in out

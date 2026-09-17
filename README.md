@@ -30,10 +30,13 @@ devdoctor recipe                     # emit a commented-out cleanup shell script
 devdoctor recipe --provider ollama   # only one section
 devdoctor recipe -o /tmp/cleanup.sh  # write to file
 
-devdoctor clean                      # preview (no prompts, no shell calls)
-devdoctor clean --execute            # interactive cleanup (per-entry prompts + final confirm)
-devdoctor clean --execute --yes-safe
-devdoctor clean --execute --allow-dangerous
+devdoctor clean                      # preview: the report table, no prompts, no shell calls
+devdoctor clean --execute            # shows the plan, prompts per entry, confirms once, then runs
+devdoctor clean --execute --yes-safe # safe entries need no per-entry prompt
+devdoctor clean --execute --yes-safe --yes   # unattended: plan still prints, no confirmation
+devdoctor clean --execute --risk safe --provider uv-cache   # scope a run
+devdoctor history                    # past cleanup runs (CLI and web UI share one log)
+devdoctor history 1                  # the newest run, entry by entry
 
 devdoctor snapshot --note "before cleanup"
 devdoctor diff                       # latest two snapshots
@@ -41,6 +44,19 @@ devdoctor diff --to live             # last snapshot vs current
 
 devdoctor providers                  # show registered providers and their availability
 ```
+
+### What a cleanup run shows
+
+Before anything runs, `clean --execute` prints the plan — every entry with its
+path, risk, estimated reclaim and the exact command — and asks once. While it
+runs, each entry prints a line as it finishes (`✓` done, `✗` failed with the
+command's error, `-` skipped with the reason, `·` advice-only — no command was
+run). The summary states estimated
+reclaimed versus planned and the measured free-space change; sizes are
+estimates, DevDoctor does not measure freed bytes. Every run is recorded;
+`devdoctor history` reads it back. On macOS, freed blocks can stay held by
+APFS local snapshots for a while — the summary says so when the measured
+change is far below the estimate.
 
 ## Safety model
 

@@ -14,6 +14,12 @@ entries under a versioned heading as described in
 
 ### Changed
 
+- **`devdoctor clean --execute` shows what it will do before it does it.** The
+  itemized plan (path, risk, estimated reclaim, exact command) prints before
+  the single confirmation whatever the flags; each entry prints a line as it
+  finishes, with the command's error when it fails; the summary states
+  estimated reclaimed versus planned and the measured free-space change, in
+  human units. The scan phase names the running providers. (#126)
 - **Project scans follow a marker-anchored depth budget instead of a flat cap.**
   Both project-walking providers measured depth from the scan root and stopped at
   six levels, which a normal monorepo inside a worktree exhausts immediately
@@ -59,6 +65,9 @@ entries under a versioned heading as described in
 
 ### Added
 
+- **`devdoctor history`** lists past cleanup runs — CLI and web UI now write one
+  audit log — and shows a run entry by entry. `clean` gains `--yes` (skip the
+  final confirmation only; the plan still prints) and `--risk`. (#126)
 - **Live scan progress in the web UI.** While a scan runs, the Disk page shows
   how many providers have finished, the bytes found so far and which providers
   are running, ahead of the countdown from past scans; the Dashboard's loading

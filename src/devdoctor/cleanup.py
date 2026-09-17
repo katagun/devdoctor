@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
@@ -27,6 +28,9 @@ from devdoctor.types import (
     estimated_reclaimable_bytes,
     render_cleanup_action,
 )
+from devdoctor.units import human_bytes
+
+logger = logging.getLogger(__name__)
 
 _ASCII_SPACE = 0x20  # first printable char; anything below is a C0 control
 _ASCII_DEL = 0x7F
@@ -45,11 +49,29 @@ class PromptRequired:
     entry: Entry
 
 
+@dataclass(frozen=True)
+class SkippedEntry:
+    """One candidate that will not run in this cleanup, and why (spec §4.3).
+
+    Selection-phase skips (dangerous, declined, provider-skip, quit) are decided
+    before ``ConfirmRequired`` is yielded, but only resolved into ``EntryResolved``
+    later, from ``_iter_execute`` — well after the observer has already seen and
+    acted on ``ConfirmRequired``. The presenter needs them on the event itself.
+    """
+
+    entry: Entry
+    reason: str
+
+
 @dataclass
 class ConfirmRequired:
     approved: list[Entry]
     total_bytes: int
     unknown_entries: int = 0
+    # The approved entries in execution order, with what will run (spec §3.2).
+    plan: tuple[PlannedEntry, ...] = ()
+    # Non-approved candidates, in selection order, with the reason each was skipped.
+    skipped: tuple[SkippedEntry, ...] = ()
 
 
 @dataclass
@@ -69,6 +91,19 @@ class ExecuteStep:
         return render_cleanup_action(self.action)
 
 
+@dataclass(frozen=True)
+class PlannedEntry:
+    """One approved entry as it will run: the same actions ``_run_actions`` executes."""
+
+    entry: Entry
+    actions: tuple[CleanupAction, ...]
+    estimate_bytes: int | None
+
+    @property
+    def lines(self) -> tuple[str, ...]:
+        return tuple(render_cleanup_action(action) for action in self.actions)
+
+
 @dataclass
 class VerifyRequired:
     """Asks whether a worktree is still removable, immediately before it is removed.
@@ -85,6 +120,20 @@ class EntryResolved:
 
 
 CleanupEvent = PromptRequired | ConfirmRequired | VerifyRequired | ExecuteStep | EntryResolved
+
+# Sees every event before the adapter answers it; presentation only (spec §3.1).
+CleanupObserver = Callable[[CleanupEvent], None]
+
+
+def _notify_observer(on_event: CleanupObserver | None, event: CleanupEvent) -> None:
+    """Deliver one event; an observer that raises is logged and can never alter a run."""
+    if on_event is None:
+        return
+    try:
+        on_event(event)
+    except Exception:
+        logger.warning("cleanup observer failed on %s", type(event).__name__, exc_info=True)
+
 
 # Re-checks an entry against current state: None if it is still removable, else why not.
 Verify = Callable[[Entry], Refusal | None]
@@ -144,6 +193,8 @@ def iter_cleanup_events(report: Report, opts: CleanupOpts) -> Generator[CleanupE
         approved=approved,
         total_bytes=total_bytes,
         unknown_entries=unknown_entries,
+        plan=_build_plan(selections),
+        skipped=_build_skipped(selections),
     )
     if not confirmed:
         yield from _resolve_aborted(selections)
@@ -233,6 +284,37 @@ def _resolve_aborted(
             yield EntryResolved(_to_result(e, state))
 
 
+def _execution_order(
+    selections: list[tuple[Entry, SelectionState]],
+) -> list[tuple[Entry, SelectionState]]:
+    """Approved reclaimable worktrees first (spec §6.4); otherwise selection order."""
+    return sorted(
+        selections,
+        key=lambda item: not (item[1] == "approved" and is_reclaimable_worktree(item[0])),
+    )
+
+
+def _build_plan(selections: list[tuple[Entry, SelectionState]]) -> tuple[PlannedEntry, ...]:
+    return tuple(
+        PlannedEntry(
+            entry=entry,
+            actions=tuple(entry.cleanup_actions()),
+            estimate_bytes=entry.reclaimable_bytes,
+        )
+        for entry, state in _execution_order(selections)
+        if state == "approved"
+    )
+
+
+def _build_skipped(selections: list[tuple[Entry, SelectionState]]) -> tuple[SkippedEntry, ...]:
+    """Non-approved candidates, in selection order, with why each was skipped."""
+    return tuple(
+        SkippedEntry(entry=entry, reason=_to_result(entry, state).message or state)
+        for entry, state in selections
+        if state != "approved"
+    )
+
+
 def _iter_execute(
     selections: list[tuple[Entry, SelectionState]],
 ) -> Generator[CleanupEvent, object, None]:
@@ -242,10 +324,7 @@ def _iter_execute(
     removal succeeded in this run is already gone, so it resolves as skipped instead of
     running; if the removal was declined or failed, the entry runs normally (spec §6.4).
     """
-    worktrees_first = sorted(
-        selections,
-        key=lambda item: not (item[1] == "approved" and is_reclaimable_worktree(item[0])),
-    )
+    worktrees_first = _execution_order(selections)
     # Resolved before anything runs: a removed directory can no longer be resolved.
     real = {
         entry.id: os.path.realpath(entry.path)
@@ -346,6 +425,7 @@ def run(
     confirm: Confirm,
     opts: CleanupOpts,
     verify: Verify | None = None,
+    on_event: CleanupObserver | None = None,
 ) -> list[CleanResult]:
     """Sync adapter over iter_cleanup_events. Preserves the v1 signature and behavior."""
     gen = iter_cleanup_events(report, opts)
@@ -353,6 +433,7 @@ def run(
     try:
         event = next(gen)
         while True:
+            _notify_observer(on_event, event)
             if isinstance(event, PromptRequired):
                 event = gen.send(prompt_choice(event.entry))
             elif isinstance(event, ConfirmRequired):
@@ -378,6 +459,7 @@ async def run_async(
     confirm: AsyncConfirm,
     opts: CleanupOpts,
     verify: Verify | None = None,
+    on_event: CleanupObserver | None = None,
 ) -> list[CleanResult]:
     """Async adapter over iter_cleanup_events. The web backend uses this."""
     gen = iter_cleanup_events(report, opts)
@@ -385,6 +467,7 @@ async def run_async(
     try:
         event = next(gen)
         while True:
+            _notify_observer(on_event, event)
             if isinstance(event, PromptRequired):
                 answer = await prompt_choice(event.entry)
                 event = gen.send(answer)
@@ -411,13 +494,11 @@ async def answer_verify(verify: Verify | None, entry: Entry) -> Refusal | None:
 
 
 def _confirm_summary(event: ConfirmRequired) -> str:
-    summary = (
-        f"Execute cleanup for {len(event.approved)} entries, "
-        f"estimated reclaimable space ~{event.total_bytes} bytes"
-    )
+    estimate = human_bytes(event.total_bytes)
+    summary = f"Execute these {len(event.approved)} entries (~{estimate} estimated"
     if event.unknown_entries:
-        summary += f" plus {event.unknown_entries} unknown estimate(s)"
-    return summary + "?"
+        summary += f", +{event.unknown_entries} unknown"
+    return summary + ")?"
 
 
 def _select_candidates(report: Report, opts: CleanupOpts) -> list[Entry]:

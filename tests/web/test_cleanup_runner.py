@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from devdoctor.storage import build_storage
 from devdoctor.types import (
     CleanupOpts,
     CommandAction,
@@ -284,3 +285,24 @@ async def test_cancelling_while_verification_runs_never_removes_the_worktree():
     assert ran == []
     assert "execute_start" not in [event["event"] for event in events]
     assert events[-1]["data"]["cancelled"] is True
+
+
+async def test_web_audit_event_names_its_source_and_plan():
+    entry = _e("a", "1", 100, recipe=["rm -rf /1"])
+    rep = _report(entry)
+
+    async def fake_run_line(_argv: tuple[str, ...]) -> ShellResult:
+        return ShellResult(0, "", "")
+
+    runner = CleanupRunner(report=rep, opts=CleanupOpts(execute=True), run_line=fake_run_line)
+    task = asyncio.create_task(runner.run())
+    await _approve_and_confirm(runner, entry.id)
+    await _events_until_done(runner)
+    results = await task
+    assert [r.status for r in results] == ["ok"]
+
+    events = build_storage().read_audit_events(limit=1)
+    assert events[0]["source"] == "web"
+    assert events[0]["job_id"] == runner.id
+    assert [p["entry_id"] for p in events[0]["plan"]] == [entry.id]
+    assert events[0]["results"][0]["provider"] == entry.provider

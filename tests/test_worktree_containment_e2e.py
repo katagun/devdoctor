@@ -141,7 +141,11 @@ async def test_an_id_from_a_dangerous_view_can_start_a_cleanup(
 def test_cli_clean_execute_removes_an_integrated_worktree(integrated, empty_paths_yaml):
     repo, worktree = integrated
 
-    result = CliRunner().invoke(build_cli(GitOnlyShell()), ["clean", "--execute"], input="y\ny\n")
+    # CliRunner's stdin is never a real tty, so --yes is required to get past the
+    # confirm-on-a-terminal gate; the per-entry prompt still reads "y" from input.
+    result = CliRunner().invoke(
+        build_cli(GitOnlyShell()), ["clean", "--execute", "--yes"], input="y\ny\n"
+    )
 
     assert result.exit_code == 0, result.output
     assert not worktree.path.exists()
@@ -227,10 +231,14 @@ def test_cli_clean_skips_a_worktree_committed_to_while_the_prompt_waits(
         results.extend(cleanup.run(*args, **kwargs))
         return results
 
-    monkeypatch.setattr(cli_module, "real_prompts", lambda console: (prompt_choice, lambda s: True))
+    monkeypatch.setattr(
+        cli_module.CleanupPresenter, "prompt_choice", lambda self, entry: prompt_choice(entry)
+    )
     monkeypatch.setattr(cli_module, "cleanup_run", recording_run)
 
-    outcome = CliRunner().invoke(build_cli(GitOnlyShell()), ["clean", "--execute"])
+    # CliRunner's stdin is never a real tty, so --yes is required to get past the
+    # confirm-on-a-terminal gate.
+    outcome = CliRunner().invoke(build_cli(GitOnlyShell()), ["clean", "--execute", "--yes"])
 
     assert outcome.exit_code == 0, outcome.output
     [result] = [r for r in results if r.entry_id.startswith("git-worktrees:")]

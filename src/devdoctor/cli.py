@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+import logging
 import re
+import shutil
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -9,7 +12,8 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from devdoctor import discovery, history, registry
+from devdoctor import cleanup_audit, discovery, registry
+from devdoctor import history as history_mod
 from devdoctor.cleanup import build_script
 from devdoctor.cleanup import run as cleanup_run
 from devdoctor.config import load_app_settings
@@ -17,13 +21,15 @@ from devdoctor.logging_config import configure_logging
 from devdoctor.ports import RealShell, Shell
 from devdoctor.providers.git_worktrees import GitWorktreeProvider
 from devdoctor.rendering import (
-    real_prompts,
+    CleanupPresenter,
     render_diff_table,
+    render_history,
+    render_history_run,
     render_report_table,
     spinner,
 )
 from devdoctor.storage import build_storage
-from devdoctor.types import CleanupOpts, Risk, ScanFilters
+from devdoctor.types import CleanResult, CleanupOpts, Report, Risk, ScanFilters
 
 _SIZE_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([KMGT]?)$", re.IGNORECASE)
 _SIZE_MULT = {"": 1, "K": 1_000, "M": 1_000_000, "G": 1_000_000_000, "T": 1_000_000_000_000}
@@ -101,6 +107,76 @@ def _parse_risks(values: tuple[str, ...]) -> frozenset[Risk] | None:
         return frozenset(Risk(v.strip()) for v in flat if v.strip())
     except ValueError as e:
         raise click.BadParameter(str(e)) from e
+
+
+def _free_bytes() -> int | None:
+    """Free bytes on the volume holding the home directory; None when unavailable.
+
+    Walks up to the nearest existing ancestor first: a non-existent (but
+    otherwise valid) $HOME — as tests pin it, or a fresh account — would
+    otherwise make ``disk_usage`` raise even though the volume is readable.
+    Note this means a missing $HOME mount can silently report the free space
+    of whatever volume holds its nearest existing ancestor (e.g. `/`) instead.
+    """
+    path = Path.home()
+    try:
+        while not path.exists():
+            path = path.parent
+        return shutil.disk_usage(path).free
+    except OSError:
+        return None
+
+
+# Selection-phase skip messages (cleanup._resolve_aborted / _to_result) that mean
+# "nothing ran": the confirm was declined, or the user quit the per-entry prompts.
+_ABORTED_MESSAGES = frozenset({"aborted at confirm", "quit before confirm"})
+
+
+def _run_outcome(results: list[CleanResult]) -> str:
+    """Return "aborted" when the run never reached execution; "ok" otherwise (spec §7).
+
+    A completed run that includes failed entries is still "ok" — that ruling
+    stands; only a run with zero ok/error results (nothing executed) and at
+    least one confirm-decline/quit message counts as "aborted".
+    """
+    if any(r.status in ("ok", "error") for r in results):
+        return "ok"
+    if any(r.message in _ABORTED_MESSAGES for r in results):
+        return "aborted"
+    return "ok"
+
+
+def _record_run(
+    report: Report,
+    presenter: CleanupPresenter,
+    results: list[CleanResult],
+    free_before: int | None,
+    free_after: int | None,
+    outcome: str | None = None,
+) -> None:
+    """Append the run to the audit log the web UI shares; never fails the run."""
+    try:
+        event = cleanup_audit.build_event(
+            results,
+            outcome or _run_outcome(results),
+            source="cli",
+            plan=presenter.plan,
+            entries=report.entries,
+            free_before=free_before,
+            free_after=free_after,
+        )
+        build_storage(load_app_settings()).append_audit_event(event)
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "cleanup audit write failed; run not recorded", exc_info=True
+        )
+
+
+def _find_run(events: list[dict[str, object]], ref: str) -> dict[str, object] | None:
+    if ref.isdigit():
+        index = int(ref)
+        return events[index - 1] if 1 <= index <= len(events) else None
+    return next((e for e in events if e.get("job_id") == ref), None)
 
 
 def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
@@ -182,46 +258,97 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
             output.write_text(script)
 
     @cli.command()
-    @click.option("--provider", "providers", multiple=True)
-    @click.option("--execute", is_flag=True)
-    @click.option("--yes-safe", is_flag=True)
-    @click.option("--allow-dangerous", is_flag=True)
+    @click.option("--provider", "providers", multiple=True, help="Limit to these providers.")
+    @click.option(
+        "--risk",
+        "risk",
+        multiple=True,
+        help=(
+            "Include only these risks (safe, reclaimable, dangerous; "
+            "repeatable or comma-separated)."
+        ),
+    )
+    @click.option("--execute", is_flag=True, help="Run the cleanup. Without it, preview only.")
+    @click.option(
+        "--yes-safe", is_flag=True, help="Approve safe entries without a per-entry prompt."
+    )
+    @click.option(
+        "--yes",
+        "yes_all",
+        is_flag=True,
+        help=(
+            "Skip the final confirmation; the plan still prints. "
+            "Unattended runs also need --yes-safe."
+        ),
+    )
+    @click.option(
+        "--allow-dangerous",
+        is_flag=True,
+        help="Offer dangerous entries too (they are skipped otherwise).",
+    )
     @click.pass_context
     def clean(
         ctx: click.Context,
         providers: tuple[str, ...],
+        risk: tuple[str, ...],
         execute: bool,
         yes_safe: bool,
+        yes_all: bool,
         allow_dangerous: bool,
     ) -> None:
+        """Clean up caches found by a scan: preview by default, act with --execute."""
+        if execute and not yes_all and not sys.stdin.isatty():
+            raise click.ClickException("no terminal to confirm on; pass --yes to run unattended")
         providers_list = registry.load_providers(ctx.obj["shell"])
-        filters = ScanFilters(providers=frozenset(providers) if providers else None)
+        filters = ScanFilters(
+            risks=_parse_risks(risk),
+            providers=frozenset(providers) if providers else None,
+        )
         console = Console()
-        with spinner(console, "Scanning..."):
-            report = discovery.scan(providers_list, filters, datetime.now(UTC))
+        presenter = CleanupPresenter(console)
+        with presenter.scanning():
+            report = discovery.scan(
+                providers_list, filters, datetime.now(UTC), on_progress=presenter.scan_progress
+            )
         if not execute:
             render_report_table(console, report)
             console.print("[dim]Preview only — re-run with --execute to perform cleanup.[/]")
             return
-        pc, cf = real_prompts(console)
-        results = cleanup_run(
-            report,
-            shell=ctx.obj["shell"],
-            prompt_choice=pc,
-            confirm=cf,
-            opts=CleanupOpts(
-                execute=True,
-                yes_safe=yes_safe,
-                allow_dangerous=allow_dangerous,
-                providers=frozenset(providers) if providers else None,
-            ),
-            # Re-check each worktree immediately before removing it (#110).
-            verify=GitWorktreeProvider(ctx.obj["shell"]).verify_removable,
+        free_before = _free_bytes()
+        try:
+            with presenter.executing():
+                results = cleanup_run(
+                    report,
+                    shell=ctx.obj["shell"],
+                    prompt_choice=presenter.prompt_choice,
+                    confirm=(lambda _message: True) if yes_all else presenter.confirm,
+                    opts=CleanupOpts(
+                        execute=True,
+                        yes_safe=yes_safe,
+                        allow_dangerous=allow_dangerous,
+                        providers=frozenset(providers) if providers else None,
+                    ),
+                    # Re-check each worktree immediately before removing it (#110).
+                    verify=GitWorktreeProvider(ctx.obj["shell"]).verify_removable,
+                    on_event=presenter.on_event,
+                )
+        except KeyboardInterrupt:
+            # A run interrupted mid-flight still gets a summary line and an audit
+            # record — silence here is exactly what spec issue #126 complains about.
+            free_after = _free_bytes()
+            presenter.summary([], free_before=free_before, free_after=free_after)
+            _record_run(report, presenter, [], free_before, free_after, outcome="interrupted")
+            sys.exit(130)
+        free_after = _free_bytes()
+        reclaimed_bytes = cleanup_audit.estimated_reclaimed_bytes(report.entries, results)
+        presenter.summary(
+            results,
+            free_before=free_before,
+            free_after=free_after,
+            reclaimed_bytes=reclaimed_bytes,
         )
-        freed = sum(r.freed_bytes for r in results if r.status == "ok")
-        failures = [r for r in results if r.status == "error"]
-        console.print(f"[bold]Estimated reclaimed ~{freed} bytes; {len(failures)} error(s).[/]")
-        if failures:
+        _record_run(report, presenter, results, free_before, free_after)
+        if any(r.status == "error" for r in results):
             sys.exit(2)
 
     @cli.command()
@@ -247,7 +374,7 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         if from_:
             before_path = Path(from_)
             before = (
-                history.load_snapshot(before_path)
+                history_mod.load_snapshot(before_path)
                 if before_path.is_file()
                 else storage.load_disk_snapshot(from_)
             )
@@ -262,14 +389,14 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         elif to_:
             after_path = Path(to_)
             after = (
-                history.load_snapshot(after_path)
+                history_mod.load_snapshot(after_path)
                 if after_path.is_file()
                 else storage.load_disk_snapshot(to_)
             )
         else:
             after = storage.load_disk_snapshot(recent[0].name)
 
-        d = history.diff(before, after)
+        d = history_mod.diff(before, after)
         render_diff_table(Console(), d)
 
     @cli.command()
@@ -292,6 +419,35 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
                 "yes" if p.available() else "no",
             )
         console.print(table)
+
+    @cli.command()
+    @click.argument("ref", required=False)
+    @click.option("--limit", default=20, show_default=True, help="Runs to list.")
+    @click.option("--json", "json_out", is_flag=True, help="Emit the raw audit events.")
+    @click.pass_context
+    def history(ctx: click.Context, ref: str | None, limit: int, json_out: bool) -> None:
+        """Past cleanup runs: list them, or show one by number (1 = newest) or web job id."""
+        del ctx
+        events = [
+            e
+            for e in build_storage(load_app_settings()).read_audit_events(limit=None)
+            if e.get("type") == "cleanup"
+        ]
+        console = Console()
+        if ref is None:
+            shown = events[:limit]
+            if json_out:
+                click.echo(json.dumps(shown, indent=2))
+                return
+            render_history(console, shown)
+            return
+        run = _find_run(events, ref)
+        if run is None:
+            raise click.ClickException(f"no cleanup run {ref!r}")
+        if json_out:
+            click.echo(json.dumps(run, indent=2))
+            return
+        render_history_run(console, run)
 
     @cli.command()
     @click.option(
