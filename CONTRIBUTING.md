@@ -57,6 +57,10 @@ commit.
 
 ## Conventions
 
+- **Presentation observes, never decides.** `cleanup.iter_cleanup_events` is the
+  one state machine; the CLI presenter and the web runner only observe its
+  events (`on_event`) and answer its prompts. Output code lives in
+  `rendering.py`, never in `cleanup.py`.
 - **Tests are required** for behavior changes and bug fixes. The suite is the
   contract — a fix without a regression test can silently come back.
 - **Match the surrounding code.** Keep comments to constraints and intent the
