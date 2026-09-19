@@ -56,7 +56,8 @@ reclaimed versus planned and the measured free-space change; sizes are
 estimates, DevDoctor does not measure freed bytes. Every run is recorded;
 `devdoctor history` reads it back. On macOS, freed blocks can stay held by
 APFS local snapshots for a while — the summary says so when the measured
-change is far below the estimate.
+change is far below the estimate. The `time-machine-local-snapshots` provider
+(macOS only) lists those snapshots and offers to delete all but the newest.
 
 ## Safety model
 
@@ -74,8 +75,9 @@ change is far below the estimate.
 
 Provider families now cover JavaScript (npm, pnpm, Yarn, Bun, and bounded
 `node_modules` discovery), Python/Conda, Go, Rust/Cargo, .NET/NuGet, Android,
-Xcode/iOS, containers, browsers, desktop applications, local AI tooling, and git
-worktrees. Project discovery is bounded to common code roots or the
+Xcode/iOS, containers, browsers, desktop applications, local AI tooling, git
+worktrees, and Time Machine local snapshots (macOS only). Project discovery
+is bounded to common code roots or the
 colon-separated paths in `DEVDOCTOR_PROJECT_ROOTS`.
 
 ### Git worktrees
@@ -108,6 +110,20 @@ it, so one that changed after the scan is skipped.
 ```bash
 devdoctor scan --provider git-worktrees
 devdoctor clean --execute --provider git-worktrees
+```
+
+### Time Machine local snapshots
+
+On macOS, hourly Time Machine local snapshots hold blocks other cleanups
+cannot free. The `time-machine-local-snapshots` provider lists them via
+`tmutil listlocalsnapshots /` and offers one bundle — deleting all but the
+newest restore point, newest first — plus one entry per snapshot. macOS
+system-update snapshots (`com.apple.os.update-*`) are never touched, and
+deleting local snapshots never touches the external backup.
+
+```bash
+devdoctor scan --provider time-machine-local-snapshots
+devdoctor clean --execute --provider time-machine-local-snapshots
 ```
 
 ## Web UI

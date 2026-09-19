@@ -65,6 +65,15 @@ entries under a versioned heading as described in
 
 ### Added
 
+- **Time Machine local snapshots provider (`time-machine-local-snapshots`,
+  macOS only).** Lists hourly APFS local snapshots via
+  `tmutil listlocalsnapshots /` and offers one bundle that deletes all but the
+  newest restore point (newest first), plus one entry per snapshot. macOS
+  system-update snapshots (`com.apple.os.update-*`) are never touched, and
+  deleting local snapshots never touches the external backup. Approving the
+  bundle marks the per-snapshot entries `skipped:covered` — they are never
+  prompted nor executed twice — and the `recipe` script lists the bundle's
+  commands once, with covered snapshots as label-only lines.
 - **`devdoctor history`** lists past cleanup runs — CLI and web UI now write one
   audit log — and shows a run entry by entry. `clean` gains `--yes` (skip the
   final confirmation only; the plan still prints) and `--risk`. (#126)

@@ -22,6 +22,7 @@ from devdoctor.providers.project_artifacts import (
     ProjectArtifactIndex,
     ToxNoxProvider,
 )
+from devdoctor.providers.time_machine import TimeMachineSnapshotsProvider
 from devdoctor.providers.tool_caches import (
     BunCacheProvider,
     CargoCacheProvider,
@@ -59,6 +60,7 @@ _CLASS_PROVIDERS: list[type[Provider]] = [
     NodeModulesProvider,
     NuGetCacheProvider,
     PnpmStoreProvider,
+    TimeMachineSnapshotsProvider,
     ToxNoxProvider,
     VenvProvider,
     XcodeProvider,

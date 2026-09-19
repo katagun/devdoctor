@@ -5,6 +5,7 @@ from devdoctor.providers.huggingface import HuggingFaceProvider
 from devdoctor.providers.large_files import LargeFilesProvider
 from devdoctor.providers.lm_studio import LMStudioProvider
 from devdoctor.providers.ollama import OllamaProvider
+from devdoctor.providers.time_machine import TimeMachineSnapshotsProvider
 from devdoctor.providers.venv import VenvProvider
 
 CLASS_PROVIDERS = [
@@ -13,6 +14,7 @@ CLASS_PROVIDERS = [
     LargeFilesProvider,
     LMStudioProvider,
     OllamaProvider,
+    TimeMachineSnapshotsProvider,
     VenvProvider,
 ]
 
