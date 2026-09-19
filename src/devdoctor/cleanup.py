@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -41,6 +41,7 @@ SelectionState = Literal[
     "skipped:provider-skip",
     "skipped:quit",
     "skipped:dangerous",
+    "skipped:covered",
 ]
 
 
@@ -184,7 +185,7 @@ def iter_cleanup_events(report: Report, opts: CleanupOpts) -> Generator[CleanupE
     approved = [e for e, s in selections if s == "approved"]
     if not approved:
         for e, state in selections:
-            yield EntryResolved(_to_result(e, state))
+            yield EntryResolved(_to_result(e, state, selections))
         return
 
     total_bytes = estimated_reclaimable_bytes(approved)
@@ -211,8 +212,12 @@ def _iter_selection(
     provider_override: dict[str, str] = {}
     quit_signalled = False
 
-    for entry in candidates:
-        auto_state = _auto_state(entry, opts, provider_override, quit_signalled)
+    # Stable-partition covering entries first: scan order puts the unmeasured
+    # bundle last, but the covers rule needs the coverer's decision before it
+    # can resolve the covered entries.
+    ordered = [e for e in candidates if e.covers] + [e for e in candidates if not e.covers]
+    for entry in ordered:
+        auto_state = _auto_state(entry, opts, provider_override, quit_signalled, selections)
         if auto_state is not None:
             selections.append((entry, auto_state))
             continue
@@ -226,22 +231,62 @@ def _iter_selection(
     return selections
 
 
+def _covering_selection(
+    entry: Entry,
+    selections: Sequence[tuple[Entry, SelectionState]],
+) -> tuple[Entry, SelectionState] | None:
+    """The already-decided selection whose entry covers ``entry``, if any."""
+    for sel_entry, state in selections:
+        if entry.id in sel_entry.covers:
+            return sel_entry, state
+    return None
+
+
+def _covered_state(
+    entry: Entry,
+    selections: Sequence[tuple[Entry, SelectionState]],
+) -> SelectionState | None:
+    """The pre-determined state for an entry covered by an earlier decision.
+
+    An approved coverer means the covered entry is never prompted nor
+    executed; any other non-declined coverer state is inherited without a
+    prompt. Returns None when no earlier selection covers ``entry``, or when
+    the coverer was declined — the covered entries are then prompted
+    individually (mode C).
+    """
+    covering = _covering_selection(entry, selections)
+    if covering is None:
+        return None
+    _, cover_state = covering
+    if cover_state == "approved":
+        return "skipped:covered"
+    if cover_state == "skipped:user":
+        return None
+    return cover_state
+
+
 def _auto_state(
     entry: Entry,
     opts: CleanupOpts,
     provider_override: dict[str, str],
     quit_signalled: bool,
+    selections: Sequence[tuple[Entry, SelectionState]] = (),
 ) -> SelectionState | None:
     """Return the pre-determined state for an entry, or None if a prompt is required."""
     if quit_signalled:
         return "skipped:quit"
+    # The covers check runs before the provider_override check: pressing `a`
+    # at the bundle prompt must resolve the covered entries as covered, not
+    # auto-approve each of them.
+    covered = _covered_state(entry, selections)
+    if covered is not None:
+        return covered
     if entry.risk == Risk.DANGEROUS and not opts.allow_dangerous:
         return "skipped:dangerous"
+    # _apply_choice only ever stores "all" or "skip" per provider.
     override = provider_override.get(entry.provider)
-    if override == "all":
-        return "approved"
-    if override == "skip":
-        return "skipped:provider-skip"
+    if override is not None:
+        return "approved" if override == "all" else "skipped:provider-skip"
     if opts.yes_safe and entry.risk == Risk.SAFE:
         return "approved"
     return None
@@ -281,7 +326,7 @@ def _resolve_aborted(
                 )
             )
         else:
-            yield EntryResolved(_to_result(e, state))
+            yield EntryResolved(_to_result(e, state, selections))
 
 
 def _execution_order(
@@ -309,7 +354,7 @@ def _build_plan(selections: list[tuple[Entry, SelectionState]]) -> tuple[Planned
 def _build_skipped(selections: list[tuple[Entry, SelectionState]]) -> tuple[SkippedEntry, ...]:
     """Non-approved candidates, in selection order, with why each was skipped."""
     return tuple(
-        SkippedEntry(entry=entry, reason=_to_result(entry, state).message or state)
+        SkippedEntry(entry=entry, reason=_to_result(entry, state, selections).message or state)
         for entry, state in selections
         if state != "approved"
     )
@@ -334,7 +379,7 @@ def _iter_execute(
     removed: dict[str, Entry] = {}
     for entry, state in worktrees_first:
         if state != "approved":
-            yield EntryResolved(_to_result(entry, state))
+            yield EntryResolved(_to_result(entry, state, selections))
             continue
         worktree = None if is_reclaimable_worktree(entry) else _removed_with(entry, real, removed)
         if worktree is not None:
@@ -508,17 +553,31 @@ def _select_candidates(report: Report, opts: CleanupOpts) -> list[Entry]:
     return entries
 
 
-def _to_result(entry: Entry, state: str) -> CleanResult:
+def _to_result(
+    entry: Entry,
+    state: str,
+    selections: Sequence[tuple[Entry, SelectionState]] = (),
+) -> CleanResult:
     if state == "approved":
         raise AssertionError(
             f"_to_result called with approved entry {entry.id!r}; should be routed to ExecuteStep"
         )
     reason = state.split(":", 1)[1] if ":" in state else state
+    if reason == "covered":
+        covering = _covering_selection(entry, selections)
+        if covering is not None:
+            return CleanResult(
+                entry_id=entry.id,
+                status="skipped",
+                freed_bytes=0,
+                message=f"covered by {covering[0].label}",
+            )
     msg = {
         "user": "declined",
         "provider-skip": "provider skipped",
         "quit": "quit before confirm",
         "dangerous": "dangerous (pass --allow-dangerous to include)",
+        "covered": "covered",
     }.get(reason, reason)
     return CleanResult(entry_id=entry.id, status="skipped", freed_bytes=0, message=msg)
 

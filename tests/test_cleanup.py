@@ -2,12 +2,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from devdoctor import cleanup
-from devdoctor.cleanup import build_script, run
+from devdoctor.cleanup import (
+    ConfirmRequired,
+    ExecuteStep,
+    PromptRequired,
+    build_script,
+    iter_cleanup_events,
+    run,
+)
 from devdoctor.types import (
     AdviceAction,
     CleanupOpts,
     CommandAction,
     DeletePathAction,
+    DiskUsage,
     Entry,
     Report,
     Risk,
@@ -545,3 +553,248 @@ async def test_run_async_delivers_events_to_the_observer() -> None:
         "EntryResolved",
     ]
     assert [r.status for r in results] == ["ok"]
+
+
+_TM_PROVIDER = "time-machine-local-snapshots"
+_BUNDLE_ID = "all-but-newest"
+_BUNDLE_LABEL = "Time Machine local snapshots, all but the newest (3)"
+
+
+def _tm_snap(ts: str) -> Entry:
+    return Entry(
+        provider=_TM_PROVIDER,
+        id=f"snapshot-{ts}",
+        path=None,
+        label=f"Time Machine local snapshot {ts}",
+        size_bytes=0,
+        mtime=None,
+        risk=Risk.RECLAIMABLE,
+        recipe=[f"tmutil deletelocalsnapshots {ts}"],
+        usage=DiskUsage(None, None),
+        actions=(CommandAction(("tmutil", "deletelocalsnapshots", ts)),),
+    )
+
+
+def _tm_bundle(*snaps: Entry, risk: Risk = Risk.RECLAIMABLE) -> Entry:
+    actions = tuple(a for s in snaps for a in s.actions)
+    return Entry(
+        provider=_TM_PROVIDER,
+        id=_BUNDLE_ID,
+        path=None,
+        label=_BUNDLE_LABEL,
+        size_bytes=0,
+        mtime=None,
+        risk=risk,
+        recipe=[f"tmutil deletelocalsnapshots {s.id}" for s in snaps],
+        usage=DiskUsage(None, None),
+        actions=actions,
+        covers=tuple(s.id for s in snaps),
+    )
+
+
+def _tm_report(bundle: Entry, *snaps: Entry) -> Report:
+    # Scan order puts the unmeasured bundle last.
+    return _report(*snaps, bundle)
+
+
+def _recording_prompt(choices: dict[str, str], seen: list[str]):
+    def _prompt(entry: Entry) -> str:
+        seen.append(entry.id)
+        return choices[entry.id]
+
+    return _prompt
+
+
+def test_coverer_prompted_before_covered_despite_scan_order():
+    snaps = [_tm_snap("2026-09-01-000001"), _tm_snap("2026-09-02-000001")]
+    bundle = _tm_bundle(*snaps)
+    gen = iter_cleanup_events(_tm_report(bundle, *snaps), CleanupOpts(execute=True))
+    first = next(gen)
+    assert isinstance(first, PromptRequired)
+    assert first.entry.id == _BUNDLE_ID
+
+
+def test_approve_bundle_skips_covered_with_no_prompt_and_cover_reason():
+    snaps = [
+        _tm_snap("2026-09-01-000001"),
+        _tm_snap("2026-09-02-000001"),
+        _tm_snap("2026-09-03-000001"),
+    ]
+    bundle = _tm_bundle(*snaps)
+    shell = FakeShell(
+        responses={tuple(a.argv): ShellResult(0, "", "") for s in snaps for a in s.actions}
+    )
+    seen: list[str] = []
+    results = run(
+        _tm_report(bundle, *snaps),
+        shell=shell,
+        prompt_choice=_recording_prompt({_BUNDLE_ID: "y"}, seen),
+        confirm=_always(True),
+        opts=CleanupOpts(execute=True),
+    )
+    # Only the bundle was ever prompted — covered snapshots are never prompted.
+    assert seen == [_BUNDLE_ID]
+    by_id = {r.entry_id: r for r in results}
+    assert by_id[_BUNDLE_ID].status == "ok"
+    for s in snaps:
+        assert by_id[s.id].status == "skipped"
+        assert by_id[s.id].message == f"covered by {_BUNDLE_LABEL}"
+    # Only the bundle's commands ran; no snapshot command ever executed.
+    assert shell.calls == [tuple(a.argv) for s in snaps for a in s.actions]
+
+
+def test_approve_all_at_bundle_covers_snapshots_instead_of_auto_approving():
+    snaps = [_tm_snap("2026-09-01-000001"), _tm_snap("2026-09-02-000001")]
+    bundle = _tm_bundle(*snaps)
+    shell = FakeShell(
+        responses={tuple(a.argv): ShellResult(0, "", "") for s in snaps for a in s.actions}
+    )
+    seen: list[str] = []
+    results = run(
+        _tm_report(bundle, *snaps),
+        shell=shell,
+        prompt_choice=_recording_prompt({_BUNDLE_ID: "a"}, seen),
+        confirm=_always(True),
+        opts=CleanupOpts(execute=True),
+    )
+    # "a" sets a provider-wide "all" override, but the covers rule wins: the
+    # snapshots resolve as covered, not auto-approved.
+    assert seen == [_BUNDLE_ID]
+    by_id = {r.entry_id: r for r in results}
+    assert by_id[_BUNDLE_ID].status == "ok"
+    for s in snaps:
+        assert by_id[s.id].status == "skipped"
+        assert by_id[s.id].message == f"covered by {_BUNDLE_LABEL}"
+    assert shell.calls == [tuple(a.argv) for s in snaps for a in s.actions]
+
+
+def test_decline_bundle_prompts_each_snapshot_individually():
+    snaps = [_tm_snap("2026-09-01-000001"), _tm_snap("2026-09-02-000001")]
+    bundle = _tm_bundle(*snaps)
+    shell = FakeShell(
+        responses={("tmutil", "deletelocalsnapshots", "2026-09-01-000001"): ShellResult(0, "", "")}
+    )
+    seen: list[str] = []
+    results = run(
+        _tm_report(bundle, *snaps),
+        shell=shell,
+        prompt_choice=_recording_prompt(
+            {
+                _BUNDLE_ID: "n",
+                snaps[0].id: "y",
+                snaps[1].id: "n",
+            },
+            seen,
+        ),
+        confirm=_always(True),
+        opts=CleanupOpts(execute=True),
+    )
+    assert seen == [_BUNDLE_ID, snaps[0].id, snaps[1].id]
+    by_id = {r.entry_id: r for r in results}
+    assert by_id[_BUNDLE_ID].message == "declined"
+    assert by_id[snaps[0].id].status == "ok"
+    assert by_id[snaps[1].id].message == "declined"
+    assert shell.calls == [("tmutil", "deletelocalsnapshots", "2026-09-01-000001")]
+
+
+def test_skip_at_bundle_inherits_provider_skip_without_prompts():
+    snaps = [_tm_snap("2026-09-01-000001"), _tm_snap("2026-09-02-000001")]
+    bundle = _tm_bundle(*snaps)
+    seen: list[str] = []
+
+    def _prompt(entry: Entry) -> str:
+        seen.append(entry.id)
+        return "s" if entry.id == _BUNDLE_ID else "y"
+
+    results = run(
+        _tm_report(bundle, *snaps),
+        shell=FakeShell(),
+        prompt_choice=_prompt,
+        confirm=_always(True),
+        opts=CleanupOpts(execute=True),
+    )
+    assert seen == [_BUNDLE_ID]
+    assert [(r.entry_id, r.status, r.message) for r in results] == [
+        (_BUNDLE_ID, "skipped", "provider skipped"),
+        (snaps[0].id, "skipped", "provider skipped"),
+        (snaps[1].id, "skipped", "provider skipped"),
+    ]
+
+
+def test_quit_at_bundle_inherits_quit_without_prompts():
+    snaps = [_tm_snap("2026-09-01-000001"), _tm_snap("2026-09-02-000001")]
+    bundle = _tm_bundle(*snaps)
+    seen: list[str] = []
+
+    def _prompt(entry: Entry) -> str:
+        seen.append(entry.id)
+        return "q" if entry.id == _BUNDLE_ID else "y"
+
+    results = run(
+        _tm_report(bundle, *snaps),
+        shell=FakeShell(),
+        prompt_choice=_prompt,
+        confirm=_always(True),
+        opts=CleanupOpts(execute=True),
+    )
+    assert seen == [_BUNDLE_ID]
+    assert [r.message for r in results] == ["quit before confirm"] * 3
+
+
+def test_dangerous_coverer_inherits_dangerous_without_prompts():
+    snaps = [_tm_snap("2026-09-01-000001"), _tm_snap("2026-09-02-000001")]
+    bundle = _tm_bundle(*snaps, risk=Risk.DANGEROUS)
+
+    def _prompt(entry: Entry) -> str:
+        raise AssertionError(f"must not prompt for {entry.id}")
+
+    results = run(
+        _tm_report(bundle, *snaps),
+        shell=FakeShell(),
+        prompt_choice=_prompt,
+        confirm=_always(True),
+        opts=CleanupOpts(execute=True),
+    )
+    assert [r.message for r in results] == ["dangerous (pass --allow-dangerous to include)"] * 3
+
+
+def test_covered_entries_never_prompted_even_when_prompt_would_approve():
+    snaps = [_tm_snap("2026-09-01-000001"), _tm_snap("2026-09-02-000001")]
+    bundle = _tm_bundle(*snaps)
+    shell = FakeShell(
+        responses={tuple(a.argv): ShellResult(0, "", "") for s in snaps for a in s.actions}
+    )
+    seen: list[str] = []
+
+    def _approve_everything(entry: Entry) -> str:
+        seen.append(entry.id)
+        return "y"
+
+    events: list[object] = []
+    results = run(
+        _tm_report(bundle, *snaps),
+        shell=shell,
+        prompt_choice=_approve_everything,
+        confirm=_always(True),
+        opts=CleanupOpts(execute=True),
+        on_event=events.append,
+    )
+    assert seen == [_BUNDLE_ID]
+    assert not [e for e in events if isinstance(e, ExecuteStep) and e.entry.id != _BUNDLE_ID]
+    assert [r.status for r in results] == ["ok", "skipped", "skipped"]
+
+
+def test_confirm_carries_covered_skip_reasons():
+    snaps = [_tm_snap("2026-09-01-000001"), _tm_snap("2026-09-02-000001")]
+    bundle = _tm_bundle(*snaps)
+    gen = iter_cleanup_events(_tm_report(bundle, *snaps), CleanupOpts(execute=True))
+    first = next(gen)
+    assert isinstance(first, PromptRequired)
+    second = gen.send("y")
+    assert isinstance(second, ConfirmRequired)
+    assert [e.id for e in second.approved] == [_BUNDLE_ID]
+    assert [(s.entry.id, s.reason) for s in second.skipped] == [
+        (snaps[0].id, f"covered by {_BUNDLE_LABEL}"),
+        (snaps[1].id, f"covered by {_BUNDLE_LABEL}"),
+    ]
+    assert isinstance(gen.send(True), ExecuteStep)
