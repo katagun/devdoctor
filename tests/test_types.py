@@ -464,6 +464,42 @@ def test_entry_is_unmeasured(usage, expected):
     assert _filter_entry("a", Risk.SAFE, 0, usage=usage).is_unmeasured is expected
 
 
+def test_entry_covers_defaults_empty() -> None:
+    assert _make_entry().covers == ()
+
+
+def test_report_round_trip_preserves_covers() -> None:
+    e = _make_entry(covers=("snapshot-a", "snapshot-b"))
+    restored = Report.from_json(_make_report([e]).to_json())
+    assert restored.entries[0].covers == ("snapshot-a", "snapshot-b")
+    assert restored.entries[0] == e
+
+
+def test_old_snapshot_without_covers_key_defaults_empty() -> None:
+    payload = {
+        "schema_version": 2,
+        "entries": [
+            {
+                "provider": "test",
+                "id": "e1",
+                "path": "/tmp/foo",
+                "label": "/tmp/foo",
+                "size_bytes": 100,
+                "mtime": 1700000000.0,
+                "risk": "safe",
+                "recipe": ["rm -rf /tmp/foo"],
+            }
+        ],
+        "scanned_at": "2026-04-23T12:00:00+00:00",
+        "hostname": "test-host",
+        "platform": "darwin",
+        "note": None,
+        "skipped_paths": [],
+    }
+    restored = Report.from_json(json.dumps(payload))
+    assert restored.entries[0].covers == ()
+
+
 @pytest.mark.parametrize(
     ("filters", "expected"),
     [

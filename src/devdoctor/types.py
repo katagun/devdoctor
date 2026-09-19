@@ -184,6 +184,9 @@ class Entry:
     owner: str | None = None  # login name, resolved via pwd.getpwuid
     group: str | None = None  # group name, resolved via grp.getgrgid
     perms: str | None = None  # stat.filemode string, e.g. "drwxr-xr-x"
+    # Ids of other entries whose cleanup this entry subsumes. Approving a
+    # covering entry skips (never prompts nor executes) the covered entries.
+    covers: tuple[str, ...] = ()
 
     @property
     def footprint_bytes(self) -> int | None:
@@ -489,6 +492,7 @@ class Report:
                 "owner": e.owner,
                 "group": e.group,
                 "perms": e.perms,
+                "covers": list(e.covers),
             }
 
         entries_payload: list[dict[str, object]] | None
@@ -581,6 +585,7 @@ class Report:
                     owner=e.get("owner"),
                     group=e.get("group"),
                     perms=e.get("perms"),
+                    covers=tuple(e.get("covers") or []),
                 )
             )
         kind_raw = payload.get("kind", "manual")
