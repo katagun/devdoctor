@@ -798,3 +798,21 @@ def test_confirm_carries_covered_skip_reasons():
         (snaps[1].id, f"covered by {_BUNDLE_LABEL}"),
     ]
     assert isinstance(gen.send(True), ExecuteStep)
+
+
+def test_build_script_lists_bundle_commands_once_and_covered_snapshots_label_only():
+    snaps = [
+        _tm_snap("2026-09-01-000001"),
+        _tm_snap("2026-09-02-000001"),
+        _tm_snap("2026-09-03-000001"),
+    ]
+    bundle = _tm_bundle(*snaps)
+    script = build_script(_tm_report(bundle, *snaps))
+    for s in snaps:
+        cmd_line = f"tmutil deletelocalsnapshots {s.id.removeprefix('snapshot-')}"
+        assert script.count(cmd_line) == 1, f"{cmd_line!r} must appear exactly once"
+    for s in snaps:
+        label_line = next(
+            line for line in script.splitlines() if s.label in line and "covered by" in line
+        )
+        assert f"(covered by {_BUNDLE_LABEL}; commands listed above)" in label_line

@@ -306,3 +306,71 @@ async def test_web_audit_event_names_its_source_and_plan():
     assert events[0]["job_id"] == runner.id
     assert [p["entry_id"] for p in events[0]["plan"]] == [entry.id]
     assert events[0]["results"][0]["provider"] == entry.provider
+
+
+@pytest.mark.asyncio
+async def test_runner_bundle_approval_resolves_covered_snapshots_without_executing():
+    """Time Machine rule over the web runner: ticking the bundle plus its
+    snapshots resolves the snapshots as skipped-covered — never executed."""
+    from devdoctor.types import CommandAction, DiskUsage
+
+    provider = "time-machine-local-snapshots"
+    bundle_label = "Time Machine local snapshots, all but the newest (3)"
+    timestamps = ("2026-09-01-000001", "2026-09-02-000001", "2026-09-03-000001")
+    snaps = [
+        Entry(
+            provider=provider,
+            id=f"snapshot-{ts}",
+            path=None,
+            label=f"Time Machine local snapshot {ts}",
+            size_bytes=0,
+            mtime=None,
+            risk=Risk.RECLAIMABLE,
+            recipe=[f"tmutil deletelocalsnapshots {ts}"],
+            usage=DiskUsage(None, None),
+            actions=(CommandAction(("tmutil", "deletelocalsnapshots", ts)),),
+        )
+        for ts in timestamps
+    ]
+    bundle = Entry(
+        provider=provider,
+        id="all-but-newest",
+        path=None,
+        label=bundle_label,
+        size_bytes=0,
+        mtime=None,
+        risk=Risk.RECLAIMABLE,
+        recipe=[f"tmutil deletelocalsnapshots {ts}" for ts in timestamps],
+        usage=DiskUsage(None, None),
+        actions=tuple(a for s in snaps for a in s.actions),
+        covers=tuple(s.id for s in snaps),
+    )
+    # Scan order puts the unmeasured bundle last, as a real scan would.
+    rep = _report(*snaps, bundle)
+
+    executed: list[tuple[str, ...]] = []
+
+    async def fake_run_line(argv: tuple[str, ...]) -> ShellResult:
+        executed.append(argv)
+        return ShellResult(0, "", "")
+
+    runner = CleanupRunner(report=rep, opts=CleanupOpts(execute=True), run_line=fake_run_line)
+    task = asyncio.create_task(runner.run())
+
+    # Only the bundle is ever prompted, despite all ids being selected.
+    ev = await runner.events.get()
+    assert ev["event"] == "prompt" and ev["data"]["entry_id"] == "all-but-newest"
+    await runner.answer_prompt(entry_id="all-but-newest", choice="y")
+
+    ev = await runner.events.get()
+    assert ev["event"] == "awaiting_confirm"
+    await runner.answer_confirm(True)
+
+    results = await asyncio.wait_for(task, timeout=5)
+    by_id = {r.entry_id: r for r in results}
+    assert by_id["all-but-newest"].status == "ok"
+    for s in snaps:
+        assert by_id[s.id].status == "skipped"
+        assert by_id[s.id].message == f"covered by {bundle_label}"
+    # Only the bundle's commands ran; no per-snapshot command ever executed.
+    assert executed == [tuple(a.argv) for s in snaps for a in s.actions]
