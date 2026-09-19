@@ -315,7 +315,8 @@ async def test_runner_bundle_approval_resolves_covered_snapshots_without_executi
     from devdoctor.types import CommandAction, DiskUsage
 
     provider = "time-machine-local-snapshots"
-    bundle_label = "Time Machine local snapshots, all but the newest (3)"
+    # The count is the snapshots the bundle deletes (2 of 3), not the total.
+    bundle_label = "Time Machine local snapshots, all but the newest (2)"
     timestamps = ("2026-09-01-000001", "2026-09-02-000001", "2026-09-03-000001")
     snaps = [
         Entry(

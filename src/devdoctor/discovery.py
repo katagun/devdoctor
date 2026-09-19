@@ -93,8 +93,16 @@ def _globally_unique(entry: Entry) -> Entry:
     output. Old snapshots keep their bare ids and still load (the field is
     opaque and derivable); the clean flow always re-scans, so every id it
     routes on is freshly namespaced and internally consistent.
+
+    ``covers`` holds provider-local ids too, and the cleanup rule matches them
+    against (namespaced) entry ids — so they are namespaced with the same
+    prefix, keeping coverer and covered mutually consistent.
     """
-    return dataclasses.replace(entry, id=f"{entry.provider}:{entry.id}")
+    return dataclasses.replace(
+        entry,
+        id=f"{entry.provider}:{entry.id}",
+        covers=tuple(f"{entry.provider}:{covered}" for covered in entry.covers),
+    )
 
 
 @dataclass

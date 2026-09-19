@@ -14,6 +14,7 @@ interface ScanResponseEntry {
   mtime: number | null;
   risk: "safe" | "reclaimable" | "dangerous";
   recipe: string[];
+  covers?: string[];
   owner?: string | null;
   group?: string | null;
   perms?: string | null;

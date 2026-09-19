@@ -4,9 +4,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from devdoctor import discovery
+from devdoctor.cleanup import run
 from devdoctor.discovery import scan
 from devdoctor.providers.base import Provider
-from devdoctor.types import DiskUsage, Entry, Risk, ScanFilters, SnapshotKind
+from devdoctor.types import (
+    CleanupOpts,
+    CommandAction,
+    DiskUsage,
+    Entry,
+    Risk,
+    ScanFilters,
+    ShellResult,
+    SnapshotKind,
+)
 from tests.conftest import FakeShell
 
 
@@ -513,3 +523,81 @@ def test_scan_survives_a_raising_progress_callback(monkeypatch) -> None:
     assert {"ScanStarted", "ProviderStarted", "ProviderFinished"} == {
         msg.split()[-1] for msg in fake_logger.warnings
     }
+
+
+def _tm_entries() -> list[Entry]:
+    """Bundle plus two snapshots with provider-local ids, as discover() emits."""
+    provider = "time-machine-local-snapshots"
+    snaps = [
+        Entry(
+            provider=provider,
+            id=f"snapshot-{ts}",
+            path=None,
+            label=f"Time Machine local snapshot {ts}",
+            size_bytes=0,
+            mtime=None,
+            risk=Risk.RECLAIMABLE,
+            recipe=[f"tmutil deletelocalsnapshots {ts}"],
+            usage=DiskUsage(None, None),
+            actions=(CommandAction(("tmutil", "deletelocalsnapshots", ts)),),
+        )
+        for ts in ("2026-09-01-000001", "2026-09-02-000001")
+    ]
+    bundle = Entry(
+        provider=provider,
+        id="all-but-newest",
+        path=None,
+        label="Time Machine local snapshots, all but the newest",
+        size_bytes=0,
+        mtime=None,
+        risk=Risk.RECLAIMABLE,
+        recipe=["tmutil deletelocalsnapshots 2026-09-01-000001"],
+        usage=DiskUsage(None, None),
+        actions=(CommandAction(("tmutil", "deletelocalsnapshots", "2026-09-01-000001")),),
+        covers=tuple(s.id for s in snaps),
+    )
+    return [*snaps, bundle]
+
+
+def test_scan_namespaces_covers_with_ids():
+    """_globally_unique must namespace covers alongside id: the covers rule
+    matches entry.id against coverer.covers, so bare covers against namespaced
+    ids would silently disable the rule in every real scan."""
+    p = _Stub(FakeShell(), "time-machine-local-snapshots", _tm_entries())
+    report = scan([p], ScanFilters(), datetime(2026, 9, 19, tzinfo=UTC))
+    by_id = {e.id: e for e in report.entries}
+    bundle = by_id["time-machine-local-snapshots:all-but-newest"]
+    assert bundle.covers == (
+        "time-machine-local-snapshots:snapshot-2026-09-01-000001",
+        "time-machine-local-snapshots:snapshot-2026-09-02-000001",
+    )
+
+
+def test_scanned_bundle_approval_skips_covered_snapshots():
+    """End to end over a real scan: approving the bundle prompts nothing else
+    and executes only the bundle's commands (no double delete)."""
+    p = _Stub(FakeShell(), "time-machine-local-snapshots", _tm_entries())
+    report = scan([p], ScanFilters(), datetime(2026, 9, 19, tzinfo=UTC))
+    seen: list[str] = []
+    shell = FakeShell(
+        responses={
+            ("tmutil", "deletelocalsnapshots", "2026-09-01-000001"): ShellResult(0, "", ""),
+        }
+    )
+    results = run(
+        report,
+        shell=shell,
+        prompt_choice=lambda entry: (seen.append(entry.id), "y")[1],
+        confirm=lambda message: True,
+        opts=CleanupOpts(execute=True),
+    )
+    assert seen == ["time-machine-local-snapshots:all-but-newest"]
+    by_id = {r.entry_id: r for r in results}
+    assert by_id["time-machine-local-snapshots:all-but-newest"].status == "ok"
+    for snap_id in (
+        "time-machine-local-snapshots:snapshot-2026-09-01-000001",
+        "time-machine-local-snapshots:snapshot-2026-09-02-000001",
+    ):
+        assert by_id[snap_id].status == "skipped"
+        assert by_id[snap_id].message.startswith("covered by ")
+    assert shell.calls == [("tmutil", "deletelocalsnapshots", "2026-09-01-000001")]
