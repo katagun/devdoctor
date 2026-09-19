@@ -237,7 +237,7 @@ def _covering_selection(
 ) -> tuple[Entry, SelectionState] | None:
     """The already-decided selection whose entry covers ``entry``, if any."""
     for sel_entry, state in selections:
-        if entry.id in sel_entry.covers:
+        if sel_entry.provider == entry.provider and entry.id in sel_entry.covers:
             return sel_entry, state
     return None
 

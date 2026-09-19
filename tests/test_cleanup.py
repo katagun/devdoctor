@@ -800,6 +800,42 @@ def test_confirm_carries_covered_skip_reasons():
     assert isinstance(gen.send(True), ExecuteStep)
 
 
+def test_cover_match_does_not_cross_providers():
+    bundle = Entry(
+        provider="prov-a",
+        id="bundle",
+        path=None,
+        label="Bundle",
+        size_bytes=0,
+        mtime=None,
+        risk=Risk.SAFE,
+        recipe=["echo hi"],
+        usage=DiskUsage(None, None),
+        covers=("shared-id",),
+    )
+    other = _e("prov-b", "shared-id", 100)
+    seen: list[str] = []
+
+    def _prompt(entry: Entry) -> str:
+        seen.append(entry.id)
+        return "y"
+
+    shell = FakeShell(
+        responses={
+            ("echo", "hi"): ShellResult(0, "", ""),
+            ("rm", "-rf", "/shared-id"): ShellResult(0, "", ""),
+        }
+    )
+    run(
+        _report(other, bundle),
+        shell=shell,
+        prompt_choice=_prompt,
+        confirm=_always(True),
+        opts=CleanupOpts(execute=True),
+    )
+    assert seen == ["bundle", "shared-id"]
+
+
 def test_build_script_lists_bundle_commands_once_and_covered_snapshots_label_only():
     snaps = [
         _tm_snap("2026-09-01-000001"),
