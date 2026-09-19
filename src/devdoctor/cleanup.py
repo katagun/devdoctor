@@ -237,7 +237,7 @@ def _covering_selection(
 ) -> tuple[Entry, SelectionState] | None:
     """The already-decided selection whose entry covers ``entry``, if any."""
     for sel_entry, state in selections:
-        if entry.id in sel_entry.covers:
+        if sel_entry.provider == entry.provider and entry.id in sel_entry.covers:
             return sel_entry, state
     return None
 
@@ -630,20 +630,28 @@ def build_script(report: Report) -> str:
         lines.append(f"# {len(entries)} entr{'y' if len(entries) == 1 else 'ies'}")
         # A covering entry's commands already list every covered entry's
         # commands; re-listing them would only be noise (spec §4.3).
-        covering: dict[str, str] = {}
+        covering: dict[str, Entry] = {}
         for e in entries:
             for covered_id in e.covers:
-                covering.setdefault(covered_id, e.label)
-        for e in entries:
+                if covered_id != e.id:
+                    covering.setdefault(covered_id, e)
+        # Selection prompts covering entries before the entries they cover;
+        # list them first so "commands listed above" is literally true.
+        ordered = [e for e in entries if e.covers] + [e for e in entries if not e.covers]
+        for e in ordered:
             footprint = e.footprint_bytes
             size_label = (
                 f"{footprint} B footprint" if footprint is not None else "unknown footprint"
             )
-            cover_label = covering.get(e.id)
-            if cover_label is not None:
+            coverer = covering.get(e.id)
+            if (
+                coverer is not None
+                and coverer is not e
+                and set(e.recipe_lines()) <= set(coverer.recipe_lines())
+            ):
                 lines.append(
                     f"#   [{size_label}] {_comment_safe(e.label)}"
-                    f" (covered by {_comment_safe(cover_label)}; commands listed above)"
+                    f" (covered by {_comment_safe(coverer.label)}; commands listed above)"
                 )
                 continue
             lines.append(f"#   [{size_label}] {_comment_safe(e.label)}")

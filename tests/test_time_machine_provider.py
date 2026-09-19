@@ -197,3 +197,32 @@ def test_registered_in_registry():
     from devdoctor.registry import _CLASS_PROVIDERS
 
     assert TimeMachineSnapshotsProvider in _CLASS_PROVIDERS
+
+
+def test_bundle_label_counts_snapshots_it_deletes(monkeypatch):
+    """The count in the bundle label is read before a destructive confirm: it
+    must be the number of delete actions (2), not the total snapshots (3)."""
+    monkeypatch.setattr("sys.platform", "darwin")
+    from devdoctor.providers.time_machine import TimeMachineSnapshotsProvider
+
+    by_id = {
+        e.id: e
+        for e in TimeMachineSnapshotsProvider(_shell_with_output(_FIXTURE_OUTPUT)).discover()
+    }
+    assert by_id["all-but-newest"].label == ("Time Machine local snapshots, all but the newest (2)")
+
+
+def test_snapshot_mtime_uses_local_timezone(monkeypatch):
+    """tmutil prints local wall-clock time; interpreting it as UTC shifts every
+    mtime (and the Stale column) by the UTC offset."""
+    monkeypatch.setattr("sys.platform", "darwin")
+    from datetime import datetime
+
+    from devdoctor.providers.time_machine import TimeMachineSnapshotsProvider
+
+    by_id = {
+        e.id: e
+        for e in TimeMachineSnapshotsProvider(_shell_with_output(_FIXTURE_OUTPUT)).discover()
+    }
+    expected = datetime.strptime(_TS_OLD, "%Y-%m-%d-%H%M%S").astimezone().timestamp()
+    assert by_id[f"snapshot-{_TS_OLD}"].mtime == expected

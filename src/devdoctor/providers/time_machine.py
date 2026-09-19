@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import UTC, datetime
+from datetime import datetime
 
 from devdoctor.providers.base import Provider
 from devdoctor.types import CommandAction, DiskUsage, Entry, Risk
@@ -69,7 +69,9 @@ def _parse_snapshots(output: str) -> list[tuple[str, float]]:
             continue
         ts = match.group(1)
         try:
-            epoch = datetime.strptime(ts, _TIMESTAMP_FORMAT).replace(tzinfo=UTC).timestamp()
+            # tmutil prints local wall-clock time; a naive datetime parsed by
+            # astimezone() is interpreted in the system local timezone.
+            epoch = datetime.strptime(ts, _TIMESTAMP_FORMAT).astimezone().timestamp()
         except ValueError:
             continue
         found.append((ts, epoch))
@@ -102,7 +104,7 @@ def _bundle_entry(provider: Provider, snapshots: list[tuple[str, float]]) -> Ent
     return Entry(
         provider=provider.name,
         id="all-but-newest",
-        label=f"Time Machine local snapshots, all but the newest ({len(snapshots)})",
+        label=(f"Time Machine local snapshots, all but the newest ({len(snapshots) - 1})"),
         path=None,
         size_bytes=0,
         mtime=oldest_epoch,

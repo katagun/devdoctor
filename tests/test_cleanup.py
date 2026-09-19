@@ -800,6 +800,80 @@ def test_confirm_carries_covered_skip_reasons():
     assert isinstance(gen.send(True), ExecuteStep)
 
 
+def test_cover_match_does_not_cross_providers():
+    bundle = Entry(
+        provider="prov-a",
+        id="bundle",
+        path=None,
+        label="Bundle",
+        size_bytes=0,
+        mtime=None,
+        risk=Risk.SAFE,
+        recipe=["echo hi"],
+        usage=DiskUsage(None, None),
+        covers=("shared-id",),
+    )
+    other = _e("prov-b", "shared-id", 100)
+    seen: list[str] = []
+
+    def _prompt(entry: Entry) -> str:
+        seen.append(entry.id)
+        return "y"
+
+    shell = FakeShell(
+        responses={
+            ("echo", "hi"): ShellResult(0, "", ""),
+            ("rm", "-rf", "/shared-id"): ShellResult(0, "", ""),
+        }
+    )
+    run(
+        _report(other, bundle),
+        shell=shell,
+        prompt_choice=_prompt,
+        confirm=_always(True),
+        opts=CleanupOpts(execute=True),
+    )
+    assert seen == ["bundle", "shared-id"]
+
+
+def test_build_script_keeps_covered_command_the_coverer_omits():
+    snaps = [
+        _tm_snap("2026-09-01-000001"),
+        _tm_snap("2026-09-02-000001"),
+        _tm_snap("2026-09-03-000001"),
+    ]
+    # Faithful to the real provider: the bundle covers every snapshot id,
+    # newest included, but its commands only delete the older snapshots.
+    older = snaps[:-1]
+    bundle = Entry(
+        provider=_TM_PROVIDER,
+        id=_BUNDLE_ID,
+        path=None,
+        label=_BUNDLE_LABEL,
+        size_bytes=0,
+        mtime=None,
+        risk=Risk.RECLAIMABLE,
+        recipe=[f"tmutil deletelocalsnapshots {s.id.removeprefix('snapshot-')}" for s in older],
+        usage=DiskUsage(None, None),
+        actions=tuple(a for s in older for a in s.actions),
+        covers=tuple(s.id for s in snaps),
+    )
+    script = build_script(_tm_report(bundle, *snaps))
+    for s in snaps:
+        cmd_line = f"tmutil deletelocalsnapshots {s.id.removeprefix('snapshot-')}"
+        assert script.count(cmd_line) == 1, f"{cmd_line!r} must appear exactly once"
+
+
+def test_build_script_lists_covering_commands_before_covered_note():
+    snaps = [
+        _tm_snap("2026-09-01-000001"),
+        _tm_snap("2026-09-02-000001"),
+    ]
+    bundle = _tm_bundle(*snaps)
+    script = build_script(_tm_report(bundle, *snaps))
+    assert script.index("tmutil deletelocalsnapshots") < script.index("commands listed above")
+
+
 def test_build_script_lists_bundle_commands_once_and_covered_snapshots_label_only():
     snaps = [
         _tm_snap("2026-09-01-000001"),
