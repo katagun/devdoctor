@@ -864,6 +864,16 @@ def test_build_script_keeps_covered_command_the_coverer_omits():
         assert script.count(cmd_line) == 1, f"{cmd_line!r} must appear exactly once"
 
 
+def test_build_script_lists_covering_commands_before_covered_note():
+    snaps = [
+        _tm_snap("2026-09-01-000001"),
+        _tm_snap("2026-09-02-000001"),
+    ]
+    bundle = _tm_bundle(*snaps)
+    script = build_script(_tm_report(bundle, *snaps))
+    assert script.index("tmutil deletelocalsnapshots") < script.index("commands listed above")
+
+
 def test_build_script_lists_bundle_commands_once_and_covered_snapshots_label_only():
     snaps = [
         _tm_snap("2026-09-01-000001"),

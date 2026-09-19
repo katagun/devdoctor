@@ -635,7 +635,10 @@ def build_script(report: Report) -> str:
             for covered_id in e.covers:
                 if covered_id != e.id:
                     covering.setdefault(covered_id, e)
-        for e in entries:
+        # Selection prompts covering entries before the entries they cover;
+        # list them first so "commands listed above" is literally true.
+        ordered = [e for e in entries if e.covers] + [e for e in entries if not e.covers]
+        for e in ordered:
             footprint = e.footprint_bytes
             size_label = (
                 f"{footprint} B footprint" if footprint is not None else "unknown footprint"
