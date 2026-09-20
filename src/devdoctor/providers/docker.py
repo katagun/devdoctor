@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import shlex
+import sys
 
 from devdoctor.providers.base import Provider
 from devdoctor.types import CommandAction, DiskUsage, Entry, Risk
@@ -29,6 +30,11 @@ _VOLUME_DETAILS_COMMAND = [
     "--format",
     "{{json .Volumes}}",
 ]
+
+# Docker Desktop always ships a CLI here and usually symlinks it into
+# /usr/local/bin, which is sometimes missing — leaving `docker` off PATH
+# while the daemon runs fine (issue #123).
+_DARWIN_BUNDLED_DOCKER = "/Applications/Docker.app/Contents/Resources/bin/docker"
 
 
 # Canonical non-volume category id -> prune recipe, in display order. Volumes
@@ -69,8 +75,39 @@ class DockerProvider(Provider):
         "Unused volumes are listed individually; named volumes are marked dangerous."
     )
 
+    def available(self) -> bool:
+        return self._docker_argv0() is not None
+
+    def _docker_argv0(self) -> str | None:
+        """Argv[0] to invoke Docker with.
+
+        `docker` from PATH when present, else Docker Desktop's bundled CLI on
+        macOS (issue #123). The resolved path is used for every invocation so
+        discovery and cleanup run the same binary.
+        """
+        if super().available():
+            return "docker"
+        return self._bundled_docker()
+
+    def _bundled_docker(self) -> str | None:
+        if sys.platform != "darwin":
+            return None
+        if self._shell.which(_DARWIN_BUNDLED_DOCKER) is not None:
+            return _DARWIN_BUNDLED_DOCKER
+        return None
+
     def discover(self) -> list[Entry]:
-        result = self._shell.run(["docker", "system", "df", "--format", "json"], check=False)
+        docker = self._docker_argv0()
+        if docker is None:
+            return []
+        if docker != "docker":
+            msg = (
+                "docker: `docker` not found on PATH; using Docker Desktop's "
+                f"bundled CLI at {docker}"
+            )
+            logger.info("%s", msg)
+            self.diagnostics.append(msg)
+        result = self._shell.run([docker, "system", "df", "--format", "json"], check=False)
         if result.returncode != 0 or not result.stdout.strip():
             # `available()` already confirmed the docker binary exists, so a
             # non-zero exit here means docker is installed but not usable right
@@ -92,6 +129,9 @@ class DockerProvider(Provider):
             reclaimable = _sum_reclaimable(items_by_id.get(id_, []))
             if reclaimable <= 0:
                 continue
+            # Run the resolved binary (PATH `docker`, or the bundled CLI) so
+            # cleanup uses the same binary discovery ran.
+            argv = (docker, *shlex.split(cmd)[1:])
             entries.append(
                 Entry(
                     provider=self.name,
@@ -101,18 +141,18 @@ class DockerProvider(Provider):
                     size_bytes=reclaimable,
                     mtime=None,
                     risk=self.risk,
-                    recipe=[cmd],
+                    recipe=[shlex.join(argv)],
                     usage=DiskUsage(None, reclaimable),
-                    actions=(CommandAction(tuple(shlex.split(cmd))),),
+                    actions=(CommandAction(argv),),
                 )
             )
 
         volume_reclaimable = _sum_reclaimable(items_by_id.get("volumes", []))
         if volume_reclaimable > 0:
-            entries.extend(self._discover_unused_volumes(volume_reclaimable))
+            entries.extend(self._discover_unused_volumes(volume_reclaimable, docker))
         return entries
 
-    def _discover_unused_volumes(self, aggregate_bytes: int) -> list[Entry]:
+    def _discover_unused_volumes(self, aggregate_bytes: int, docker: str) -> list[Entry]:
         """Return exact, individually removable unused volumes.
 
         The summary `Local Volumes` row mixes named and anonymous volumes, but
@@ -124,7 +164,7 @@ class DockerProvider(Provider):
         daemons did not mark every anonymous volume consistently, and treating
         an uncertain volume as dangerous is the safe failure mode.
         """
-        result = self._shell.run(list(_VOLUME_DETAILS_COMMAND), check=False)
+        result = self._shell.run([docker, *_VOLUME_DETAILS_COMMAND[1:]], check=False)
         if result.returncode != 0 or not result.stdout.strip():
             self._note_volume_details_failure(
                 aggregate_bytes,
@@ -174,12 +214,12 @@ class DockerProvider(Provider):
                     risk=Risk.RECLAIMABLE if anonymous else Risk.DANGEROUS,
                     # Remove only the volume the user reviewed. If it becomes
                     # referenced before execution, Docker refuses the removal.
-                    recipe=[f"docker volume rm {shlex.quote(name)}"],
+                    recipe=[f"{shlex.quote(docker)} volume rm {shlex.quote(name)}"],
                     usage=DiskUsage(
                         None if anonymous else size_bytes,
                         size_bytes if anonymous else None,
                     ),
-                    actions=(CommandAction(("docker", "volume", "rm", name)),),
+                    actions=(CommandAction((docker, "volume", "rm", name)),),
                 )
             )
 
