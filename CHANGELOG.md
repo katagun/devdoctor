@@ -211,6 +211,12 @@ entries under a versioned heading as described in
 - **De-flaked the SSE lifecycle test** — it now runs on a pre-bound socket with
   no port race, and drops deprecated `websockets` APIs.
   ([#14](https://github.com/katagun/devdoctor/issues/14))
+- **The Docker provider finds Docker Desktop's bundled CLI when `docker` is
+  not on PATH.** On macOS the provider now falls back to
+  `/Applications/Docker.app/Contents/Resources/bin/docker`, runs discovery
+  and cleanup through that binary, and records a diagnostic naming it — so a
+  missing `/usr/local/bin` symlink no longer hides Docker reclaimable space.
+  ([#123](https://github.com/katagun/devdoctor/issues/123))
 
 ### Security
 

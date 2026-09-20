@@ -213,3 +213,70 @@ def test_discover_handles_unparseable_output(monkeypatch):
         },
     )
     assert DockerProvider(sh).discover() == []
+
+
+# Docker Desktop always ships a bundled CLI at this path (and usually symlinks
+# it into /usr/local/bin, which may be missing). See issue #123.
+_BUNDLED_DOCKER = "/Applications/Docker.app/Contents/Resources/bin/docker"
+
+
+def _shell_with_bundled_cli() -> FakeShell:
+    return FakeShell(
+        which_table={"docker": None, _BUNDLED_DOCKER: _BUNDLED_DOCKER},
+        responses={
+            (_BUNDLED_DOCKER, "system", "df", "--format", "json"): ShellResult(
+                0, _DOCKER_DF_JSON, ""
+            ),
+            (
+                _BUNDLED_DOCKER,
+                "system",
+                "df",
+                "--verbose",
+                "--format",
+                "{{json .Volumes}}",
+            ): ShellResult(0, _VOLUME_DETAILS, ""),
+        },
+    )
+
+
+def test_available_falls_back_to_bundled_cli_on_darwin(monkeypatch):
+    monkeypatch.setattr("sys.platform", "darwin")
+    assert DockerProvider(_shell_with_bundled_cli()).available() is True
+
+
+def test_available_false_when_no_docker_anywhere(monkeypatch):
+    monkeypatch.setattr("sys.platform", "darwin")
+    sh = FakeShell(which_table={"docker": None})
+    assert DockerProvider(sh).available() is False
+
+
+def test_available_ignores_bundled_cli_on_linux(monkeypatch):
+    monkeypatch.setattr("sys.platform", "linux")
+    assert DockerProvider(_shell_with_bundled_cli()).available() is False
+
+
+def test_discover_runs_bundled_cli_and_uses_absolute_path_in_recipes(monkeypatch):
+    monkeypatch.setattr("sys.platform", "darwin")
+    provider = DockerProvider(_shell_with_bundled_cli())
+    entries = {e.id: e for e in provider.discover()}
+    assert entries["images"].recipe == [f"{_BUNDLED_DOCKER} image prune -a -f"]
+    assert entries["images"].actions[0].argv == (_BUNDLED_DOCKER, "image", "prune", "-a", "-f")
+    assert entries["volume:pgdata"].recipe == [f"{_BUNDLED_DOCKER} volume rm pgdata"]
+    assert entries["volume:pgdata"].actions[0].argv == (_BUNDLED_DOCKER, "volume", "rm", "pgdata")
+    assert any(_BUNDLED_DOCKER in note for note in provider.diagnostics)
+
+
+def test_discover_prefers_path_docker_over_bundled_cli(monkeypatch):
+    monkeypatch.setattr("sys.platform", "darwin")
+    sh = FakeShell(
+        which_table={"docker": "/usr/local/bin/docker", _BUNDLED_DOCKER: _BUNDLED_DOCKER},
+        responses={
+            ("docker", "system", "df", "--format", "json"): ShellResult(0, _DOCKER_DF_JSON, ""),
+            _VOLUME_DETAILS_COMMAND: ShellResult(0, _VOLUME_DETAILS, ""),
+        },
+    )
+    provider = DockerProvider(sh)
+    entries = {e.id: e for e in provider.discover()}
+    assert entries["images"].recipe == ["docker image prune -a -f"]
+    assert all(call[0] == "docker" for call in sh.calls)
+    assert all(_BUNDLED_DOCKER not in note for note in provider.diagnostics)
