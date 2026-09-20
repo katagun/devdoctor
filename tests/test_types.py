@@ -501,6 +501,22 @@ def test_old_snapshot_without_covers_key_defaults_empty() -> None:
 
 
 @pytest.mark.parametrize(
+    ("raw_covers", "expected"),
+    [
+        pytest.param("snapshot-a", (), id="string"),
+        pytest.param(5, (), id="int"),
+        pytest.param(["snapshot-a", 5, None], ("snapshot-a",), id="mixed-list"),
+    ],
+)
+def test_malformed_covers_never_fabricates_ids(
+    raw_covers: object, expected: tuple[str, ...]
+) -> None:
+    payload = json.loads(_make_report([_make_entry()]).to_json())
+    payload["entries"][0]["covers"] = raw_covers
+    assert Report.from_json(json.dumps(payload)).entries[0].covers == expected
+
+
+@pytest.mark.parametrize(
     ("filters", "expected"),
     [
         pytest.param(ScanFilters(), True, id="defaults"),
