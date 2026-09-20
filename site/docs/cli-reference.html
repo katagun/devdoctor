@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CLI reference — DevDoctor docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+<nav class="topnav"><a class="home" href="../">DevDoctor</a><a href="./">Docs</a></nav>
+<h1>CLI reference</h1>
+<p class="lede">The <code>devdoctor</code> CLI. Global flag: <code>-v</code> / <code>--verbose</code> (debug logging to stderr). Sizes accept suffixes like <code>100M</code>, <code>2G</code>.</p>
+
+<h2><code>scan</code> — read-only inventory</h2>
+<p>Prints a Rich table of all known caches, sorted by size. Never deletes anything. Prefer <code>--json</code> when piping or capturing (the table truncates).</p>
+<pre><code>devdoctor scan
+devdoctor scan --json                # structured Report JSON to stdout
+devdoctor scan --min-size 100M       # hide entries below this size
+devdoctor scan --risk safe,reclaimable   # include only these risks
+devdoctor scan --provider docker     # repeatable; limit to providers</code></pre>
+<p><code>--risk</code> accepts <code>safe</code>, <code>reclaimable</code>, <code>dangerous</code>, repeatable or comma-separated.</p>
+<h3><code>scan --json</code> contract</h3>
+<table><tr><th>Key</th><th>Meaning</th></tr>
+<tr><td><code>schema_version</code>, <code>kind</code></td><td>Report format version and kind</td></tr>
+<tr><td><code>scanned_at</code>, <code>started_at</code>, <code>duration_ms</code></td><td>Timing</td></tr>
+<tr><td><code>hostname</code>, <code>platform</code></td><td>Where the scan ran</td></tr>
+<tr><td><code>total_bytes</code>, <code>total_footprint_bytes</code>, <code>total_reclaimable_bytes</code>, <code>total_shared_bytes</code></td><td>Totals (footprint vs. reclaimable vs. shared — see <a href="faq.html">FAQ</a>)</td></tr>
+<tr><td><code>entry_count</code>, <code>unknown_reclaimable_entries</code></td><td>Entry count; entries whose reclaim is unknown</td></tr>
+<tr><td><code>per_provider</code></td><td>Per-provider totals: <code>name</code>, <code>bytes</code>, <code>entries</code>, <code>duration_ms</code>, footprint/reclaimable/shared bytes</td></tr>
+<tr><td><code>entries</code></td><td>One object per entry (omitted for auto snapshots)</td></tr>
+<tr><td><code>diagnostics</code></td><td>Unreadable paths and provider warnings</td></tr></table>
+<p>Each entry carries <code>provider</code>, <code>id</code>, <code>path</code> (may be <code>null</code>), <code>label</code>, <code>size_bytes</code>, footprint/reclaimable/shared bytes, <code>risk</code>, <code>recipe</code> lines, <code>actions</code>, file metadata (<code>uid</code>, <code>gid</code>, <code>mode</code>, <code>owner</code>, <code>group</code>, <code>perms</code>) and <code>mtime</code>.</p>
+
+<h2><code>clean</code> — preview by default, act with <code>--execute</code></h2>
+<pre><code>devdoctor clean                      # preview: table, no prompts, no shell calls
+devdoctor clean --execute            # plan prints, per-entry prompts, one confirmation, then runs
+devdoctor clean --execute --yes-safe # safe entries need no per-entry prompt
+devdoctor clean --execute --yes-safe --yes   # unattended: plan still prints
+devdoctor clean --execute --risk safe --provider uv-cache   # scope a run
+devdoctor clean --execute --allow-dangerous  # include dangerous (explicit opt-in)</code></pre>
+<table><tr><th>Flag</th><th>Effect</th></tr>
+<tr><td><code>--execute</code></td><td>Actually run. Without it: preview only. Refuses without <code>--yes</code> when stdin is not a terminal.</td></tr>
+<tr><td><code>--yes-safe</code></td><td>Auto-approve <code>safe</code> entries; reclaimable still prompted.</td></tr>
+<tr><td><code>--yes</code></td><td>Skip the final confirmation (plan still prints). Unattended runs also need <code>--yes-safe</code>.</td></tr>
+<tr><td><code>--risk</code></td><td>Include only these risks (repeatable or comma-separated).</td></tr>
+<tr><td><code>--provider</code></td><td>Limit to these providers (repeatable).</td></tr>
+<tr><td><code>--allow-dangerous</code></td><td>Offer dangerous entries too; otherwise skipped. Never pass without explicit user say-so.</td></tr></table>
+<p>Per-entry lines: <code>✓</code> done, <code>✗</code> failed (with the error), <code>-</code> skipped (with reason), <code>·</code> advice-only. Covering entries (e.g. the Time Machine all-but-newest bundle) are prompted before what they cover.</p>
+
+<h2><code>recipe</code> — reviewable cleanup script</h2>
+<pre><code>devdoctor recipe                     # all providers, to stdout
+devdoctor recipe --provider ollama   # one provider
+devdoctor recipe -o /tmp/cleanup.sh  # write to file</code></pre>
+<p>Every line commented out — review, uncomment what you want, run it yourself.</p>
+
+<h2><code>snapshot</code> / <code>diff</code> — track usage over time</h2>
+<pre><code>devdoctor snapshot --note "before cleanup"
+devdoctor diff                       # latest two snapshots
+devdoctor diff --to live             # last snapshot vs. current state</code></pre>
+
+<h2><code>history</code> — past cleanup runs</h2>
+<pre><code>devdoctor history                    # past runs, newest first
+devdoctor history 1                  # the newest run, entry by entry</code></pre>
+
+<h2><code>providers</code> — what is available here</h2>
+<p>Lists registered providers and whether each is available on this machine.</p>
+
+<h2><code>serve</code> — local web UI</h2>
+<pre><code>devdoctor serve                         # needs the web extra; opens a browser tab
+devdoctor serve --port 8731 --no-browser</code></pre>
+<p><code>--port N</code> binds a specific port (<code>0</code> = random free port, the default); <code>--no-browser</code> skips auto-opening. See the <a href="web-ui.html">Web UI guide</a>.</p>
+
+<p class="foot">Next: <a href="tutorial.html">Tutorial</a> · <a href="web-ui.html">Web UI guide</a> · <a href="providers.html">Provider catalogue</a> · <a href="faq.html">FAQ</a></p>
+</div>
+</body>
+</html>

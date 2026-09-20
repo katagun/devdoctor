@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FAQ — DevDoctor docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+<nav class="topnav"><a class="home" href="../">DevDoctor</a><a href="./">Docs</a></nav>
+<h1>FAQ</h1>
+
+<h2>Why did my free space not change after a cleanup?</h2>
+<p>The three usual causes, in order of likelihood on macOS:</p>
+<ol class="steps">
+<li><b>Time Machine local snapshots pin the freed blocks.</b> Hourly snapshots keep deleted data allocated until they age out. Thin them (keeping the newest restore point) and the space appears:
+<pre><code>devdoctor scan --provider time-machine-local-snapshots
+devdoctor clean --execute --provider time-machine-local-snapshots</code></pre>
+The end-of-run summary says so explicitly when it detects the measured change lagging the estimate for this reason.</li>
+<li><b>Docker Desktop compacts its VM disk later.</b> A prune frees space <em>inside</em> the VM; the <code>Docker.raw</code> file on your Mac shrinks afterwards, not instantly. Judge with <code>docker system df</code> and re-check Finder later.</li>
+<li><b>You cleaned advice-only entries.</b> Entries marked <code>·</code> print guidance instead of running anything — re-read the summary's estimated-vs-planned numbers.</li>
+</ol>
+<p>On Linux, cause 1 does not apply; check 2 and 3.</p>
+
+<h2>How does DevDoctor measure space?</h2>
+<ul>
+<li><b>Footprint</b> — storage actually allocated on disk.</li>
+<li><b>Estimated reclaimable</b> — what cleanup is expected to free. An estimate, not a promise.</li>
+<li><b>Shared</b> — allocations hard-linked from multiple places and counted once.</li>
+</ul>
+
+<h2>Why is an entry's size "unknown"?</h2>
+<p>Some things cannot be measured without doing the destructive thing first. DevDoctor offers the entry with unknown size rather than hiding it — the plan still shows the exact command, and you decide.</p>
+
+<h2>Why is something skipped?</h2>
+<p>Every skip carries a reason: <code>dangerous</code> without <code>--allow-dangerous</code>, advice-only entries, covered entries, entries that changed after the scan, and unavailable providers.</p>
+
+<h2>Do I need Full Disk Access / sudo?</h2>
+<p>Only for seeing everything. Unreadable paths land in the report's <code>diagnostics</code> and are excluded from totals. On macOS, grant Full Disk Access (System Settings › Privacy &amp; Security) if the total looks too small.</p>
+
+<h2>Is my data sent anywhere?</h2>
+<p>No. Scanning, cleanup, and the web UI are all local; the landing page ships no cookies or analytics.</p>
+
+<h2>Where do snapshots and history live?</h2>
+<p>Snapshots (<code>snapshot</code> / <code>diff</code>) and the cleanup history log (<code>history</code>) share one local store used by both the CLI and the web UI.</p>
+
+<p class="foot">Next: <a href="tutorial.html">Tutorial</a> · <a href="safety-model.html">Safety model</a> · <a href="./">All docs</a></p>
+</div>
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Provider catalogue — DevDoctor docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+<nav class="topnav"><a class="home" href="../">DevDoctor</a><a href="./">Docs</a></nav>
+<h1>Provider catalogue</h1>
+<p class="lede">Providers are the scanners: each one knows where one family of disk usage lives, how big it is, and what cleanup is safe. <code>devdoctor providers</code> shows what is registered and available on <em>your</em> machine. Per-entry labels always win over the family default.</p>
+
+<h2>Safe — regenerable caches</h2>
+<table><tr><th>Provider</th><th>Covers</th></tr>
+<tr><td><code>uv-cache</code>, <code>pip-cache</code>, <code>poetry-cache</code></td><td>Python package download caches</td></tr>
+<tr><td><code>npm-cache</code>, <code>pnpm-store</code>, <code>bun-cache</code></td><td>JS package-manager stores</td></tr>
+<tr><td><code>go-caches</code></td><td>Go build, test, fuzz, and module caches</td></tr>
+<tr><td><code>nuget-caches</code></td><td>NuGet global packages, HTTP, temp, plugin caches</td></tr>
+<tr><td><code>homebrew-downloads</code></td><td>Cached Homebrew bottles</td></tr>
+<tr><td><code>gradle-caches</code></td><td>JVM build caches</td></tr>
+<tr><td><code>chrome-cache</code>, <code>firefox-cache</code>, <code>arc-browser-cache</code>, <code>vscode-cache</code>, <code>cursor-cache</code></td><td>Browser and editor caches</td></tr>
+<tr><td><code>tiktoken-cache</code></td><td>Tokenizer cache</td></tr>
+<tr><td><code>playwright</code>, <code>docker-installer</code></td><td>Browser binaries for testing; Docker installer</td></tr>
+<tr><td><code>tox-nox-environments</code></td><td>Generated tox/nox test environments</td></tr></table>
+
+<h2>Reclaimable — rebuildable at a cost</h2>
+<table><tr><th>Provider</th><th>Covers</th></tr>
+<tr><td><code>docker</code></td><td>Images, containers, anonymous unused volumes (named volumes: dangerous)</td></tr>
+<tr><td><code>docker-vm-disk</code>, <code>claude-vm-bundles</code></td><td>VM disk files</td></tr>
+<tr><td><code>git-worktrees</code></td><td>Linked worktrees whose branches are fully integrated</td></tr>
+<tr><td><code>time-machine-local-snapshots</code> (macOS)</td><td>Local snapshots; all-but-newest bundle plus per-snapshot entries</td></tr>
+<tr><td><code>node-project-dependencies</code></td><td><code>node_modules</code> under common code roots</td></tr>
+<tr><td><code>cargo-targets</code>, <code>cargo-dependency-cache</code></td><td>Cargo build dirs; registry archives and git checkouts</td></tr>
+<tr><td><code>python-venvs</code></td><td>Virtualenvs (rebuildable)</td></tr>
+<tr><td><code>conda-package-caches</code></td><td>Conda package caches</td></tr>
+<tr><td><code>xcode-development-data</code> (macOS)</td><td>Derived data, device support, archives, unavailable simulators</td></tr>
+<tr><td><code>android-sdk-storage</code>, <code>android-project-builds</code></td><td>SDK images, emulator storage, Gradle build dirs</td></tr>
+<tr><td><code>maven-repo</code></td><td>Local Maven repository</td></tr>
+<tr><td><code>slack-service-worker</code></td><td>Slack cached web assets</td></tr>
+<tr><td><code>ollama</code>, <code>huggingface-hub</code>, <code>lm-studio-models</code>, and other <code>*-models</code> / <code>*-cache</code> AI providers</td><td>Local model weights and inference caches</td></tr></table>
+
+<h2>Dangerous — may hold user data</h2>
+<table><tr><th>Provider</th><th>Covers</th></tr>
+<tr><td><code>large-files</code></td><td>Unusually large files — user data until you say otherwise</td></tr>
+<tr><td><code>downloads</code></td><td><code>~/Downloads</code></td></tr>
+<tr><td><code>conda-environments</code></td><td>Non-base Conda environments (may hold your work)</td></tr>
+<tr><td><code>open-webui-data</code></td><td>Open WebUI application data</td></tr></table>
+<p><code>yarn-cache</code> is safe, except project-local Zero-Install caches, which are dangerous advice instead.</p>
+
+<h2>Platform notes</h2>
+<ul>
+<li><code>time-machine-local-snapshots</code> and <code>xcode-development-data</code> need macOS. Everything else runs on macOS and Linux.</li>
+<li>Providers report <em>unavailability</em> instead of failing: a missing binary or wrong platform shows up in <code>devdoctor providers</code> and in the report's <code>diagnostics</code>, never as a crash.</li>
+<li>Unmeasurable entries (e.g. snapshot sizes macOS does not disclose) are offered with unknown size rather than hidden.</li>
+<li>Project discovery is bounded to common code roots or <code>DEVDOCTOR_PROJECT_ROOTS</code>.</li>
+</ul>
+
+<p class="foot">Next: <a href="safety-model.html">Safety model</a> · <a href="tutorial.html">Tutorial</a> · <a href="cli-reference.html">CLI reference</a></p>
+</div>
+</body>
+</html>

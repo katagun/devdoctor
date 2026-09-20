@@ -1,0 +1,644 @@
+# DevDoctor — full documentation (llms-full.txt)
+
+Single-file rendering of docs/ for LLMs. Sources of truth live in docs/*.md.
+
+---
+File: docs/tutorial.md
+---
+
+# Reclaim disk space with DevDoctor — an end-to-end tutorial
+
+This tutorial walks a full cleanup pass: scan, read the report, handle the
+two big "why didn't my free space change?" traps (Docker's VM disk and Time
+Machine local snapshots), preview a cleanup, then run the safe tier. It is
+written from a real session on a Mac that went from **14 GB to 70 GB free**.
+
+Assumes DevDoctor is installed (`uv tool install --from
+git+https://github.com/katagun/devdoctor devdoctor`). Every step is
+repeatable — nothing below deletes anything until step 6.
+
+## 1. Scan and read the report
+
+```bash
+devdoctor scan --json > /tmp/dd_report.json
+```
+
+`scan` is read-only: it never deletes, moves, or modifies anything. `--json`
+emits the structured report (see [CLI reference](cli-reference.md) for the
+full contract). Summarize it:
+
+- `total_reclaimable_bytes` — the headline: estimated reclaimable space.
+- `per_provider` — bytes per provider, biggest first. This tells you *where*
+  to look.
+- `entries` — one item per cleanable thing, each with `provider`, `label`,
+  `path`, `size_bytes`, `risk` (`safe` / `reclaimable` / `dangerous`), and
+  the `actions` DevDoctor would take.
+- `diagnostics` — paths that could not be read (e.g. permission denied).
+  Entries you cannot see cannot be counted; re-run with Full Disk Access or
+  `sudo` if the total looks too small.
+
+Prefer `--json` whenever output is piped or captured: the Rich table that
+`devdoctor scan` prints to a terminal truncates wide rows.
+
+To scope a scan while exploring, filter by size, risk, or provider:
+
+```bash
+devdoctor scan --min-size 100M --risk safe,reclaimable
+devdoctor scan --provider docker
+devdoctor providers   # everything registered, with availability
+```
+
+## 2. Understand the risk tiers before touching anything
+
+Every entry carries one risk label, and the label decides what cleanup is
+allowed to do with it:
+
+| Risk | Meaning | `clean` behavior |
+|---|---|---|
+| `safe` | Regenerable caches (package-manager downloads, build caches) | Offered; `--yes-safe` auto-approves |
+| `reclaimable` | Rebuildable but costs time/bandwidth (containers, models, worktrees) | Offered; always prompted per entry |
+| `dangerous` | May hold durable user data (`~/Downloads`, named Docker volumes, large files) | **Skipped** unless `--allow-dangerous` |
+
+Dangerous entries are usually advice-only: DevDoctor prints what *you* could
+do instead of running anything. See [Safety model](safety-model.md) and the
+[provider catalogue](providers.md) for per-provider levels.
+
+## 3. Docker: prune inside the VM, expect the host file to lag
+
+On Docker Desktop (macOS), containers and images live inside a Linux VM whose
+disk is a file on your Mac (`Docker.raw`). DevDoctor's `docker` provider
+prunes *inside* the VM (`docker system prune`, unused volumes reviewed one by
+one — named volumes are dangerous, anonymous ones reclaimable).
+
+The trap: after a big prune, Finder's free space may barely move. The VM disk
+file compacts **later**, not instantly. Give it time, restart Docker Desktop
+if you are in a hurry, and judge the prune by `docker system df`, not by the
+menu-bar number in the first minute. This is the same class of surprise as
+the next section — see [FAQ: free space didn't change](faq.md).
+
+## 4. Time Machine: thin the local snapshots that pin freed blocks
+
+On macOS, hourly Time Machine local snapshots pin disk blocks: other
+cleanups can delete files yet the space stays allocated until the snapshots
+age out. If a cleanup reports success but free space is flat, check here
+first:
+
+```bash
+devdoctor scan --provider time-machine-local-snapshots
+```
+
+The provider lists each snapshot plus one bundle entry that deletes **all
+but the newest** restore point (newest first), so you always keep a restore
+point. macOS system-update snapshots (`com.apple.os.update-*`) are never
+touched, and deleting local snapshots never touches the external backup
+drive. In the session this tutorial is based on, thinning snapshots was the
+step that finally released the space other cleanups had already freed.
+
+(Linux has no equivalent provider — skip this step there.)
+
+## 5. Preview the cleanup — still nothing deleted
+
+```bash
+devdoctor clean
+```
+
+`clean` with no flags prints the same report table as `scan` and stops.
+Zero prompts, zero shell calls. For a reviewable artifact instead, emit the
+commented-out script and read it before uncommenting anything:
+
+```bash
+devdoctor recipe -o /tmp/cleanup.sh   # everything commented out; you pick
+```
+
+## 6. Run the safe tier, then decide about the rest
+
+```bash
+devdoctor clean --execute --yes-safe
+```
+
+What happens, in order:
+
+1. The **plan prints first** — every entry with path, risk, estimated
+   reclaim, and the exact command.
+2. You confirm once; then each entry runs with a per-entry line (`✓` done,
+   `✗` failed with the command's error, `-` skipped, `·` advice-only).
+3. The **summary** states estimated reclaimed vs. planned plus the measured
+   free-space change. Sizes are estimates — DevDoctor does not measure freed
+   bytes — and on macOS it says so explicitly when APFS snapshots hold the
+   measured change down (see step 4).
+4. Every run is recorded. `devdoctor history` lists runs; `devdoctor
+   history 1` replays the newest entry by entry.
+
+`--yes-safe` auto-approves only `safe` entries; everything reclaimable is
+still prompted. Worked example from the real session:
+
+```bash
+devdoctor clean --execute --risk safe --provider uv-cache   # one safe cache
+devdoctor clean --execute --yes-safe                        # all safe entries
+devdoctor clean --execute --provider docker                 # reclaimable, prompted
+devdoctor clean --execute --provider time-machine-local-snapshots
+```
+
+Unattended runs add `--yes` (plan still prints, final confirmation skipped);
+without a terminal, `--execute` refuses to run unless `--yes` is passed.
+`--allow-dangerous` is intentionally a separate, explicit opt-in — never
+combine it into a routine command.
+
+## 7. Prove it with snapshots, or click through it instead
+
+Before/after evidence:
+
+```bash
+devdoctor snapshot --note "before cleanup"
+# ... clean ...
+devdoctor diff --to live   # last snapshot vs. now
+```
+
+Prefer a GUI? `devdoctor serve` (needs the `web` extra) opens the local
+dashboard with the same engine: Disk and Memory pages, a step-by-step
+cleanup wizard with live output, history, and settings. See [Web UI
+guide](web-ui.md).
+
+## Next steps
+
+- [CLI reference](cli-reference.md) — every command and flag.
+- [Provider catalogue](providers.md) — what each provider covers and its risk.
+- [Safety model](safety-model.md) — the guarantees cleanup runs on.
+- [FAQ](faq.md) — "why did my free space not change?", estimates vs.
+  measured, permissions.
+- Driving DevDoctor from an agent or LLM? Read
+  [Docs for agents](agents.md).
+
+---
+File: docs/cli-reference.md
+---
+
+# CLI reference
+
+The `devdoctor` CLI. Global flag: `-v` / `--verbose` (debug logging to
+stderr). All sizes accept suffixes like `100M`, `2G`.
+
+## `devdoctor scan` — read-only inventory
+
+Prints a Rich table of all known caches, sorted by size. Never deletes
+anything. Prefer `--json` when piping or capturing (the table truncates).
+
+```bash
+devdoctor scan
+devdoctor scan --json                # structured Report JSON to stdout
+devdoctor scan --min-size 100M       # hide entries below this size
+devdoctor scan --risk safe,reclaimable   # include only these risks
+devdoctor scan --provider docker     # repeatable; limit to providers
+```
+
+`--risk` accepts `safe`, `reclaimable`, `dangerous`, repeatable or
+comma-separated.
+
+### `scan --json` contract
+
+Top-level object:
+
+| Key | Meaning |
+|---|---|
+| `schema_version`, `kind` | Report format version and kind |
+| `scanned_at`, `started_at`, `duration_ms` | Timing |
+| `hostname`, `platform` | Where the scan ran |
+| `note` | Snapshot note, if any |
+| `total_bytes`, `total_footprint_bytes`, `total_reclaimable_bytes`, `total_shared_bytes` | Totals (see [FAQ](faq.md#how-does-devdoctor-measure-space) for footprint vs. reclaimable vs. shared) |
+| `unknown_reclaimable_entries` | Entries whose reclaim is unknown |
+| `entry_count` | Number of entries |
+| `per_provider` | Per-provider totals: `name`, `bytes`, `entries`, `duration_ms`, `footprint_bytes`, `reclaimable_bytes`, `shared_bytes` |
+| `entries` | One object per entry (omitted for auto snapshots) |
+| `diagnostics` | Unreadable paths and provider warnings |
+
+Each entry carries `provider`, `id`, `path` (may be `null`), `label`,
+`size_bytes`, `footprint_bytes`, `reclaimable_bytes`, `shared_bytes`,
+`risk` (`safe` / `reclaimable` / `dangerous`), `recipe` (shell lines for the
+recipe script), `actions` (typed cleanup actions), plus file metadata
+(`uid`, `gid`, `mode`, `owner`, `group`, `perms`) and `mtime`.
+
+## `devdoctor clean` — preview by default, act with `--execute`
+
+```bash
+devdoctor clean                      # preview: report table, no prompts, no shell calls
+devdoctor clean --execute            # plan prints, per-entry prompts, one confirmation, then runs
+devdoctor clean --execute --yes-safe # safe entries need no per-entry prompt
+devdoctor clean --execute --yes-safe --yes   # unattended: plan still prints, no confirmation
+devdoctor clean --execute --risk safe --provider uv-cache   # scope a run
+devdoctor clean --execute --allow-dangerous  # include dangerous entries (explicit opt-in)
+```
+
+| Flag | Effect |
+|---|---|
+| `--execute` | Actually run. Without it: preview only. Refuses without `--yes` when stdin is not a terminal. |
+| `--yes-safe` | Auto-approve `safe` entries; reclaimable still prompted. |
+| `--yes` | Skip the final confirmation (plan still prints). Unattended runs also need `--yes-safe`. |
+| `--risk` | Include only these risks (`safe`, `reclaimable`, `dangerous`; repeatable or comma-separated). |
+| `--provider` | Limit to these providers (repeatable). |
+| `--allow-dangerous` | Offer dangerous entries too; otherwise skipped. Never pass without explicit user say-so. |
+
+During a run each entry prints one line: `✓` done, `✗` failed (with the
+command's error), `-` skipped (with reason), `·` advice-only. The summary
+gives estimated reclaimed vs. planned and the measured free-space change;
+on macOS it calls out APFS snapshots when the measured change lags the
+estimate. Covering entries (e.g. the Time Machine all-but-newest bundle)
+are prompted before the entries they cover: approving the bundle resolves
+the covered entries as skipped without further prompts.
+
+## `devdoctor recipe` — reviewable cleanup script
+
+Emits a shell script with **every line commented out** — review, uncomment
+what you want, run it yourself.
+
+```bash
+devdoctor recipe                     # all providers, to stdout
+devdoctor recipe --provider ollama   # one provider
+devdoctor recipe -o /tmp/cleanup.sh  # write to file
+```
+
+## `devdoctor snapshot` / `devdoctor diff` — track usage over time
+
+```bash
+devdoctor snapshot --note "before cleanup"
+devdoctor diff                       # latest two snapshots
+devdoctor diff --to live             # last snapshot vs. current disk state
+```
+
+The CLI and the web UI share one snapshot store and one history log.
+
+## `devdoctor history` — past cleanup runs
+
+```bash
+devdoctor history                    # past runs, newest first
+devdoctor history 1                  # the newest run, entry by entry
+```
+
+## `devdoctor providers` — what is available here
+
+Lists registered providers and whether each is available on this machine
+(missing binaries and wrong platforms are reported, not hidden).
+
+## `devdoctor serve` — local web UI
+
+```bash
+devdoctor serve                       # needs the `web` extra; opens a browser tab
+devdoctor serve --port 8731 --no-browser
+```
+
+`--port N` binds a specific port (`0` = random free port, the default);
+`--no-browser` skips auto-opening. See the [Web UI guide](web-ui.md).
+
+---
+File: docs/web-ui.md
+---
+
+# Web UI guide
+
+The web UI is the same engine behind a local dashboard. Nothing leaves your
+machine: the server binds loopback and serves the SPA plus a JSON API.
+
+## Launch
+
+```bash
+# Install with the web extra (once)
+uv tool install '.[web]' --force
+
+# Launch (opens a browser tab at a random free port)
+devdoctor serve
+
+# Pin the port, or skip the auto-open tab
+devdoctor serve --port 8731 --no-browser
+```
+
+`--port 0` (the default) picks a random free port; `--port N` binds `N`.
+
+## Pages
+
+- **Disk** — the scan as charts and tables, with live progress while a scan
+  runs (providers finished, bytes found so far, what is still running).
+- **Memory** — RAM pressure state plus top live consumers by real RSS, with
+  safe fixes (quit the app, stop the container) instead of raw `kill`.
+- **Cleanup wizard** — the plan, per-entry prompts, and live output,
+  step by step: the GUI form of `clean --execute`.
+- **History** — past cleanup runs, shared with the CLI's `history` log.
+- **Snapshots** — capture and diff disk states, shared with the CLI's
+  `snapshot` / `diff` store.
+- **Settings** — app preferences (also `GET` / `PATCH /api/settings`).
+
+## API (all under `/api`, loopback only)
+
+Disk:
+
+- `GET /api/health` — liveness probe (the desktop shell waits on this).
+- `GET /api/scan` and `GET /api/disk/scan` — run a scan, JSON report.
+- `GET /api/scan/progress` — server-sent events: per-provider progress.
+- `GET /api/providers` — registered providers and availability.
+- `POST /api/recipe` — build the commented-out cleanup script.
+- `GET /api/disk-usage`, `GET /api/snapshots`, `POST /api/snapshots`,
+  `GET /api/snapshots/{name}`, `GET /api/diff`, `GET /api/history`,
+  `GET /api/dashboard/disk-summary`.
+
+Cleanup jobs (the wizard backend):
+
+- `POST /api/clean/jobs` — start a cleanup job.
+- `GET /api/clean/jobs/{job_id}/events` — SSE stream of plan, prompts,
+  per-entry results.
+- `POST /api/clean/jobs/{job_id}/answer` — answer a per-entry prompt.
+- `POST /api/clean/jobs/{job_id}/confirm` — final confirmation.
+- `POST /api/clean/jobs/{job_id}/cancel` — cancel the job.
+
+Memory: `GET /api/memory`, `/api/memory/history`, `/api/memory/snapshots*`,
+`/api/memory/sources`, `/api/memory/providers`, `/api/memory/workloads`,
+`POST /api/memory/plan`, `POST /api/memory/actions`.
+
+## Developing the UI
+
+```bash
+# One-time: install the SPA dependencies
+cd web && bun install --frozen-lockfile && cd ..
+
+# Terminal 1: FastAPI (this repo's backend)
+uv run devdoctor serve --port 8731 --no-browser
+
+# Terminal 2: Vite with HMR (proxies /api to 8731)
+cd web && bun run dev
+```
+
+Open http://localhost:5173. For a production-style run, `./scripts/deploy.sh`
+builds the SPA, drops the stale wheel (`uv cache clean devdoctor`), and
+reinstalls with the bundle included — run the steps in that order, or just
+run the script.
+
+---
+File: docs/providers.md
+---
+
+# Provider catalogue
+
+Providers are the scanners: each one knows where one family of disk usage
+lives, how big it is, and what cleanup is safe. `devdoctor providers` shows
+what is registered and available on *your* machine.
+
+Risk levels: **safe** (regenerable caches — delete freely),
+**reclaimable** (rebuildable at a cost in time or bandwidth — confirm each),
+**dangerous** (may hold user data — skipped unless `--allow-dangerous`).
+Mixed providers carry entries at more than one level; the per-entry label
+always wins.
+
+## Built-in providers
+
+| Provider | Covers | Risk |
+|---|---|---|
+| `uv-cache`, `pip-cache`, `poetry-cache` | Python package download caches | safe |
+| `npm-cache`, `pnpm-store`, `bun-cache` | JS package-manager stores | safe |
+| `yarn-cache` | Yarn cache (project-local Zero-Install caches are dangerous advice instead) | safe / dangerous |
+| `cargo-dependency-cache` | Cargo registry archives, sources, git checkouts | reclaimable |
+| `go-caches` | Go build, test, fuzz, and module caches | safe |
+| `nuget-caches` | NuGet global packages, HTTP, temp, plugin caches | safe |
+| `conda-package-caches` | Conda package caches | reclaimable |
+| `homebrew-downloads` | Cached Homebrew bottles | safe |
+| `gradle-caches` | JVM build caches | safe |
+| `maven-repo` | Local Maven repository (re-downloadable artifacts) | reclaimable |
+| `chrome-cache`, `firefox-cache`, `arc-browser-cache`, `vscode-cache`, `cursor-cache` | Browser and editor caches | safe |
+| `slack-service-worker` | Slack cached web assets | reclaimable |
+| `tiktoken-cache` | Tokenizer cache | safe |
+| `nltk-data`, `spacy-cache`, `wandb-cache`, `sentence-transformers-cache`, `torch-hub-cache`, `flair-cache`, `llama-cpp-cache`, `modelscope-cache`, `helix-cache` | ML/NLP datasets and model caches | reclaimable |
+| `docker` | Images, containers, and unused volumes (named volumes: dangerous; anonymous: reclaimable) | reclaimable / dangerous |
+| `docker-vm-disk` | The Docker Desktop VM disk file itself | reclaimable |
+| `git-worktrees` | Linked worktrees whose branches are fully integrated (anything else: advice) | reclaimable |
+| `time-machine-local-snapshots` (macOS only) | Local snapshots; one all-but-newest bundle plus per-snapshot entries | reclaimable |
+| `node-project-dependencies` | `node_modules` under common code roots | reclaimable |
+| `cargo-targets` | Cargo workspace `target/` build dirs | reclaimable |
+| `python-venvs` | Virtualenvs (rebuildable with `uv sync` / `pip install -r`) | reclaimable |
+| `tox-nox-environments` | Generated tox/nox test environments | safe |
+| `conda-environments` | Non-base Conda environments (may hold your work) | dangerous |
+| `xcode-development-data` (macOS only) | Derived data, device support, archives, unavailable simulators | reclaimable |
+| `android-sdk-storage`, `android-project-builds` | SDK system images, emulator storage, Gradle build dirs | reclaimable |
+| `ollama`, `huggingface-hub`, `lm-studio-models`, `gpt4all-models`, `jan-models`, `msty-models`, and other `*-models` / `*-cache` AI providers | Local model weights and inference caches | reclaimable |
+| `large-files` | Unusually large files anywhere scanned — user data until you say otherwise | dangerous |
+| `downloads` | `~/Downloads` | dangerous |
+
+Project discovery (`node-project-dependencies`, `cargo-targets`,
+`git-worktrees`, `android-project-builds`) is bounded to common code roots
+or the colon-separated paths in `DEVDOCTOR_PROJECT_ROOTS`.
+
+## Platform notes
+
+- `time-machine-local-snapshots` and `xcode-development-data` need macOS
+  (`tmutil`, Xcode paths). Everywhere else, providers run on macOS and Linux.
+- Providers report *unavailability* instead of failing: a missing binary or a
+  wrong platform shows up in `devdoctor providers` and in the report's
+  `diagnostics`, never as a crash.
+- Entries DevDoctor cannot measure (e.g. snapshot sizes macOS does not
+  disclose) are still offered with unknown size rather than hidden.
+
+## Adding coverage
+
+New coverage lands as a provider with a name, a family, a risk, and an
+availability check — see `src/devdoctor/providers/` and
+`src/devdoctor/data/paths.yaml`. When you add one, add its row to this
+table.
+
+---
+File: docs/safety-model.md
+---
+
+# Safety model
+
+DevDoctor runs destructive commands, so safety is the design — not a flag.
+
+## The five guarantees
+
+1. **Preview by default.** `clean` without `--execute` prints the report and
+   stops: zero prompts, zero shell calls. `scan` never modifies anything.
+2. **The plan prints before anything runs.** With `--execute`, every entry is
+   shown with its path, risk, estimated reclaim, and the exact command —
+   then DevDoctor asks once before starting.
+3. **Risk tiers gate execution.** `safe` entries may be auto-approved with
+   `--yes-safe`. `reclaimable` entries are always prompted individually.
+   `dangerous` entries are **skipped** unless `--allow-dangerous` is passed
+   explicitly — and are usually advice-only (an `echo` describing what you
+   could do, not an `rm`).
+4. **No shell.** Cleanup actions are typed path deletions, argv command
+   lists, or non-executable advice. Commands never pass through a shell;
+   paths are quoted.
+5. **Everything is recorded.** Every run lands in the history log
+   (`devdoctor history`), shared by the CLI and the web UI.
+
+## Numbers are honest about being estimates
+
+Disk figures distinguish **footprint** (allocated storage), **estimated
+reclaimable** space, and **shared** hard-linked allocations. Cleanup results
+stay estimates unless a provider explicitly verifies the post-clean size.
+The end-of-run summary compares estimated reclaimed vs. planned alongside
+the measured free-space change — and on macOS it says so when APFS local
+snapshots hold the measured change down. See the
+[FAQ](faq.md#why-did-my-free-space-not-change-after-a-cleanup).
+
+## Edge cases the model already handles
+
+- Unused Docker volumes are reviewed and removed **individually**. Anonymous
+  volumes are reclaimable; named volumes are dangerous and stay off by
+  default because they may contain durable application data.
+- A git worktree holding another repository is never offered, because `git
+  worktree remove` would delete it. Removable worktrees are re-checked
+  immediately before removal; one that changed after the scan is skipped.
+- Covering entries (e.g. the Time Machine all-but-newest bundle) are
+  prompted before what they cover; approving the bundle resolves the rest as
+  skipped, declining prompts each one individually.
+- `recipe` always emits a **fully commented-out** script. Nothing runs until
+  you uncomment it.
+- Without a terminal, `--execute` refuses to run unless `--yes` is passed —
+  unattended runs cannot happen by accident.
+
+## For agents and automation
+
+Scan is read-only and safe to run on any schedule. `clean` needs `--execute`
+plus an explicit human decision for anything above `safe`; never pass
+`--allow-dangerous` without explicit user say-so. The full agent procedure
+lives in [Docs for agents](agents.md).
+
+---
+File: docs/faq.md
+---
+
+# FAQ
+
+## Why did my free space not change after a cleanup?
+
+The three usual causes, in order of likelihood on macOS:
+
+1. **Time Machine local snapshots pin the freed blocks.** Hourly snapshots
+   keep deleted data allocated until they age out. Thin them (keeping the
+   newest restore point) and the space appears:
+   ```bash
+   devdoctor scan --provider time-machine-local-snapshots
+   devdoctor clean --execute --provider time-machine-local-snapshots
+   ```
+   The end-of-run summary says so explicitly when it detects the measured
+   change lagging the estimate for this reason.
+2. **Docker Desktop compacts its VM disk later.** A prune frees space
+   *inside* the VM; the `Docker.raw` file on your Mac shrinks afterwards,
+   not instantly. Judge the prune with `docker system df`, give it time
+   (or restart Docker Desktop), and re-check Finder later.
+3. **You cleaned advice-only entries.** Entries marked `·` in the run output
+   print guidance instead of running anything — re-read the summary's
+   estimated-vs-planned numbers.
+
+On Linux, cause 1 does not apply (no Time Machine provider); check 2 and 3.
+
+## How does DevDoctor measure space?
+
+Three distinct numbers, kept separate on purpose:
+
+- **Footprint** — storage actually allocated on disk.
+- **Estimated reclaimable** — what cleanup is expected to free. An estimate,
+  not a promise.
+- **Shared** — allocations hard-linked from multiple places and counted once.
+
+Cleanup results remain estimates unless a provider explicitly verifies the
+post-clean size. The summary reports estimated reclaimed vs. planned plus
+the measured free-space change so you can see all three side by side.
+
+## Why is an entry's size "unknown"?
+
+Some things cannot be measured without doing the destructive thing first
+(macOS does not disclose per-snapshot sizes, a cache may need a tool to
+enumerate it). DevDoctor offers the entry with unknown size rather than
+hiding it — the plan still shows the exact command, and you decide.
+
+## Why is something skipped?
+
+The run output marks every skip with a reason: `dangerous` without
+`--allow-dangerous`, advice-only entries, covered entries (a bundle you
+approved already handles them), entries that changed after the scan (git
+worktrees are re-checked before removal), and entries whose provider
+reported them unavailable.
+
+## Do I need Full Disk Access / sudo?
+
+Only for seeing everything. Unreadable paths land in the report's
+`diagnostics` and are excluded from totals. If the total looks too small
+for your disk, grant Full Disk Access (System Settings › Privacy &
+Security) on macOS or re-run with elevated privileges, then compare.
+
+## Is my data sent anywhere?
+
+No. Scanning, cleanup, and the web UI are all local; the landing page ships
+no cookies or analytics. The only network calls DevDoctor itself makes are
+the ones your package tools would make anyway when re-downloading.
+
+## Where do snapshots and history live?
+
+Snapshots (`devdoctor snapshot` / `diff`) and the cleanup history log
+(`devdoctor history`) share one local store used by both the CLI and the
+web UI — record in one surface, read back in the other.
+
+---
+File: docs/agents.md
+---
+
+# Docs for agents
+
+Driving DevDoctor from an LLM or coding agent? This page is the contract.
+(It mirrors `.claude/skills/devdoctor/SKILL.md` in this repo, published here
+so agents outside this checkout can use it too.)
+
+## Capabilities
+
+- `devdoctor scan --json` — **read-only**. Never deletes, moves, or modifies
+  anything. Safe to run on any schedule, unsupervised.
+- `devdoctor providers` — registered providers and availability. Check this
+  before assuming a provider exists on the machine.
+- `devdoctor recipe` — emits a fully commented-out cleanup script. The safe
+  way to propose a cleanup for a human to review.
+- `devdoctor clean` (no flags) — preview only. Zero prompts, zero shell
+  calls. Safe to run to show the human what *would* happen.
+- `devdoctor clean --execute` — **destructive**. Requires a human decision
+  (see rules below). Never run unsupervised.
+- `devdoctor serve` — local web UI on loopback. Do not expose it; do not
+  firewall-punch it; it has no auth because it never leaves the machine.
+
+## Rules for `clean --execute`
+
+1. **Confirm intent first.** Only run `--execute` when the user explicitly
+   asked to reclaim space / delete caches. A scan report is not consent.
+2. **Preview or recipe first.** Show `clean` (preview) or the `recipe`
+   script before executing, unless the user already approved a plan.
+3. **Stay at or below the approved tier.** `--risk safe` with `--yes-safe`
+   for routine runs. Reclaimable entries need per-entry approval —
+   surface them one by one, do not pre-answer. `--allow-dangerous` only
+   with explicit user say-so, never by default, never bundled into a
+   routine command.
+4. **Scope when you can.** `--provider <name>` narrows a run to what was
+   discussed (e.g. `--provider docker`).
+5. **No terminal means `--yes` or nothing.** `--execute` refuses without
+   `--yes` when stdin is not a terminal. Do not add `--yes` to dodge a
+   missing human — unattended `--execute` needs prior explicit approval.
+6. **Report the summary.** Estimated reclaimed vs. planned, measured
+   free-space change, and any APFS-snapshot caveat. If free space lags,
+   check `time-machine-local-snapshots` (macOS) before declaring success.
+
+## Reading `scan --json`
+
+- Headline: `total_reclaimable_bytes`. Breakdown: `per_provider` (biggest
+  first). Detail: `entries[]` with `provider`, `label`, `path`,
+  `size_bytes`, `risk`, `actions`.
+- Sizes are estimates: `footprint_bytes` (allocated),
+  `reclaimable_bytes` (expected freeing), `shared_bytes` (hard-linked,
+  counted once). Do not present estimates as measured freed bytes.
+- `diagnostics` lists unreadable paths and unavailable providers — mention
+  them so the human knows what the total excludes.
+- The Rich table truncates when captured: always parse `--json`, never the
+  human table.
+- `path` may be `null` (non-path entries like snapshots). `risk` is one of
+  `safe` / `reclaimable` / `dangerous`.
+
+## Safety model in one paragraph
+
+Preview by default; the plan prints before anything runs; risk tiers gate
+execution (safe auto-approvable, reclaimable always prompted, dangerous
+skipped unless `--allow-dangerous`); cleanup actions are typed deletions or
+argv commands, never shell strings; every run is recorded in the shared
+history log. Full version: [Safety model](safety-model.md).
+

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Web UI guide — DevDoctor docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+<nav class="topnav"><a class="home" href="../">DevDoctor</a><a href="./">Docs</a></nav>
+<h1>Web UI guide</h1>
+<p class="lede">The same engine behind a local dashboard. Nothing leaves your machine: the server binds loopback and serves the SPA plus a JSON API.</p>
+
+<h2>Launch</h2>
+<pre><code>uv tool install '.[web]' --force   # once: install with the web extra
+devdoctor serve                     # opens a browser tab at a random free port
+devdoctor serve --port 8731 --no-browser</code></pre>
+<p><code>--port 0</code> (the default) picks a random free port; <code>--port N</code> binds <code>N</code>.</p>
+
+<h2>Pages</h2>
+<ul>
+<li><b>Disk</b> — the scan as charts and tables, with live progress while a scan runs.</li>
+<li><b>Memory</b> — RAM pressure plus top live consumers by real RSS, with safe fixes instead of raw <code>kill</code>.</li>
+<li><b>Cleanup wizard</b> — the plan, per-entry prompts, and live output, step by step: the GUI form of <code>clean --execute</code>.</li>
+<li><b>History</b> — past cleanup runs, shared with the CLI's <code>history</code> log.</li>
+<li><b>Snapshots</b> — capture and diff disk states, shared with <code>snapshot</code> / <code>diff</code>.</li>
+<li><b>Settings</b> — app preferences (also <code>GET</code> / <code>PATCH /api/settings</code>).</li>
+</ul>
+
+<h2>API (all under <code>/api</code>, loopback only)</h2>
+<p>Disk: <code>GET /api/health</code> · <code>GET /api/scan</code> · <code>GET /api/disk/scan</code> · <code>GET /api/scan/progress</code> (server-sent events) · <code>GET /api/providers</code> · <code>POST /api/recipe</code> · <code>GET /api/disk-usage</code> · <code>GET /api/snapshots</code> · <code>POST /api/snapshots</code> · <code>GET /api/snapshots/{name}</code> · <code>GET /api/diff</code> · <code>GET /api/history</code> · <code>GET /api/dashboard/disk-summary</code>.</p>
+<p>Cleanup jobs (the wizard backend): <code>POST /api/clean/jobs</code> · <code>GET /api/clean/jobs/{job_id}/events</code> (SSE) · <code>POST /api/clean/jobs/{job_id}/answer</code> · <code>POST /api/clean/jobs/{job_id}/confirm</code> · <code>POST /api/clean/jobs/{job_id}/cancel</code>.</p>
+<p>Memory: <code>GET /api/memory</code> · <code>/api/memory/history</code> · <code>/api/memory/snapshots*</code> · <code>/api/memory/sources</code> · <code>/api/memory/providers</code> · <code>/api/memory/workloads</code> · <code>POST /api/memory/plan</code> · <code>POST /api/memory/actions</code>.</p>
+
+<h2>Developing the UI</h2>
+<pre><code>cd web &amp;&amp; bun install --frozen-lockfile &amp;&amp; cd ..   # one-time SPA deps
+uv run devdoctor serve --port 8731 --no-browser  # terminal 1: FastAPI
+cd web &amp;&amp; bun run dev                          # terminal 2: Vite HMR (proxies /api)</code></pre>
+<p>Open http://localhost:5173. For a production-style run, <code>./scripts/deploy.sh</code> builds the SPA, drops the stale wheel, and reinstalls with the bundle included.</p>
+
+<p class="foot">Next: <a href="tutorial.html">Tutorial</a> · <a href="cli-reference.html">CLI reference</a> · <a href="agents.html">Docs for agents</a></p>
+</div>
+</body>
+</html>

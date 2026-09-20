@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Docs for agents — DevDoctor docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+<nav class="topnav"><a class="home" href="../">DevDoctor</a><a href="./">Docs</a></nav>
+<h1>Docs for agents</h1>
+<p class="lede">Driving DevDoctor from an LLM or coding agent? This page is the contract. (It mirrors <code>.claude/skills/devdoctor/SKILL.md</code> in the repo, published here so agents outside that checkout can use it too.)</p>
+
+<h2>Capabilities</h2>
+<ul>
+<li><code>devdoctor scan --json</code> — <b>read-only</b>. Safe unsupervised, on any schedule.</li>
+<li><code>devdoctor providers</code> — check before assuming a provider exists here.</li>
+<li><code>devdoctor recipe</code> — fully commented-out script: the safe way to propose a cleanup for a human.</li>
+<li><code>devdoctor clean</code> (no flags) — preview only. Safe to show what <em>would</em> happen.</li>
+<li><code>devdoctor clean --execute</code> — <b>destructive</b>. Needs a human decision (rules below). Never unsupervised.</li>
+<li><code>devdoctor serve</code> — loopback only, no auth. Do not expose it.</li>
+</ul>
+
+<h2>Rules for <code>clean --execute</code></h2>
+<ol class="steps">
+<li><b>Confirm intent first.</b> Only on explicit user request. A scan report is not consent.</li>
+<li><b>Preview or recipe first</b>, unless the user already approved a plan.</li>
+<li><b>Stay at or below the approved tier.</b> <code>--risk safe</code> + <code>--yes-safe</code> for routine runs. Surface reclaimable entries one by one; <code>--allow-dangerous</code> only with explicit say-so, never by default.</li>
+<li><b>Scope when you can</b> (<code>--provider &lt;name&gt;</code>).</li>
+<li><b>No terminal means <code>--yes</code> or nothing</b> — and never add <code>--yes</code> to dodge a missing human.</li>
+<li><b>Report the summary</b> — estimated vs. planned, measured change, any snapshot caveat.</li>
+</ol>
+
+<h2>Reading <code>scan --json</code></h2>
+<ul>
+<li>Headline: <code>total_reclaimable_bytes</code>. Breakdown: <code>per_provider</code>. Detail: <code>entries[]</code>.</li>
+<li>Sizes are estimates — never present them as measured freed bytes.</li>
+<li>Mention <code>diagnostics</code> so the human knows what the total excludes.</li>
+<li>Parse <code>--json</code>, never the Rich table (it truncates). <code>path</code> may be <code>null</code>; <code>risk</code> is <code>safe</code> / <code>reclaimable</code> / <code>dangerous</code>.</li>
+</ul>
+
+<p class="foot">Machine entry points: <a href="../llms.txt">llms.txt</a> · <a href="../llms-full.txt">llms-full.txt</a> — Full contract: <a href="cli-reference.html">CLI reference</a> · <a href="safety-model.html">Safety model</a></p>
+</div>
+</body>
+</html>

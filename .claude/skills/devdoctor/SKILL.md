@@ -94,3 +94,14 @@ devdoctor clean --execute --allow-dangerous   # include dangerous (rarely wanted
 
 Cleanup is destructive — confirm intent, prefer previewing / the `recipe` script
 first, and never pass `--allow-dangerous` without explicit user say-so.
+
+## Further docs (humans and agents)
+
+- End-to-end walkthrough: `docs/tutorial.md` (start here with a new user).
+- Commands and the `scan --json` contract: `docs/cli-reference.md`.
+- Web UI pages and the `/api` surface: `docs/web-ui.md`.
+- What each provider covers and its risk: `docs/providers.md`.
+- Guarantees and edge cases: `docs/safety-model.md`.
+- "Why did my free space not change?": `docs/faq.md`.
+- Agent contract (this procedure, published for agents outside this repo):
+  `docs/agents.md`, plus `llms.txt` / `llms-full.txt` at the site root.
