@@ -77,6 +77,10 @@ entries under a versioned heading as described in
 - **`devdoctor history`** lists past cleanup runs — CLI and web UI now write one
   audit log — and shows a run entry by entry. `clean` gains `--yes` (skip the
   final confirmation only; the plan still prints) and `--risk`. (#126)
+- **End-to-end docs.** `docs/` gains a tutorial written from a real
+  14-to-70 GB session, a CLI reference, web UI guide, provider catalogue,
+  safety model, FAQ, and agent docs; the landing page serves them under
+  `site/docs/`, with `llms.txt` / `llms-full.txt` at the site root. (#125)
 - **Live scan progress in the web UI.** While a scan runs, the Disk page shows
   how many providers have finished, the bytes found so far and which providers
   are running, ahead of the countdown from past scans; the Dashboard's loading

@@ -1,0 +1,20 @@
+:root{--bg:#eaeff4;--surface:#fff;--border:#d5dfe8;--text:#0b1620;--dim:#48596a;--accent:#0d9488;--accent-d:#0f766e;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#0a0e13;--surface:#10171f;--border:#21303c;--text:#e7eef4;--dim:#9db0c0;--accent:#2dd4bf;--accent-d:#5eead4}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.65 system-ui,-apple-system,"IBM Plex Sans",sans-serif}
+.wrap{width:min(860px,100% - 2.5rem);margin:0 auto;padding:2.5rem 0 5rem}
+.topnav{display:flex;gap:1.2rem;align-items:center;font-size:.9rem;margin-bottom:2rem;color:var(--dim)}
+.topnav a{color:var(--dim);text-decoration:none}.topnav a:hover{color:var(--accent-d)}
+.topnav .home{font-weight:700;color:var(--text)}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);line-height:1.15;margin:.4rem 0 1rem;letter-spacing:-.01em}
+h2{font-size:1.25rem;margin:2.2rem 0 .6rem}h3{font-size:1.05rem;margin:1.6rem 0 .4rem}
+p,li{color:var(--text)}p.lede{color:var(--dim);font-size:1.08rem;max-width:62ch}
+a{color:var(--accent-d)}code{font-family:var(--mono);font-size:.85em;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.1em .35em}
+pre{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem;overflow-x:auto}
+pre code{background:none;border:none;padding:0;font-size:.83rem}
+table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.92rem}
+th,td{text-align:left;padding:.55rem .7rem;border-bottom:1px solid var(--border);vertical-align:top}
+th{color:var(--dim);font-weight:600;font-size:.8rem;text-transform:uppercase;letter-spacing:.06em}
+.cards{display:grid;gap:1rem;margin-top:1.5rem}
+.card{display:block;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.1rem 1.25rem;text-decoration:none;color:var(--text)}
+.card:hover{border-color:var(--accent)}.card b{display:block;font-size:1.02rem;margin-bottom:.25rem}.card span{color:var(--dim);font-size:.92rem}
+ol.steps{padding-left:1.3rem}.foot{margin-top:3rem;padding-top:1.2rem;border-top:1px solid var(--border);color:var(--dim);font-size:.85rem}

@@ -11,6 +11,12 @@ Python package and CLI remain named `devdoctor` during the transition.
 
 **[See what it does → sysaidmin.com](https://sysaidmin.com/)**
 
+Docs: start with the [end-to-end tutorial](docs/tutorial.md) ([rendered
+version](site/docs/tutorial.html)), then dip into the [CLI
+reference](docs/cli-reference.md), [provider catalogue](docs/providers.md),
+and [FAQ](docs/faq.md). Agents and LLMs: read [docs/agents.md](docs/agents.md)
+(`llms.txt` / `llms-full.txt` ship at the site root).
+
 ## Install
 
 ```bash

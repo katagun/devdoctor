@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tutorial: reclaim disk space with DevDoctor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+<nav class="topnav"><a class="home" href="../">DevDoctor</a><a href="./">Docs</a></nav>
+<h1>Reclaim disk space with DevDoctor</h1>
+<p class="lede">A full cleanup pass — scan, read the report, handle the two big "why didn't my free space change?" traps (Docker's VM disk and Time Machine local snapshots), preview a cleanup, then run the safe tier. Written from a real session on a Mac that went from <b>14 GB to 70 GB free</b>. Nothing below deletes anything until step 6.</p>
+
+<h2>1. Scan and read the report</h2>
+<pre><code>devdoctor scan --json &gt; /tmp/dd_report.json</code></pre>
+<p><code>scan</code> is read-only: it never deletes, moves, or modifies anything. <code>--json</code> emits the structured report (see the <a href="cli-reference.html">CLI reference</a> for the full contract). Summarize it:</p>
+<ul>
+<li><code>total_reclaimable_bytes</code> — the headline: estimated reclaimable space.</li>
+<li><code>per_provider</code> — bytes per provider, biggest first. This tells you <em>where</em> to look.</li>
+<li><code>entries</code> — one item per cleanable thing, each with <code>provider</code>, <code>label</code>, <code>path</code>, <code>size_bytes</code>, <code>risk</code> (<code>safe</code> / <code>reclaimable</code> / <code>dangerous</code>), and the <code>actions</code> DevDoctor would take.</li>
+<li><code>diagnostics</code> — paths that could not be read (e.g. permission denied). Entries you cannot see cannot be counted; re-run with Full Disk Access or <code>sudo</code> if the total looks too small.</li>
+</ul>
+<p>Prefer <code>--json</code> whenever output is piped or captured: the Rich table that <code>devdoctor scan</code> prints to a terminal truncates wide rows.</p>
+<pre><code>devdoctor scan --min-size 100M --risk safe,reclaimable
+devdoctor scan --provider docker
+devdoctor providers   # everything registered, with availability</code></pre>
+
+<h2>2. Understand the risk tiers before touching anything</h2>
+<table><tr><th>Risk</th><th>Meaning</th><th><code>clean</code> behavior</th></tr>
+<tr><td><code>safe</code></td><td>Regenerable caches (package-manager downloads, build caches)</td><td>Offered; <code>--yes-safe</code> auto-approves</td></tr>
+<tr><td><code>reclaimable</code></td><td>Rebuildable but costs time/bandwidth (containers, models, worktrees)</td><td>Offered; always prompted per entry</td></tr>
+<tr><td><code>dangerous</code></td><td>May hold durable user data (<code>~/Downloads</code>, named Docker volumes, large files)</td><td><b>Skipped</b> unless <code>--allow-dangerous</code></td></tr></table>
+<p>Dangerous entries are usually advice-only: DevDoctor prints what <em>you</em> could do instead of running anything. See the <a href="safety-model.html">safety model</a> and the <a href="providers.html">provider catalogue</a>.</p>
+
+<h2>3. Docker: prune inside the VM, expect the host file to lag</h2>
+<p>On Docker Desktop (macOS), containers and images live inside a Linux VM whose disk is a file on your Mac (<code>Docker.raw</code>). DevDoctor's <code>docker</code> provider prunes <em>inside</em> the VM; unused volumes are reviewed one by one — named volumes are dangerous, anonymous ones reclaimable.</p>
+<p>The trap: after a big prune, Finder's free space may barely move. The VM disk file compacts <b>later</b>, not instantly. Give it time, restart Docker Desktop if you are in a hurry, and judge the prune by <code>docker system df</code>, not by the menu-bar number in the first minute. See the <a href="faq.html">FAQ</a>.</p>
+
+<h2>4. Time Machine: thin the local snapshots that pin freed blocks</h2>
+<p>On macOS, hourly Time Machine local snapshots pin disk blocks: other cleanups can delete files yet the space stays allocated until the snapshots age out. If a cleanup reports success but free space is flat, check here first:</p>
+<pre><code>devdoctor scan --provider time-machine-local-snapshots</code></pre>
+<p>The provider lists each snapshot plus one bundle entry that deletes <b>all but the newest</b> restore point (newest first), so you always keep a restore point. macOS system-update snapshots (<code>com.apple.os.update-*</code>) are never touched, and deleting local snapshots never touches the external backup drive. In the session this tutorial is based on, thinning snapshots was the step that finally released the space other cleanups had already freed. (Linux has no equivalent provider — skip this step there.)</p>
+
+<h2>5. Preview the cleanup — still nothing deleted</h2>
+<pre><code>devdoctor clean
+devdoctor recipe -o /tmp/cleanup.sh   # everything commented out; you pick</code></pre>
+<p><code>clean</code> with no flags prints the report table and stops. Zero prompts, zero shell calls.</p>
+
+<h2>6. Run the safe tier, then decide about the rest</h2>
+<pre><code>devdoctor clean --execute --yes-safe</code></pre>
+<p>What happens, in order: the <b>plan prints first</b> (path, risk, estimated reclaim, exact command per entry); you confirm once; each entry runs with a per-entry line (<code>✓</code> done, <code>✗</code> failed with the error, <code>-</code> skipped, <code>·</code> advice-only); the <b>summary</b> states estimated reclaimed vs. planned plus the measured free-space change; every run is recorded (<code>devdoctor history</code>, <code>devdoctor history 1</code> for the newest in detail).</p>
+<pre><code>devdoctor clean --execute --risk safe --provider uv-cache   # one safe cache
+devdoctor clean --execute --yes-safe                        # all safe entries
+devdoctor clean --execute --provider docker                 # reclaimable, prompted
+devdoctor clean --execute --provider time-machine-local-snapshots</code></pre>
+<p>Unattended runs add <code>--yes</code> (plan still prints, final confirmation skipped); without a terminal, <code>--execute</code> refuses unless <code>--yes</code> is passed. <code>--allow-dangerous</code> stays a separate, explicit opt-in — never bundle it into a routine command.</p>
+
+<h2>7. Prove it with snapshots, or click through it instead</h2>
+<pre><code>devdoctor snapshot --note "before cleanup"
+# ... clean ...
+devdoctor diff --to live   # last snapshot vs. now</code></pre>
+<p>Prefer a GUI? <code>devdoctor serve</code> (needs the <code>web</code> extra) opens the local dashboard with the same engine. See the <a href="web-ui.html">Web UI guide</a>.</p>
+
+<p class="foot">Next: <a href="cli-reference.html">CLI reference</a> · <a href="providers.html">Provider catalogue</a> · <a href="safety-model.html">Safety model</a> · <a href="faq.html">FAQ</a> · <a href="agents.html">Docs for agents</a></p>
+</div>
+</body>
+</html>

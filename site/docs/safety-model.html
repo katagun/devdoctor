@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Safety model — DevDoctor docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+<nav class="topnav"><a class="home" href="../">DevDoctor</a><a href="./">Docs</a></nav>
+<h1>Safety model</h1>
+<p class="lede">DevDoctor runs destructive commands, so safety is the design — not a flag.</p>
+
+<h2>The five guarantees</h2>
+<ol class="steps">
+<li><b>Preview by default.</b> <code>clean</code> without <code>--execute</code> prints the report and stops: zero prompts, zero shell calls. <code>scan</code> never modifies anything.</li>
+<li><b>The plan prints before anything runs.</b> With <code>--execute</code>, every entry is shown with its path, risk, estimated reclaim, and the exact command — then DevDoctor asks once before starting.</li>
+<li><b>Risk tiers gate execution.</b> <code>safe</code> entries may be auto-approved with <code>--yes-safe</code>. <code>reclaimable</code> entries are always prompted individually. <code>dangerous</code> entries are <b>skipped</b> unless <code>--allow-dangerous</code> is passed explicitly — and are usually advice-only.</li>
+<li><b>No shell.</b> Cleanup actions are typed path deletions, argv command lists, or non-executable advice. Commands never pass through a shell; paths are quoted.</li>
+<li><b>Everything is recorded.</b> Every run lands in the history log (<code>devdoctor history</code>), shared by the CLI and the web UI.</li>
+</ol>
+
+<h2>Numbers are honest about being estimates</h2>
+<p>Disk figures distinguish <b>footprint</b> (allocated storage), <b>estimated reclaimable</b> space, and <b>shared</b> hard-linked allocations. The end-of-run summary compares estimated reclaimed vs. planned alongside the measured free-space change — and on macOS it says so when APFS local snapshots hold the measured change down. See the <a href="faq.html">FAQ</a>.</p>
+
+<h2>Edge cases already handled</h2>
+<ul>
+<li>Unused Docker volumes are reviewed and removed <b>individually</b>. Anonymous volumes are reclaimable; named volumes are dangerous and stay off by default.</li>
+<li>A git worktree holding another repository is never offered. Removable worktrees are re-checked immediately before removal; one that changed after the scan is skipped.</li>
+<li>Covering entries (e.g. the Time Machine all-but-newest bundle) are prompted before what they cover; approving the bundle resolves the rest as skipped.</li>
+<li><code>recipe</code> always emits a <b>fully commented-out</b> script.</li>
+<li>Without a terminal, <code>--execute</code> refuses unless <code>--yes</code> is passed — unattended runs cannot happen by accident.</li>
+</ul>
+
+<h2>For agents and automation</h2>
+<p>Scan is read-only and safe on any schedule. <code>clean</code> needs <code>--execute</code> plus an explicit human decision for anything above <code>safe</code>; never pass <code>--allow-dangerous</code> without explicit user say-so. Full version: <a href="agents.html">Docs for agents</a>.</p>
+
+<p class="foot">Next: <a href="tutorial.html">Tutorial</a> · <a href="faq.html">FAQ</a> · <a href="agents.html">Docs for agents</a></p>
+</div>
+</body>
+</html>

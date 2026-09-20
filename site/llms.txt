@@ -1,0 +1,21 @@
+# DevDoctor
+
+DevDoctor is a local developer-workstation resource manager (macOS and Linux).
+It scans disk caches and offers interactive cleanup. All computation is local;
+nothing leaves the machine.
+
+- Docs (rendered): docs/
+- Docs (repo source):
+  - Tutorial (start here): https://github.com/katagun/devdoctor/blob/main/docs/tutorial.md
+  - CLI reference and `scan --json` contract: https://github.com/katagun/devdoctor/blob/main/docs/cli-reference.md
+  - Web UI guide and `/api` surface: https://github.com/katagun/devdoctor/blob/main/docs/web-ui.md
+  - Provider catalogue with risk levels: https://github.com/katagun/devdoctor/blob/main/docs/providers.md
+  - Safety model: https://github.com/katagun/devdoctor/blob/main/docs/safety-model.md
+  - FAQ ("why did my free space not change?"): https://github.com/katagun/devdoctor/blob/main/docs/faq.md
+  - Docs for agents: https://github.com/katagun/devdoctor/blob/main/docs/agents.md
+- Full text of all of the above in one file: llms-full.txt
+- CLI: `devdoctor scan` (read-only), `devdoctor clean` (preview unless
+  `--execute`), `devdoctor recipe` (commented-out script), `devdoctor serve`
+  (local web UI). Risk tiers: safe / reclaimable / dangerous (skipped unless
+  `--allow-dangerous`).
+- Repo: https://github.com/katagun/devdoctor
