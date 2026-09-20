@@ -567,6 +567,15 @@ class Report:
                 if has_usage
                 else None
             )
+            # Covers ids drive selection skips: only a list of strings from the
+            # snapshot can name covered entries. Anything else (a bare string,
+            # a number, mixed items) is corrupt input, never entry ids.
+            raw_covers = e.get("covers")
+            covers = (
+                tuple(item for item in raw_covers if isinstance(item, str))
+                if isinstance(raw_covers, list)
+                else ()
+            )
             entries.append(
                 Entry(
                     provider=e["provider"],
@@ -585,7 +594,7 @@ class Report:
                     owner=e.get("owner"),
                     group=e.get("group"),
                     perms=e.get("perms"),
-                    covers=tuple(e.get("covers") or []),
+                    covers=covers,
                 )
             )
         kind_raw = payload.get("kind", "manual")
