@@ -106,7 +106,12 @@ def test_bundle_covers_every_snapshot_id_including_newest(monkeypatch):
     )
 
 
-def test_bundle_mtime_is_oldest_snapshot(monkeypatch):
+def test_the_bundle_is_as_young_as_the_newest_snapshot_it_deletes(monkeypatch):
+    """An entry's age must be the age of the youngest thing it destroys.
+
+    Dated by its oldest snapshot, the bundle passed ``--older-than`` while deleting
+    snapshots that the same filter had excluded.
+    """
     monkeypatch.setattr("sys.platform", "darwin")
     from devdoctor.providers.time_machine import TimeMachineSnapshotsProvider
 
@@ -114,10 +119,37 @@ def test_bundle_mtime_is_oldest_snapshot(monkeypatch):
         e.id: e
         for e in TimeMachineSnapshotsProvider(_shell_with_output(_FIXTURE_OUTPUT)).discover()
     }
-    bundle = by_id["all-but-newest"]
-    oldest = by_id[f"snapshot-{_TS_OLD}"]
-    assert bundle.mtime == oldest.mtime
-    assert bundle.mtime is not None
+    # The newest snapshot is kept, so the youngest one deleted is the middle one.
+    assert by_id["all-but-newest"].mtime == by_id[f"snapshot-{_TS_MID}"].mtime
+
+
+def test_an_age_filter_never_offers_a_bundle_that_deletes_younger_snapshots(monkeypatch):
+    monkeypatch.setattr("sys.platform", "darwin")
+    from datetime import UTC, datetime
+
+    from devdoctor import discovery
+    from devdoctor.providers.time_machine import TimeMachineSnapshotsProvider
+    from devdoctor.types import ScanFilters
+
+    provider = TimeMachineSnapshotsProvider(_shell_with_output(_FIXTURE_OUTPUT))
+    mid = next(e.mtime for e in provider.discover() if e.id == f"snapshot-{_TS_MID}")
+    assert mid is not None
+
+    # Only the oldest snapshot is older than the cutoff.
+    report = discovery.scan(
+        [TimeMachineSnapshotsProvider(_shell_with_output(_FIXTURE_OUTPUT))],
+        ScanFilters(modified_before=mid - 1),
+        datetime.now(UTC),
+    )
+    assert [e.id for e in report.entries] == [f"time-machine-local-snapshots:snapshot-{_TS_OLD}"]
+
+    # Once every snapshot it deletes is old enough, the bundle is offered again.
+    report = discovery.scan(
+        [TimeMachineSnapshotsProvider(_shell_with_output(_FIXTURE_OUTPUT))],
+        ScanFilters(modified_before=mid + 1),
+        datetime.now(UTC),
+    )
+    assert "time-machine-local-snapshots:all-but-newest" in [e.id for e in report.entries]
 
 
 def test_entries_are_unmeasured_and_reclaimable(monkeypatch):

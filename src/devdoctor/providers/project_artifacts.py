@@ -237,10 +237,7 @@ def _sized_entry(provider: Provider, candidate: _Candidate, sizing: SizeResult) 
     size = sizing.allocated_bytes
     if size <= 0:
         return None
-    try:
-        mtime: float | None = artifact.lstat().st_mtime
-    except OSError:
-        mtime = None
+    mtime = sizing.newest_mtime
     reclaimable = size if isinstance(action, DeletePathAction) else None
     return Entry(
         provider=provider.name,

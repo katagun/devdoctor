@@ -268,3 +268,31 @@ def test_the_docker_disk_advice_names_the_costs_it_asks_the_user_to_accept():
     assert "deletes every container, image and volume" in advice
     assert "while Docker is running" in advice
     assert "shrink the Docker Desktop disk-image quota" not in advice
+
+
+def test_an_entry_is_as_young_as_the_newest_file_inside_it(tmp_path):
+    """`clean --older-than` judges entries by this; a stale top-level mtime must not
+    make a cache written to yesterday look untouched for years."""
+    import os
+
+    cache = tmp_path / "cache"
+    (cache / "bucket").mkdir(parents=True)
+    (cache / "bucket" / "blob").write_bytes(b"x" * 10)
+    long_ago, recent = 1_000_000.0, 2_000_000_000.0
+    for path in (cache / "bucket", cache):
+        os.utime(path, (long_ago, long_ago))
+    os.utime(cache / "bucket" / "blob", (recent, recent))
+
+    provider = PathProvider.from_yaml(
+        {
+            "name": "c",
+            "description": "d",
+            "risk": "safe",
+            "platforms": ["darwin", "linux"],
+            "paths": [str(cache)],
+            "recipe": "rm -rf {path}",
+        },
+        FakeShell(),
+    )
+    (entry,) = provider.discover()
+    assert entry.mtime == recent

@@ -16,6 +16,7 @@ from pathlib import Path
 
 from devdoctor.providers._walk import PRUNE_DIR_NAMES
 from devdoctor.providers.base import Provider, _stat_kwargs
+from devdoctor.sizer import allocated_bytes
 from devdoctor.types import AdviceAction, DiskUsage, Entry, HardlinkRecord, Risk
 
 # Files below this threshold aren't worth surfacing individually. Tuned to
@@ -139,8 +140,7 @@ def _walk_for_large_files(
             # Symlinks: st_mode check — follow-free walk handles this, but
             # lstat on a symlink gives the link's own size (small), which
             # self-filters below the threshold.
-            blocks = getattr(st, "st_blocks", 0) * 512
-            size = min(st.st_size, blocks) if blocks else st.st_size
+            size = allocated_bytes(st)
             if size < _MIN_BYTES:
                 continue
             hardlink = (
