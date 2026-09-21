@@ -74,6 +74,10 @@ class SizeResult:
     # The sum of the files' lengths. It exceeds ``allocated_bytes`` for a sparse
     # file such as a VM disk image, which reserves address space it has not written.
     apparent_bytes: int = 0
+    # The most recent modification of the root or anything inside it; None when the
+    # root could not be read. A directory's own mtime only moves when its direct
+    # children change, so it says nothing about files further down.
+    newest_mtime: float | None = None
 
 
 def size_path(root: Path) -> tuple[int, list[Path]]:
@@ -111,11 +115,18 @@ def _worker_count() -> int:
         return MAX_CONCURRENT_WALKS
 
 
-def size_many(roots: Sequence[Path], *, exclude: frozenset[str] = frozenset()) -> list[SizeResult]:
+FileId = tuple[int, int]  # (st_dev, st_ino)
+
+
+def size_many(
+    roots: Sequence[Path], *, exclude: frozenset[FileId] = frozenset()
+) -> list[SizeResult]:
     """Size every root, a few at a time; results keep the order of ``roots``.
 
-    ``exclude`` names paths, exactly as a walk from ``roots`` would spell them, that
-    are neither counted nor entered.
+    ``exclude`` identifies files and directories that are neither counted nor
+    entered. They are matched by device and inode rather than by path, so a path
+    spelled in another case on a case-insensitive volume, or a second name for the
+    same file, is still the same thing.
 
     Walks never start other walks, so callers blocking here cannot deadlock the pool.
     """
@@ -148,6 +159,21 @@ def _lstat(entry: os.DirEntry[str]) -> os.stat_result:
     return entry.stat(follow_symlinks=False)
 
 
+def allocated_bytes(st: os.stat_result) -> int:
+    """What a file occupies on disk, never more than its length.
+
+    ``st_blocks`` is the truth for sparse files (``Docker.raw`` is 80 GB long and
+    occupies what Docker has written), and rounds a small file up to a block, so
+    the length caps it. Zero blocks means nothing is allocated: a file that is all
+    hole, or one evicted to iCloud. Only a platform with no ``st_blocks`` at all
+    falls back to the length.
+    """
+    blocks: int | None = getattr(st, "st_blocks", None)
+    if blocks is None:
+        return st.st_size
+    return min(st.st_size, blocks * 512)
+
+
 _Hardlinks = dict[tuple[int, int], tuple[int, int, list[str]]]
 
 
@@ -162,17 +188,46 @@ def _seen_before(hardlinks: _Hardlinks, st: os.stat_result, allocated: int, path
     return False
 
 
-def _walk(root: Path, exclude: frozenset[str] = frozenset()) -> SizeResult:
+def _records(hardlinks: _Hardlinks) -> tuple[HardlinkRecord, ...]:
+    return tuple(
+        HardlinkRecord(
+            device=device,
+            inode=inode,
+            allocated_bytes=allocated,
+            link_count=link_count,
+            paths=tuple(sorted(set(paths))),
+        )
+        for (device, inode), (allocated, link_count, paths) in sorted(hardlinks.items())
+    )
+
+
+def _size_file(root: Path, st: os.stat_result) -> SizeResult:
+    """A path provider may name a file (a model, a disk image) rather than a directory."""
+    hardlinks: _Hardlinks = {}
+    allocated = allocated_bytes(st)
+    if st.st_nlink > 1:
+        _seen_before(hardlinks, st, allocated, os.fspath(root))
+    return SizeResult(
+        allocated, (), _records(hardlinks), apparent_bytes=st.st_size, newest_mtime=st.st_mtime
+    )
+
+
+def _walk(root: Path, exclude: frozenset[FileId] = frozenset()) -> SizeResult:
     skipped: list[Path] = []
     try:
-        root_dev = root.lstat().st_dev
+        root_stat = root.lstat()
     except OSError:
         return SizeResult(0, (root,), ())
 
-    total = 0
-    apparent = 0
+    if stat_mod.S_ISREG(root_stat.st_mode):
+        return _size_file(root, root_stat)
+
     # Only a file with more than one name can be met twice, so only those are tracked.
     hardlinks: _Hardlinks = {}
+    root_dev = root_stat.st_dev
+    newest = root_stat.st_mtime
+    total = 0
+    apparent = 0
     # Plain strings and one stat per entry: a Path per file cost a third of the walk.
     pending = [os.fspath(root)]
     while pending:
@@ -184,49 +239,33 @@ def _walk(root: Path, exclude: frozenset[str] = frozenset()) -> SizeResult:
             continue
         with listing:
             for entry in listing:
-                if exclude and entry.path in exclude:
-                    continue
                 try:
                     # Follows symlinks, as os.walk does: a link to a directory is a
                     # directory that is never entered, not a file to be counted.
                     is_dir = entry.is_dir()
                 except OSError:
                     is_dir = False
-                if is_dir:
-                    if entry.is_symlink():
-                        continue
-                    try:
-                        same_device = _lstat(entry).st_dev == root_dev
-                    except OSError:
-                        skipped.append(Path(entry.path))
-                        continue
-                    if same_device:
-                        pending.append(entry.path)
+                if is_dir and entry.is_symlink():
                     continue
                 try:
                     st = _lstat(entry)
                 except OSError:
                     skipped.append(Path(entry.path))
                     continue
-                # Actual on-disk usage via st_blocks handles sparse files correctly
-                # (e.g. Docker.raw reports 80 GB apparent but uses only megabytes).
-                # For non-sparse files st_blocks*512 rounds up to a block boundary,
-                # so we cap at st_size to preserve per-byte accuracy for normal files.
-                blocks = getattr(st, "st_blocks", 0) * 512
-                allocated = min(st.st_size, blocks) if blocks else st.st_size
+                if exclude and (st.st_dev, st.st_ino) in exclude:
+                    continue
+                if is_dir:
+                    if st.st_dev == root_dev:
+                        newest = max(newest, st.st_mtime)
+                        pending.append(entry.path)
+                    continue
+                newest = max(newest, st.st_mtime)
+                allocated = allocated_bytes(st)
                 if st.st_nlink > 1 and _seen_before(hardlinks, st, allocated, entry.path):
                     continue
                 total += allocated
                 apparent += st.st_size
 
-    records = tuple(
-        HardlinkRecord(
-            device=device,
-            inode=inode,
-            allocated_bytes=allocated,
-            link_count=link_count,
-            paths=tuple(sorted(set(paths))),
-        )
-        for (device, inode), (allocated, link_count, paths) in sorted(hardlinks.items())
+    return SizeResult(
+        total, tuple(skipped), _records(hardlinks), apparent_bytes=apparent, newest_mtime=newest
     )
-    return SizeResult(total, tuple(skipped), records, apparent)

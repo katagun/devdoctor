@@ -469,7 +469,7 @@ def test_the_largest_unclassified_directories_are_listed_when_measured():
     assert "Largest directories no provider accounts for:" in out
     assert "9.0G /Users/u/.codex/sessions" in out
     assert "2.0G /Users/u/Downloads (files directly inside)" in out
-    assert "3 directories could not be read" in out
+    assert "3 paths could not be read and are not counted" in out
     assert "scan --coverage" not in out
 
 

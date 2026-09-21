@@ -6,7 +6,7 @@ catalogue was found by running ``du`` by hand and comparing. Two questions are
 answered here.
 
 ``summarise`` is the cheap one: classified bytes against the volume's used
-bytes. It costs one ``statvfs`` and runs on every unfiltered scan.
+bytes. It costs one short ``df`` call and runs on every unfiltered scan.
 
 ``unclassified_directories`` is the expensive one: it sizes the home directory
 outside every classified path and returns the largest directories nobody
@@ -24,7 +24,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from devdoctor.sizer import size_many
+from devdoctor.sizer import FileId, allocated_bytes, size_many
 from devdoctor.types import Coverage, Entry, Unclassified, unique_footprint_bytes
 
 __all__ = ["Coverage", "Unclassified", "detail", "summarise", "unclassified_directories"]
@@ -128,7 +128,7 @@ def detail(
 @dataclass(frozen=True)
 class UnclassifiedResult:
     directories: tuple[Unclassified, ...]
-    # Directories that could not be read (macOS privacy protection, permissions).
+    # Paths that could not be read (macOS privacy protection, permissions, vanished).
     skipped: int
 
 
@@ -143,7 +143,7 @@ def unclassified_directories(
     Symlinks are never followed and other devices are never entered.
     """
     root = os.path.realpath(home)
-    exclude = frozenset(os.path.realpath(path) for path in classified)
+    exclude = _identities(classified)
     try:
         root_dev = os.lstat(root).st_dev
     except OSError:
@@ -185,7 +185,7 @@ class _Listing:
     unreadable: int
 
 
-def _list(directory: str, exclude: frozenset[str], root_dev: int) -> _Listing | None:
+def _list(directory: str, exclude: frozenset[FileId], root_dev: int) -> _Listing | None:
     """One directory's own files and its enterable subdirectories; None if unreadable."""
     try:
         listing = os.scandir(directory)
@@ -196,18 +196,29 @@ def _list(directory: str, exclude: frozenset[str], root_dev: int) -> _Listing | 
     unreadable = 0
     with listing:
         for entry in listing:
-            if entry.path in exclude:
-                continue
             try:
                 st = entry.stat(follow_symlinks=False)
                 is_directory = entry.is_dir(follow_symlinks=False)
             except OSError:
                 unreadable += 1
                 continue
+            if (st.st_dev, st.st_ino) in exclude:
+                continue
             if is_directory:
                 if st.st_dev == root_dev:
                     subdirectories.append(entry.path)
                 continue
-            blocks = getattr(st, "st_blocks", 0) * 512
-            file_bytes += min(st.st_size, blocks) if blocks else st.st_size
+            file_bytes += allocated_bytes(st)
     return _Listing(file_bytes, tuple(subdirectories), unreadable)
+
+
+def _identities(paths: Iterable[Path]) -> frozenset[FileId]:
+    """Device and inode of every path that exists; how classified paths are recognised."""
+    found: set[FileId] = set()
+    for path in paths:
+        try:
+            st = os.stat(path, follow_symlinks=False)
+        except OSError:
+            continue
+        found.add((st.st_dev, st.st_ino))
+    return frozenset(found)

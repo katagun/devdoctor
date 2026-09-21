@@ -100,14 +100,17 @@ def _bundle_entry(provider: Provider, snapshots: list[tuple[str, float]]) -> Ent
     # Newest-first: if the oldest snapshot expires mid-run, only the last
     # command fails.
     older_newest_first = [ts for ts, _ in snapshots[-2::-1]]
-    oldest_epoch = snapshots[0][1]
+    # The bundle is as young as the youngest snapshot it deletes. Age filters
+    # (`--older-than`) judge an entry by its mtime; dated by its oldest snapshot,
+    # the bundle passed the filter while deleting snapshots the filter excluded.
+    youngest_deleted_epoch = snapshots[-2][1]
     return Entry(
         provider=provider.name,
         id="all-but-newest",
         label=(f"Time Machine local snapshots, all but the newest ({len(snapshots) - 1})"),
         path=None,
         size_bytes=0,
-        mtime=oldest_epoch,
+        mtime=youngest_deleted_epoch,
         risk=provider.risk,
         recipe=[f"tmutil deletelocalsnapshots {ts}" for ts in older_newest_first],
         usage=DiskUsage(None, None),

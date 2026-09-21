@@ -198,3 +198,27 @@ def test_volume_usage_falls_back_when_df_is_missing(tmp_path, monkeypatch):
 def test_df_lines_with_spaces_in_the_device_and_mount_point_still_parse():
     output = "Filesystem 1024-blocks Used Available Capacity Mounted on\nmap auto home 100 40 60 40% /Volumes/My Disk\n"
     assert coverage._parse_df(output) == (100 * 1024, 40 * 1024, 60 * 1024)
+
+
+def test_a_classified_path_spelled_in_another_case_is_still_excluded(tmp_path):
+    """APFS is case-insensitive: a provider may spell a path differently from the disk."""
+    home = tmp_path / "home"
+    _write(home / "Library" / "Caches" / "blob", 9_000)
+    _write(home / "Library" / "Other" / "blob", 50)
+    misspelled = home / "library" / "caches"
+    if not misspelled.exists():
+        pytest.skip("case-sensitive filesystem")
+
+    found = unclassified_directories(home, [misspelled], depth=3, limit=10)
+    assert [(u.path.name, u.bytes) for u in found.directories] == [("Other", 50)]
+
+
+def test_a_classified_file_with_a_second_name_is_excluded_under_both(tmp_path):
+    home = tmp_path / "home"
+    _write(home / "models" / "a.gguf", 4_000)
+    (home / "elsewhere").mkdir()
+    os.link(home / "models" / "a.gguf", home / "elsewhere" / "same.gguf")
+    _write(home / "elsewhere" / "other", 7)
+
+    found = unclassified_directories(home, [home / "models" / "a.gguf"], depth=3, limit=10)
+    assert [(u.path.name, u.bytes) for u in found.directories] == [("elsewhere", 7)]

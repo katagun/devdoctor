@@ -341,7 +341,8 @@ def _two_caches(tmp_path, monkeypatch) -> FakeShell:
         directory.mkdir()
         (directory / "f").write_bytes(payload)
     a_year_ago = time.time() - 400 * 86400
-    os.utime(old, (a_year_ago, a_year_ago))
+    for path in (old / "f", old):  # a directory is as young as the newest file inside it
+        os.utime(path, (a_year_ago, a_year_ago))
     yaml = tmp_path / "p.yaml"
     yaml.write_text(
         "- name: caches\n"
@@ -432,3 +433,33 @@ def test_coverage_refuses_a_filtered_scan(tmp_path, monkeypatch):
     result = CliRunner().invoke(build_cli(shell), ["scan", "--coverage", "--provider", "caches"])
     assert result.exit_code == 2
     assert "--coverage describes the whole scan" in result.output
+
+
+def test_a_stale_directory_holding_a_fresh_file_is_not_old(tmp_path, monkeypatch):
+    """The directory's own mtime does not move when a file inside it is rewritten."""
+    import os
+    import time
+
+    shell = _two_caches(tmp_path, monkeypatch)
+    a_year_ago = time.time() - 400 * 86400
+    (tmp_path / "fresh-cache" / "f").write_bytes(b"x" * 5000)  # written now
+    os.utime(tmp_path / "fresh-cache", (a_year_ago, a_year_ago))  # but the directory looks old
+
+    result = CliRunner().invoke(
+        build_cli(shell), ["scan", "--json", "--provider", "caches", "--older-than", "6mo"]
+    )
+    assert _labels(result) == ["old-cache"]
+
+
+def test_a_typo_reads_as_a_typo_even_without_a_terminal(tmp_path, monkeypatch):
+    """`clean --execute` refuses to run without a terminal; a bad option must win over that."""
+    shell = _empty_catalogue(tmp_path, monkeypatch)
+    for option, value, message in (
+        ("--provider", "dcoker", "unknown provider: dcoker"),
+        ("--older-than", "3m", "invalid duration"),
+        ("--risk", "maybe", "maybe"),
+    ):
+        result = CliRunner().invoke(build_cli(shell), ["clean", "--execute", option, value])
+        assert result.exit_code == 2, (option, result.output)
+        assert message in result.output
+        assert "no terminal" not in result.output

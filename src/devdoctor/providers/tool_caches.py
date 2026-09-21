@@ -43,10 +43,7 @@ def _path_entry(
     provider._note_skipped(list(sizing.skipped_paths))
     if sizing.allocated_bytes <= 0:
         return None
-    try:
-        mtime: float | None = path.lstat().st_mtime
-    except OSError:
-        mtime = None
+    mtime = sizing.newest_mtime
     estimate = sizing.allocated_bytes if reclaimable is True else None
     return Entry(
         provider=provider.name,

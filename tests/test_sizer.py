@@ -6,6 +6,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import pytest
+
 from devdoctor import sizer
 from devdoctor.sizer import StatFields, size_many, size_path, size_path_detailed, stat_fields
 
@@ -206,11 +208,41 @@ def test_a_symlink_to_a_directory_is_neither_counted_nor_entered(tmp_path: Path)
     assert result.skipped_paths == ()
 
 
-def test_a_file_root_is_reported_as_skipped_like_before(tmp_path: Path):
-    target = tmp_path / "f.bin"
+def test_a_file_root_is_sized_as_that_file(tmp_path: Path):
+    """Path providers may name files (a model `*.gguf`); sizing one to zero hid it."""
+    target = tmp_path / "model.gguf"
     target.write_bytes(b"x" * 10)
     result = size_path_detailed(target)
-    assert (result.allocated_bytes, result.skipped_paths) == (0, (target,))
+    assert (result.allocated_bytes, result.apparent_bytes, result.skipped_paths) == (10, 10, ())
+    assert result.newest_mtime == target.lstat().st_mtime
+
+
+def test_a_file_that_is_all_hole_occupies_nothing(tmp_path: Path):
+    """Zero blocks means nothing was written, not that the filesystem hides block counts.
+
+    The old fallback counted such a file at its full length, so a VM image that had
+    never been written to read as its whole size limit.
+    """
+    image = tmp_path / "never-written.raw"
+    with image.open("wb") as f:
+        f.truncate(50 * 1024 * 1024)
+    if image.stat().st_blocks != 0:
+        pytest.skip("filesystem allocates blocks for holes")
+
+    result = size_path_detailed(tmp_path)
+    assert (result.allocated_bytes, result.apparent_bytes) == (0, 50 * 1024 * 1024)
+
+
+def test_allocated_bytes_falls_back_to_length_only_without_block_counts():
+    class _NoBlocks:
+        st_size = 123
+
+    class _Blocks:
+        st_size = 1000
+        st_blocks = 1  # 512 bytes
+
+    assert sizer.allocated_bytes(_NoBlocks()) == 123  # type: ignore[arg-type]
+    assert sizer.allocated_bytes(_Blocks()) == 512  # type: ignore[arg-type]
 
 
 def test_hard_link_records_survive_the_walk(tmp_path: Path):
@@ -262,11 +294,15 @@ def test_no_more_walks_run_at_once_than_the_pool_allows(tmp_path: Path, monkeypa
     for root in roots:
         root.mkdir()
 
-    # Callers on many threads, as providers are: the bound is global, not per caller.
-    with ThreadPoolExecutor(8) as callers:
-        list(callers.map(size_many, [roots[i::8] for i in range(8)]))
+    # A pool of this test's own, so neither DEVDOCTOR_SIZER_WORKERS nor a pool an
+    # earlier test already created decides the bound being checked.
+    with ThreadPoolExecutor(3) as walkers:
+        monkeypatch.setattr(sizer, "_pool", walkers)
+        # Callers on many threads, as providers are: the bound is global, not per caller.
+        with ThreadPoolExecutor(8) as callers:
+            list(callers.map(size_many, [roots[i::8] for i in range(8)]))
 
-    assert 1 < peak <= sizer.MAX_CONCURRENT_WALKS
+    assert 1 < peak <= 3
 
 
 def test_apparent_size_is_reported_beside_the_allocated_size(tmp_path: Path):
@@ -282,3 +318,40 @@ def test_apparent_size_is_reported_beside_the_allocated_size(tmp_path: Path):
     # Hard links count once in both figures.
     assert result.apparent_bytes == 10 * 1024 * 1024 + 1 + 100
     assert result.allocated_bytes <= result.apparent_bytes
+
+
+def test_the_worker_count_honours_the_environment(monkeypatch):
+    monkeypatch.delenv("DEVDOCTOR_SIZER_WORKERS", raising=False)
+    assert sizer._worker_count() == sizer.MAX_CONCURRENT_WALKS
+    monkeypatch.setenv("DEVDOCTOR_SIZER_WORKERS", "9")
+    assert sizer._worker_count() == 9
+    monkeypatch.setenv("DEVDOCTOR_SIZER_WORKERS", "0")
+    assert sizer._worker_count() == 1
+    monkeypatch.setenv("DEVDOCTOR_SIZER_WORKERS", "many")
+    assert sizer._worker_count() == sizer.MAX_CONCURRENT_WALKS
+
+
+def test_the_newest_modification_anywhere_in_the_tree_is_reported(tmp_path: Path):
+    """A directory's own mtime does not move when a file deep inside it changes."""
+    tree = tmp_path / "cache"
+    deep = tree / "a" / "b" / "fresh.bin"
+    deep.parent.mkdir(parents=True)
+    deep.write_bytes(b"x")
+    (tree / "stale.bin").write_bytes(b"y")
+    long_ago, recent = 1_000_000.0, 2_000_000_000.0
+    for path in (tree / "stale.bin", tree / "a" / "b", tree / "a", tree):
+        os.utime(path, (long_ago, long_ago))
+    os.utime(deep, (recent, recent))
+
+    assert size_path_detailed(tree).newest_mtime == recent
+
+
+def test_an_empty_tree_is_as_old_as_its_root(tmp_path: Path):
+    tree = tmp_path / "empty"
+    tree.mkdir()
+    os.utime(tree, (1_000_000.0, 1_000_000.0))
+    assert size_path_detailed(tree).newest_mtime == 1_000_000.0
+
+
+def test_a_missing_root_has_no_age(tmp_path: Path):
+    assert size_path_detailed(tmp_path / "missing").newest_mtime is None

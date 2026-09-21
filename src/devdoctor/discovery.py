@@ -321,7 +321,7 @@ def scan(
     )
 
     if filters.is_unfiltered:
-        # One statvfs. The list of what is missing costs a walk and is opt-in (#81).
+        # One short `df` call. The list of what is missing costs a walk and is opt-in (#81).
         report.coverage = coverage.summarise(entries, Path.home())
     else:
         report = report.filter(

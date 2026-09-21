@@ -82,10 +82,7 @@ def _scan_legacy(root: Path, provider: LMStudioProvider) -> list[Entry]:
                 # Empty publisher/model dirs left behind by uninstalls — skip.
                 continue
             mid = f"{pub_dir.name}/{model_dir.name}"
-            try:
-                mtime: float | None = model_dir.lstat().st_mtime
-            except OSError:
-                mtime = None
+            mtime = sizing.newest_mtime
             entries.append(
                 Entry(
                     provider=provider_name,
@@ -118,6 +115,7 @@ def _scan_hub(root: Path, provider: LMStudioProvider) -> list[Entry]:
 
             hf_repos = _repos_from_manifest(manifest)
             hf_paths: list[Path] = []
+            hf_mtimes: list[float | None] = []
             hf_size = 0
             hardlinks: list[HardlinkRecord] = []
             for user, repo in hf_repos:
@@ -128,6 +126,7 @@ def _scan_hub(root: Path, provider: LMStudioProvider) -> list[Entry]:
                     hf_size += sizing.allocated_bytes
                     hardlinks.extend(sizing.hardlinks)
                     hf_paths.append(candidate)
+                    hf_mtimes.append(sizing.newest_mtime)
 
             manifest_sizing = size_path_detailed(model_dir)
             provider._note_skipped(list(manifest_sizing.skipped_paths))
@@ -136,12 +135,12 @@ def _scan_hub(root: Path, provider: LMStudioProvider) -> list[Entry]:
             total = manifest_size + hf_size
             if total == 0:
                 continue
+            # As young as the newest file in anything this entry's recipe deletes.
+            known = [t for t in (manifest_sizing.newest_mtime, *hf_mtimes) if t is not None]
+            newest = max(known) if known else None
 
             mid = f"{pub_dir.name}/{model_dir.name}"
-            try:
-                mtime: float | None = model_dir.lstat().st_mtime
-            except OSError:
-                mtime = None
+            mtime = newest
             recipe = [f"rm -rf {shlex.quote(str(model_dir))}"]
             # If the real bytes live in HF cache, clean those too — otherwise
             # the user deletes the manifest but keeps the downloaded model.

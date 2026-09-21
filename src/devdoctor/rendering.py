@@ -135,10 +135,11 @@ def _render_coverage(console: Console, report: Report) -> None:
             )
         )
     if coverage.skipped:
-        noun = "directory" if coverage.skipped == 1 else "directories"
+        noun = "path" if coverage.skipped == 1 else "paths"
+        verb = "is" if coverage.skipped == 1 else "are"
         console.print(
             Text(
-                f"  {coverage.skipped} {noun} could not be read and are not counted "
+                f"  {coverage.skipped} {noun} could not be read and {verb} not counted "
                 "(macOS privacy protection or permissions).",
                 style="dim",
             )
