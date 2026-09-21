@@ -659,3 +659,28 @@ def test_scanned_bundle_approval_skips_covered_snapshots():
         assert by_id[snap_id].status == "skipped"
         assert by_id[snap_id].message.startswith("covered by ")
     assert shell.calls == [("tmutil", "deletelocalsnapshots", "2026-09-01-000001")]
+
+
+def test_a_provider_filter_still_discounts_bytes_shared_with_a_provider_that_did_not_run():
+    """pnpm hard-links node_modules into its store. With only one of the two providers
+    running, the entry still sees fewer paths than the file has links, so the shared
+    bytes are still taken off its reclaimable estimate."""
+    from devdoctor.types import HardlinkRecord
+
+    linked = dataclasses.replace(
+        _e("node", "1", 1_000),
+        usage=DiskUsage(1_000, 1_000),
+        hardlinks=(
+            HardlinkRecord(
+                device=1, inode=7, allocated_bytes=400, link_count=2, paths=("/1/pkg/index.js",)
+            ),
+        ),
+    )
+    node = _Stub(FakeShell(), "node", [linked])
+    store = _Stub(FakeShell(), "pnpm-store", [_e("pnpm-store", "s", 5_000)])
+
+    report = scan(
+        [node, store], ScanFilters(providers=frozenset({"node"})), datetime(2026, 4, 18, tzinfo=UTC)
+    )
+    (entry,) = report.entries
+    assert (entry.shared_bytes, entry.reclaimable_bytes) == (400, 600)
