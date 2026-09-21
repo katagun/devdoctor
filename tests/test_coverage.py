@@ -222,3 +222,14 @@ def test_a_classified_file_with_a_second_name_is_excluded_under_both(tmp_path):
 
     found = unclassified_directories(home, [home / "models" / "a.gguf"], depth=3, limit=10)
     assert [(u.path.name, u.bytes) for u in found.directories] == [("elsewhere", 7)]
+
+
+def test_a_classified_symlink_also_classifies_the_directory_it_names(tmp_path):
+    """A cache moved aside and symlinked back is reached by the walk under its real name."""
+    home = tmp_path / "home"
+    _write(home / "RealCache" / "blob", 9_000)
+    _write(home / "Other" / "blob", 50)
+    (home / "LinkToCache").symlink_to(home / "RealCache", target_is_directory=True)
+
+    found = unclassified_directories(home, [home / "LinkToCache"], depth=3, limit=10)
+    assert [u.path.name for u in found.directories if u.bytes >= 50] == ["Other"]

@@ -216,9 +216,12 @@ def _identities(paths: Iterable[Path]) -> frozenset[FileId]:
     """Device and inode of every path that exists; how classified paths are recognised."""
     found: set[FileId] = set()
     for path in paths:
-        try:
-            st = os.stat(path, follow_symlinks=False)
-        except OSError:
-            continue
-        found.add((st.st_dev, st.st_ino))
+        # Both the path itself and, when it is a symlink, what it names: a cache moved
+        # aside and linked back is met by the walk under its real name.
+        for follow in (False, True):
+            try:
+                st = os.stat(path, follow_symlinks=follow)
+            except OSError:
+                continue
+            found.add((st.st_dev, st.st_ino))
     return frozenset(found)

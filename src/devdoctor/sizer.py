@@ -212,6 +212,16 @@ def _size_file(root: Path, st: os.stat_result) -> SizeResult:
     )
 
 
+def _size_non_directory(root: Path, st: os.stat_result) -> SizeResult | None:
+    """The result for a root that is not a tree to walk, or None when it is one."""
+    if stat_mod.S_ISREG(st.st_mode):
+        return _size_file(root, st)
+    if stat_mod.S_ISLNK(st.st_mode) and not root.is_dir():
+        # Deleting this entry unlinks the link and frees nothing; it was not unreadable.
+        return SizeResult(0, (), (), newest_mtime=st.st_mtime)
+    return None
+
+
 def _walk(root: Path, exclude: frozenset[FileId] = frozenset()) -> SizeResult:
     skipped: list[Path] = []
     try:
@@ -219,8 +229,9 @@ def _walk(root: Path, exclude: frozenset[FileId] = frozenset()) -> SizeResult:
     except OSError:
         return SizeResult(0, (root,), ())
 
-    if stat_mod.S_ISREG(root_stat.st_mode):
-        return _size_file(root, root_stat)
+    single = _size_non_directory(root, root_stat)
+    if single is not None:
+        return single
 
     # Only a file with more than one name can be met twice, so only those are tracked.
     hardlinks: _Hardlinks = {}
