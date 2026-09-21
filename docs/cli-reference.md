@@ -50,6 +50,8 @@ Top-level object:
 
 Each entry carries `provider`, `id`, `path` (may be `null`), `label`,
 `size_bytes`, `footprint_bytes`, `reclaimable_bytes`, `shared_bytes`,
+`apparent_bytes` (the files' summed lengths where measured, else `null`; far
+above the footprint for a sparse VM disk image, and never reclaimable),
 `risk` (`safe` / `reclaimable` / `dangerous`), `recipe` (shell lines for the
 recipe script), `actions` (typed cleanup actions), plus file metadata
 (`uid`, `gid`, `mode`, `owner`, `group`, `perms`) and `mtime`.

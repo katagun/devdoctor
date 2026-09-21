@@ -267,3 +267,18 @@ def test_no_more_walks_run_at_once_than_the_pool_allows(tmp_path: Path, monkeypa
         list(callers.map(size_many, [roots[i::8] for i in range(8)]))
 
     assert 1 < peak <= sizer.MAX_CONCURRENT_WALKS
+
+
+def test_apparent_size_is_reported_beside_the_allocated_size(tmp_path: Path):
+    """A sparse image's two sizes are both real questions: what it costs, what it reserves."""
+    sparse = tmp_path / "disk.raw"
+    with sparse.open("wb") as f:
+        f.seek(10 * 1024 * 1024)
+        f.write(b"!")
+    (tmp_path / "plain.txt").write_bytes(b"x" * 100)
+    os.link(tmp_path / "plain.txt", tmp_path / "plain-again.txt")
+
+    result = size_path_detailed(tmp_path)
+    # Hard links count once in both figures.
+    assert result.apparent_bytes == 10 * 1024 * 1024 + 1 + 100
+    assert result.allocated_bytes <= result.apparent_bytes

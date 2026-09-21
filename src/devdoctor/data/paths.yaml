@@ -92,12 +92,16 @@
   recipe: "rm -rf {path}"
 
 - name: docker-vm-disk
-  description: Docker Desktop VM disk image (sparse on APFS; check actual usage first)
+  description: Docker Desktop VM disk image (sparse; it occupies less than its size limit)
   risk: reclaimable
   platforms: [darwin]
   paths:
     - ~/Library/Containers/com.docker.docker/Data/vms
-  recipe: "echo 'Docker.raw is sparse on APFS — run: du -h ~/Library/Containers/com.docker.docker/Data/vms/*.raw. If actual usage is small, shrink the Docker Desktop disk-image quota (Settings > Resources > Disk image size). If large, use Docker Desktop > Troubleshoot > Clean/Purge data. Do NOT rm -rf this path while Docker is running.'"
+  recipe:
+    - "echo 'Docker.raw is a sparse disk image. The figure shown is what it occupies on disk; Finder and ls show its size limit instead.'"
+    - "echo 'To shrink it, free space inside Docker first (docker system prune, or the docker entries in this report). Docker Desktop then returns the freed blocks to macOS; to force that now run: docker run --privileged --pid=host docker/desktop-reclaim-space. Docker may stop answering for a few minutes while it does.'"
+    - "echo 'Deleting files inside a running container frees nothing on the host; only removing images, containers, volumes or build cache does.'"
+    - "echo 'Lowering the limit under Settings > Resources > Disk image size deletes every container, image and volume, and so does Troubleshoot > Clean / Purge data. Never delete this path while Docker is running.'"
 
 - name: claude-vm-bundles
   description: Claude Code VM bundles

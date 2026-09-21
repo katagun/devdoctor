@@ -34,7 +34,7 @@ devdoctor scan --sort age            # longest untouched first (default: size)</
 <tr><td><code>per_provider</code></td><td>Per-provider totals: <code>name</code>, <code>bytes</code>, <code>entries</code>, <code>duration_ms</code>, footprint/reclaimable/shared bytes</td></tr>
 <tr><td><code>entries</code></td><td>One object per entry (omitted for auto snapshots)</td></tr>
 <tr><td><code>diagnostics</code></td><td>Unreadable paths and provider warnings</td></tr></table>
-<p>Each entry carries <code>provider</code>, <code>id</code>, <code>path</code> (may be <code>null</code>), <code>label</code>, <code>size_bytes</code>, footprint/reclaimable/shared bytes, <code>risk</code>, <code>recipe</code> lines, <code>actions</code>, file metadata (<code>uid</code>, <code>gid</code>, <code>mode</code>, <code>owner</code>, <code>group</code>, <code>perms</code>) and <code>mtime</code>.</p>
+<p>Each entry carries <code>provider</code>, <code>id</code>, <code>path</code> (may be <code>null</code>), <code>label</code>, <code>size_bytes</code>, footprint/reclaimable/shared bytes, <code>apparent_bytes</code> (the files' summed lengths where measured, else <code>null</code>; far above the footprint for a sparse VM disk image, and never reclaimable), <code>risk</code>, <code>recipe</code> lines, <code>actions</code>, file metadata (<code>uid</code>, <code>gid</code>, <code>mode</code>, <code>owner</code>, <code>group</code>, <code>perms</code>) and <code>mtime</code>.</p>
 
 <h2><code>clean</code> — preview by default, act with <code>--execute</code></h2>
 <pre><code>devdoctor clean                      # preview: table, no prompts, no shell calls

@@ -113,3 +113,23 @@ def test_never_walks_into_vcs_metadata(tmp_path, monkeypatch):
     ids = {e.id for e in LargeFilesProvider(FakeShell()).discover()}
 
     assert str(buried) not in ids
+
+
+def test_a_large_sparse_file_reports_what_it_reserves(tmp_path, monkeypatch):
+    """A VM disk outside any known provider (a Colima data disk) is found here."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setattr("devdoctor.providers.large_files._MIN_BYTES", _TEST_THRESHOLD)
+
+    disk = home / "Documents" / "datadisk"
+    disk.parent.mkdir(parents=True)
+    with disk.open("wb") as f:
+        f.write(b"0" * (2 * _TEST_THRESHOLD))  # allocated, above the threshold
+        f.seek(50 * _TEST_THRESHOLD)  # then a hole
+        f.write(b"!")
+
+    (entry,) = LargeFilesProvider(FakeShell()).discover()
+    assert entry.apparent_bytes == 50 * _TEST_THRESHOLD + 1
+    assert entry.footprint_bytes is not None and entry.footprint_bytes < entry.apparent_bytes

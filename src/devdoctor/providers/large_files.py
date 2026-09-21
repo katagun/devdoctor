@@ -66,7 +66,7 @@ class LargeFilesProvider(Provider):
                 root_dev = root.lstat().st_dev
             except OSError:
                 continue
-            for file_path, size, mtime, hardlink in _walk_for_large_files(root, root_dev):
+            for file_path, size, apparent, mtime, hardlink in _walk_for_large_files(root, root_dev):
                 path_str = str(file_path)
                 quoted = shlex.quote(path_str)
                 # Advice-only — the UI renders this as bulleted sentences.
@@ -94,7 +94,7 @@ class LargeFilesProvider(Provider):
                         mtime=mtime,
                         risk=self.risk,
                         recipe=[recipe_line],
-                        usage=DiskUsage(size, None),
+                        usage=DiskUsage(size, None, apparent_bytes=apparent),
                         actions=(AdviceAction(msg),),
                         hardlinks=(hardlink,) if hardlink is not None else (),
                         **_stat_kwargs(file_path),
@@ -106,8 +106,9 @@ class LargeFilesProvider(Provider):
 def _walk_for_large_files(
     root: Path,
     root_dev: int,
-) -> list[tuple[Path, int, float | None, HardlinkRecord | None]]:
-    hits: list[tuple[Path, int, float | None, HardlinkRecord | None]] = []
+) -> list[tuple[Path, int, int, float | None, HardlinkRecord | None]]:
+    """Each hit: path, allocated bytes, apparent bytes, mtime, hard-link record."""
+    hits: list[tuple[Path, int, int, float | None, HardlinkRecord | None]] = []
 
     def on_error(_err: OSError) -> None:
         return None
@@ -153,7 +154,7 @@ def _walk_for_large_files(
                 if st.st_nlink > 1
                 else None
             )
-            hits.append((fp, size, st.st_mtime, hardlink))
+            hits.append((fp, size, st.st_size, st.st_mtime, hardlink))
     return hits
 
 

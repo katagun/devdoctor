@@ -71,6 +71,9 @@ class SizeResult:
     allocated_bytes: int
     skipped_paths: tuple[Path, ...]
     hardlinks: tuple[HardlinkRecord, ...]
+    # The sum of the files' lengths. It exceeds ``allocated_bytes`` for a sparse
+    # file such as a VM disk image, which reserves address space it has not written.
+    apparent_bytes: int = 0
 
 
 def size_path(root: Path) -> tuple[int, list[Path]]:
@@ -150,6 +153,7 @@ def _walk(root: Path) -> SizeResult:
         return SizeResult(0, (root,), ())
 
     total = 0
+    apparent = 0
     # Only a file with more than one name can be met twice, so only those are tracked.
     hardlinks: dict[tuple[int, int], tuple[int, int, list[str]]] = {}
     # Plain strings and one stat per entry: a Path per file cost a third of the walk.
@@ -199,6 +203,7 @@ def _walk(root: Path) -> SizeResult:
                         continue
                     hardlinks[key] = (allocated, st.st_nlink, [entry.path])
                 total += allocated
+                apparent += st.st_size
 
     records = tuple(
         HardlinkRecord(
@@ -210,4 +215,4 @@ def _walk(root: Path) -> SizeResult:
         )
         for (device, inode), (allocated, link_count, paths) in sorted(hardlinks.items())
     )
-    return SizeResult(total, tuple(skipped), records)
+    return SizeResult(total, tuple(skipped), records, apparent)

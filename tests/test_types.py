@@ -544,3 +544,34 @@ def test_an_age_filter_keeps_only_entries_known_to_be_older(mtime, expected):
     assert entry_matches_filters(entry, modified_before=1000.0) is expected
     report = Report(entries=[entry], scanned_at=datetime.now(UTC), hostname="h", platform="darwin")
     assert bool(report.filter(modified_before=1000.0).entries) is expected
+
+
+def test_apparent_size_survives_the_json_round_trip():
+    entry = Entry(
+        "docker-vm-disk",
+        "1",
+        None,
+        "Docker.raw",
+        34,
+        None,
+        Risk.RECLAIMABLE,
+        [],
+        usage=DiskUsage(34, 34, apparent_bytes=80),
+    )
+    report = Report(entries=[entry], scanned_at=datetime.now(UTC), hostname="h", platform="darwin")
+    payload = json.loads(report.to_json())
+    assert payload["entries"][0]["apparent_bytes"] == 80
+    assert Report.from_json(report.to_json()).entries[0].apparent_bytes == 80
+
+
+def test_a_snapshot_written_before_apparent_size_existed_still_loads():
+    entry = Entry("p", "1", None, "l", 34, None, Risk.SAFE, [], usage=DiskUsage(34, 34))
+    report = Report(entries=[entry], scanned_at=datetime.now(UTC), hostname="h", platform="darwin")
+    payload = json.loads(report.to_json())
+    del payload["entries"][0]["apparent_bytes"]
+    assert Report.from_json(json.dumps(payload)).entries[0].apparent_bytes is None
+
+
+def test_apparent_size_cannot_be_negative():
+    with pytest.raises(ValueError, match="apparent_bytes must be non-negative"):
+        DiskUsage(1, 1, apparent_bytes=-1)
