@@ -94,6 +94,7 @@ def render_report_table(console: Console, report: Report) -> None:
         f"shared: {_human_bytes(report.total_shared_bytes())}"
     )
     console.print(table)
+    _render_coverage(console, report)
     _render_sparse_notes(console, report)
     _render_diagnostics(console, report)
 
@@ -101,6 +102,47 @@ def render_report_table(console: Console, report: Report) -> None:
 # Show at most this many diagnostic lines under the table; the rest collapse
 # into a "+N more" note so a pathological scan can't flood the terminal.
 _MAX_DIAGNOSTIC_LINES = 5
+
+
+def _render_coverage(console: Console, report: Report) -> None:
+    """Say how much of the volume the scan accounts for, and what it misses when measured.
+
+    Silently reporting 90 GB on a disk with 396 GB used reads as "that is all there
+    is"; the ratio is the honest framing (#81).
+    """
+    coverage = report.coverage
+    if coverage is None or coverage.ratio is None:
+        return
+    line = (
+        f"Coverage: {_human_bytes(coverage.classified_bytes)} of "
+        f"{_human_bytes(coverage.used_bytes)} used on this volume is accounted for "
+        f"({coverage.ratio:.0%})."
+    )
+    if coverage.unclassified is None:
+        console.print(
+            Text(f"{line} Run `devdoctor scan --coverage` to see what is not.", style="dim")
+        )
+        return
+    console.print(Text(line, style="dim"))
+    if coverage.unclassified:
+        console.print(Text("Largest directories no provider accounts for:", style="dim"))
+    for row in coverage.unclassified:
+        suffix = " (files directly inside)" if row.files_only else ""
+        console.print(
+            Text(
+                f"  {_human_bytes(row.bytes):>8} {_strip_controls(str(row.path))}{suffix}",
+                style="dim",
+            )
+        )
+    if coverage.skipped:
+        noun = "directory" if coverage.skipped == 1 else "directories"
+        console.print(
+            Text(
+                f"  {coverage.skipped} {noun} could not be read and are not counted "
+                "(macOS privacy protection or permissions).",
+                style="dim",
+            )
+        )
 
 
 def _render_sparse_notes(console: Console, report: Report) -> None:

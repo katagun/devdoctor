@@ -659,3 +659,18 @@ def test_scanned_bundle_approval_skips_covered_snapshots():
         assert by_id[snap_id].status == "skipped"
         assert by_id[snap_id].message.startswith("covered by ")
     assert shell.calls == [("tmutil", "deletelocalsnapshots", "2026-09-01-000001")]
+
+
+def test_an_unfiltered_scan_says_how_much_of_the_volume_it_accounts_for():
+    p = _Stub(FakeShell(), "a", [_e("a", "1", 100), _e("a", "2", 300)])
+    report = scan([p], ScanFilters(), datetime(2026, 4, 18, tzinfo=UTC))
+    assert report.coverage is not None
+    assert report.coverage.classified_bytes == 400
+    assert report.coverage.used_bytes > 0
+    assert report.coverage.unclassified is None  # the walk is opt-in
+
+
+def test_a_filtered_scan_makes_no_coverage_claim():
+    p = _Stub(FakeShell(), "a", [_e("a", "1", 100)])
+    report = scan([p], ScanFilters(min_size_bytes=1), datetime(2026, 4, 18, tzinfo=UTC))
+    assert report.coverage is None

@@ -85,6 +85,16 @@ entries under a versioned heading as described in
 
 ### Added
 
+- **A scan says how much of the disk it accounts for.** DevDoctor reported 90 GB
+  on a machine with 396 GB used and gave no hint that it was a quarter of the
+  picture. Every unfiltered scan now ends with a coverage line, classified
+  bytes against the volume's own used space, and `--json` carries a `coverage`
+  object. `scan --coverage` also sizes the home directory outside every
+  classified path and lists the ten largest directories no provider accounts
+  for, which is how gaps in the provider catalogue used to be found by hand. On
+  the reference machine it adds about 20 s to a 53 s scan. Used space comes
+  from `df`, because on APFS total minus free also counts the system, swap and
+  preboot volumes. (#81)
 - **Sparse files are explained instead of silently under-reported.** Docker
   Desktop's `Docker.raw` is 80 GB long and occupies what Docker has written, so
   DevDoctor's figure and Finder's disagree by tens of gigabytes. Entries from

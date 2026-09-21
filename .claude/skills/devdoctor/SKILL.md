@@ -63,6 +63,7 @@ devdoctor scan                       # Rich table of all caches, sorted by size
 devdoctor scan --json                # structured JSON (use this for reports)
 devdoctor scan --min-size 100M --risk safe,reclaimable   # filters
 devdoctor scan --older-than 6mo --sort age            # untouched for 6 months, oldest first
+devdoctor scan --coverage            # + the largest directories no provider accounts for (slow)
 devdoctor providers                  # registered providers + availability
 devdoctor recipe [-o file.sh]        # reviewable, fully-commented-out cleanup script
 devdoctor snapshot --note "before"   # save a point-in-time scan

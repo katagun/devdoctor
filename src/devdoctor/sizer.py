@@ -111,13 +111,16 @@ def _worker_count() -> int:
         return MAX_CONCURRENT_WALKS
 
 
-def size_many(roots: Sequence[Path]) -> list[SizeResult]:
+def size_many(roots: Sequence[Path], *, exclude: frozenset[str] = frozenset()) -> list[SizeResult]:
     """Size every root, a few at a time; results keep the order of ``roots``.
+
+    ``exclude`` names paths, exactly as a walk from ``roots`` would spell them, that
+    are neither counted nor entered.
 
     Walks never start other walks, so callers blocking here cannot deadlock the pool.
     """
     pool = _walk_pool()
-    futures = [pool.submit(_walk, root) for root in roots]
+    futures = [pool.submit(_walk, root, exclude) for root in roots]
     return [future.result() for future in futures]
 
 
@@ -145,7 +148,21 @@ def _lstat(entry: os.DirEntry[str]) -> os.stat_result:
     return entry.stat(follow_symlinks=False)
 
 
-def _walk(root: Path) -> SizeResult:
+_Hardlinks = dict[tuple[int, int], tuple[int, int, list[str]]]
+
+
+def _seen_before(hardlinks: _Hardlinks, st: os.stat_result, allocated: int, path: str) -> bool:
+    """Record one more name for a multiply-linked file; True when its bytes are counted."""
+    key = (st.st_dev, st.st_ino)
+    current = hardlinks.get(key)
+    if current is not None:
+        current[2].append(path)
+        return True
+    hardlinks[key] = (allocated, st.st_nlink, [path])
+    return False
+
+
+def _walk(root: Path, exclude: frozenset[str] = frozenset()) -> SizeResult:
     skipped: list[Path] = []
     try:
         root_dev = root.lstat().st_dev
@@ -155,7 +172,7 @@ def _walk(root: Path) -> SizeResult:
     total = 0
     apparent = 0
     # Only a file with more than one name can be met twice, so only those are tracked.
-    hardlinks: dict[tuple[int, int], tuple[int, int, list[str]]] = {}
+    hardlinks: _Hardlinks = {}
     # Plain strings and one stat per entry: a Path per file cost a third of the walk.
     pending = [os.fspath(root)]
     while pending:
@@ -167,6 +184,8 @@ def _walk(root: Path) -> SizeResult:
             continue
         with listing:
             for entry in listing:
+                if exclude and entry.path in exclude:
+                    continue
                 try:
                     # Follows symlinks, as os.walk does: a link to a directory is a
                     # directory that is never entered, not a file to be counted.
@@ -195,13 +214,8 @@ def _walk(root: Path) -> SizeResult:
                 # so we cap at st_size to preserve per-byte accuracy for normal files.
                 blocks = getattr(st, "st_blocks", 0) * 512
                 allocated = min(st.st_size, blocks) if blocks else st.st_size
-                if st.st_nlink > 1:
-                    key = (st.st_dev, st.st_ino)
-                    current = hardlinks.get(key)
-                    if current is not None:
-                        current[2].append(entry.path)
-                        continue
-                    hardlinks[key] = (allocated, st.st_nlink, [entry.path])
+                if st.st_nlink > 1 and _seen_before(hardlinks, st, allocated, entry.path):
+                    continue
                 total += allocated
                 apparent += st.st_size
 

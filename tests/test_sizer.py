@@ -245,14 +245,14 @@ def test_no_more_walks_run_at_once_than_the_pool_allows(tmp_path: Path, monkeypa
     lock = threading.Lock()
     real_walk = sizer._walk
 
-    def tracking_walk(root):
+    def tracking_walk(root, exclude=frozenset()):
         nonlocal active, peak
         with lock:
             active += 1
             peak = max(peak, active)
         time.sleep(0.02)
         try:
-            return real_walk(root)
+            return real_walk(root, exclude)
         finally:
             with lock:
                 active -= 1

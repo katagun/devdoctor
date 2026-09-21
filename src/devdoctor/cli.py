@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from devdoctor import cleanup_audit, discovery, registry
+from devdoctor import coverage as coverage_mod
 from devdoctor import history as history_mod
 from devdoctor.cleanup import build_script
 from devdoctor.cleanup import run as cleanup_run
@@ -109,6 +110,12 @@ def _parse_risks(values: tuple[str, ...]) -> frozenset[Risk] | None:
         return frozenset(Risk(v.strip()) for v in flat if v.strip())
     except ValueError as e:
         raise click.BadParameter(str(e)) from e
+
+
+def _add_coverage_detail(report: Report, wanted: bool) -> None:
+    """Fill in the largest unclassified directories; a walk of the home directory."""
+    if wanted and report.coverage is not None:
+        report.coverage = coverage_mod.detail(report.coverage, report.entries, Path.home())
 
 
 def _sort_entries(report: Report, sort_by: str) -> None:
@@ -268,6 +275,16 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         show_default=True,
         help="Order entries by size, or by age with the longest untouched first.",
     )
+    @click.option(
+        "--coverage",
+        "with_coverage",
+        is_flag=True,
+        help=(
+            "Also size the home directory outside every classified path and list the "
+            "largest directories no provider accounts for. Slow: it walks what the "
+            "scan did not."
+        ),
+    )
     @click.pass_context
     def scan(
         ctx: click.Context,
@@ -277,6 +294,7 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         providers: tuple[str, ...],
         older_than: str | None,
         sort_by: str,
+        with_coverage: bool,
     ) -> None:
         """Find reclaimable space; read-only."""
         providers_list = registry.load_providers(ctx.obj["shell"])
@@ -286,14 +304,22 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
             providers=_parse_providers(providers, providers_list),
             modified_before=_parse_older_than(older_than),
         )
+        if with_coverage and not filters.is_unfiltered:
+            raise click.UsageError(
+                "--coverage describes the whole scan; drop the filters to use it"
+            )
         console = Console()
         if json_out:
             report = discovery.scan(providers_list, filters, datetime.now(UTC))
+            _add_coverage_detail(report, with_coverage)
             _sort_entries(report, sort_by)
             click.echo(report.to_json())
             return
         with spinner(console, "Scanning..."):
             report = discovery.scan(providers_list, filters, datetime.now(UTC))
+        if with_coverage:
+            with spinner(console, "Sizing what no provider accounts for..."):
+                _add_coverage_detail(report, with_coverage)
         _sort_entries(report, sort_by)
         render_report_table(console, report)
 
