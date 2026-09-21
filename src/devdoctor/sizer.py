@@ -4,6 +4,9 @@ import grp
 import os
 import pwd
 import stat as stat_mod
+import threading
+from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -75,6 +78,46 @@ def size_path(root: Path) -> tuple[int, list[Path]]:
     return result.allocated_bytes, list(result.skipped_paths)
 
 
+# How many trees are walked at once, across the whole process. Providers run on
+# their own threads and each used to walk its trees one after another, so a scan
+# was as slow as its slowest provider. Walking is ``lstat`` after ``lstat``, which
+# releases the GIL, so a few walks overlap well. Past a handful they contend
+# inside the filesystem instead: on the reference APFS SSD 4 walks sized the same
+# trees 5x faster than 1, and 16 walks were slower than 4 (#92).
+MAX_CONCURRENT_WALKS = 4
+_WORKERS_ENV = "DEVDOCTOR_SIZER_WORKERS"
+
+_pool: ThreadPoolExecutor | None = None
+_pool_lock = threading.Lock()
+
+
+def _walk_pool() -> ThreadPoolExecutor:
+    """The one pool every walk runs on, which is what makes the bound global."""
+    global _pool  # noqa: PLW0603 - a lazily created process-wide singleton
+    with _pool_lock:
+        if _pool is None:
+            _pool = ThreadPoolExecutor(max_workers=_worker_count(), thread_name_prefix="dd-sizer")
+        return _pool
+
+
+def _worker_count() -> int:
+    raw = os.environ.get(_WORKERS_ENV, "")
+    try:
+        return max(1, int(raw)) if raw else MAX_CONCURRENT_WALKS
+    except ValueError:
+        return MAX_CONCURRENT_WALKS
+
+
+def size_many(roots: Sequence[Path]) -> list[SizeResult]:
+    """Size every root, a few at a time; results keep the order of ``roots``.
+
+    Walks never start other walks, so callers blocking here cannot deadlock the pool.
+    """
+    pool = _walk_pool()
+    futures = [pool.submit(_walk, root) for root in roots]
+    return [future.result() for future in futures]
+
+
 def size_path_detailed(root: Path) -> SizeResult:
     """Compute byte size of `root` recursively.
 
@@ -87,67 +130,75 @@ def size_path_detailed(root: Path) -> SizeResult:
     The detailed result carries hard-link identities and observed paths so the
     scan layer can deterministically reconcile allocations shared by separate
     entries and providers after concurrent discovery finishes.
+
+    Runs on the shared walk pool, so the number of simultaneous walks is bounded
+    whatever the number of calling threads; ``size_many`` sizes several at once.
     """
+    return size_many([root])[0]
+
+
+def _lstat(entry: os.DirEntry[str]) -> os.stat_result:
+    """The one stat a walk makes per directory entry; a seam for the tests."""
+    return entry.stat(follow_symlinks=False)
+
+
+def _walk(root: Path) -> SizeResult:
     skipped: list[Path] = []
-
     try:
-        root_stat = root.lstat()
-    except (FileNotFoundError, PermissionError, OSError):
-        skipped.append(root)
-        return SizeResult(0, tuple(skipped), ())
+        root_dev = root.lstat().st_dev
+    except OSError:
+        return SizeResult(0, (root,), ())
 
-    root_dev = root_stat.st_dev
     total = 0
-    seen_inodes: set[tuple[int, int]] = set()
+    # Only a file with more than one name can be met twice, so only those are tracked.
     hardlinks: dict[tuple[int, int], tuple[int, int, list[str]]] = {}
-
-    def on_error(err: OSError) -> None:
-        filename = getattr(err, "filename", None)
-        skipped.append(Path(filename) if filename else root)
-
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False, onerror=on_error):
-        dp = Path(dirpath)
-
-        # Cross-device guard: prune subdirs that live on a different device.
-        pruned: list[str] = []
-        for d in list(dirnames):
-            sub = dp / d
-            try:
-                if sub.lstat().st_dev != root_dev:
-                    pruned.append(d)
-            except (FileNotFoundError, PermissionError, OSError):
-                skipped.append(sub)
-                pruned.append(d)
-        for d in pruned:
-            dirnames.remove(d)
-
-        for name in filenames:
-            p = dp / name
-            try:
-                st = p.lstat()
-            except (FileNotFoundError, PermissionError, OSError):
-                skipped.append(p)
-                continue
-            blocks = getattr(st, "st_blocks", 0) * 512
-            allocated = min(st.st_size, blocks) if blocks else st.st_size
-            # Hard-link dedup: skip bytes we've already counted in
-            # this walk. st_nlink > 1 signals the file has other names, but
-            # the check is unconditional since the cost is just a set lookup.
-            key = (st.st_dev, st.st_ino)
-            if st.st_nlink > 1:
-                current = hardlinks.get(key)
-                if current is None:
-                    hardlinks[key] = (allocated, st.st_nlink, [str(p)])
-                else:
-                    current[2].append(str(p))
-            if key in seen_inodes:
-                continue
-            seen_inodes.add(key)
-            # Actual on-disk usage via st_blocks handles sparse files correctly
-            # (e.g. Docker.raw reports 80 GB apparent but uses only megabytes).
-            # For non-sparse files st_blocks*512 rounds up to a block boundary,
-            # so we cap at st_size to preserve per-byte accuracy for normal files.
-            total += allocated
+    # Plain strings and one stat per entry: a Path per file cost a third of the walk.
+    pending = [os.fspath(root)]
+    while pending:
+        directory = pending.pop()
+        try:
+            listing = os.scandir(directory)
+        except OSError:
+            skipped.append(Path(directory))
+            continue
+        with listing:
+            for entry in listing:
+                try:
+                    # Follows symlinks, as os.walk does: a link to a directory is a
+                    # directory that is never entered, not a file to be counted.
+                    is_dir = entry.is_dir()
+                except OSError:
+                    is_dir = False
+                if is_dir:
+                    if entry.is_symlink():
+                        continue
+                    try:
+                        same_device = _lstat(entry).st_dev == root_dev
+                    except OSError:
+                        skipped.append(Path(entry.path))
+                        continue
+                    if same_device:
+                        pending.append(entry.path)
+                    continue
+                try:
+                    st = _lstat(entry)
+                except OSError:
+                    skipped.append(Path(entry.path))
+                    continue
+                # Actual on-disk usage via st_blocks handles sparse files correctly
+                # (e.g. Docker.raw reports 80 GB apparent but uses only megabytes).
+                # For non-sparse files st_blocks*512 rounds up to a block boundary,
+                # so we cap at st_size to preserve per-byte accuracy for normal files.
+                blocks = getattr(st, "st_blocks", 0) * 512
+                allocated = min(st.st_size, blocks) if blocks else st.st_size
+                if st.st_nlink > 1:
+                    key = (st.st_dev, st.st_ino)
+                    current = hardlinks.get(key)
+                    if current is not None:
+                        current[2].append(entry.path)
+                        continue
+                    hardlinks[key] = (allocated, st.st_nlink, [entry.path])
+                total += allocated
 
     records = tuple(
         HardlinkRecord(

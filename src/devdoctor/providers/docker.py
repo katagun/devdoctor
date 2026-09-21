@@ -4,10 +4,11 @@ import json
 import logging
 import re
 import shlex
+import subprocess
 import sys
 
 from devdoctor.providers.base import Provider
-from devdoctor.types import CommandAction, DiskUsage, Entry, Risk
+from devdoctor.types import CommandAction, DiskUsage, Entry, Risk, ShellResult
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,9 @@ _SIZE_UNITS = {
     "PB": 1_000_000_000_000_000,
 }
 _SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(B|KB|MB|GB|TB|PB)", re.IGNORECASE)
+
+# A healthy `docker system df` answers in seconds, even with many layers.
+_DAEMON_TIMEOUT_S = 60.0
 
 _ANONYMOUS_VOLUME_LABEL = "com.docker.volume.anonymous"
 _VOLUME_DETAILS_COMMAND = [
@@ -96,6 +100,17 @@ class DockerProvider(Provider):
             return _DARWIN_BUNDLED_DOCKER
         return None
 
+    def _ask(self, argv: list[str]) -> ShellResult | None:
+        """Run one docker query; ``None`` when the daemon never answered.
+
+        The CLI blocks for as long as the daemon does, and a wedged Docker Desktop
+        blocks forever, which used to hang the whole scan with nothing printed (#92).
+        """
+        try:
+            return self._shell.run(argv, check=False, timeout=_DAEMON_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            return None
+
     def discover(self) -> list[Entry]:
         docker = self._docker_argv0()
         if docker is None:
@@ -107,7 +122,15 @@ class DockerProvider(Provider):
             )
             logger.info("%s", msg)
             self.diagnostics.append(msg)
-        result = self._shell.run([docker, "system", "df", "--format", "json"], check=False)
+        result = self._ask([docker, "system", "df", "--format", "json"])
+        if result is None:
+            msg = (
+                f"docker: `docker system df` did not answer within {_DAEMON_TIMEOUT_S:.0f} s "
+                "(is Docker Desktop responsive?); reporting no reclaimable docker space"
+            )
+            logger.warning("%s", msg)
+            self.diagnostics.append(msg)
+            return []
         if result.returncode != 0 or not result.stdout.strip():
             # `available()` already confirmed the docker binary exists, so a
             # non-zero exit here means docker is installed but not usable right
@@ -164,7 +187,12 @@ class DockerProvider(Provider):
         daemons did not mark every anonymous volume consistently, and treating
         an uncertain volume as dangerous is the safe failure mode.
         """
-        result = self._shell.run([docker, *_VOLUME_DETAILS_COMMAND[1:]], check=False)
+        result = self._ask([docker, *_VOLUME_DETAILS_COMMAND[1:]])
+        if result is None:
+            self._note_volume_details_failure(
+                aggregate_bytes, f"did not answer within {_DAEMON_TIMEOUT_S:.0f} s"
+            )
+            return []
         if result.returncode != 0 or not result.stdout.strip():
             self._note_volume_details_failure(
                 aggregate_bytes,

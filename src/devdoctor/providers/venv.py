@@ -31,7 +31,7 @@ from devdoctor.providers._walk import (
     DepthBudget,
 )
 from devdoctor.providers.base import Provider, _stat_kwargs
-from devdoctor.sizer import size_path_detailed
+from devdoctor.sizer import size_many
 from devdoctor.types import DeletePathAction, DiskUsage, Entry, Risk
 
 # Directory basenames that look like venvs. A candidate is only treated as a
@@ -70,7 +70,7 @@ class VenvProvider(Provider):
     )
 
     def discover(self) -> list[Entry]:
-        entries: list[Entry] = []
+        found: list[tuple[Path, Path, os.stat_result]] = []
         # Dedup by (dev, ino) instead of resolved string path: this is robust
         # on case-insensitive filesystems (APFS default) where two differently-
         # cased paths point to the same directory but resolve() preserves the
@@ -96,34 +96,39 @@ class VenvProvider(Provider):
                     continue
                 seen_inodes.add(key)
 
-                sizing = size_path_detailed(real)
-                size = sizing.allocated_bytes
-                self._note_skipped(list(sizing.skipped_paths))
-                if size == 0:
-                    continue
-                mtime: float | None = rst.st_mtime
+                found.append((venv_dir, real, rst))
 
-                # Label shows the enclosing project (parent of the venv dir)
-                # so "myproj/.venv" is what the user actually recognises.
-                project_hint = venv_dir.parent.name
-                label = f"{project_hint}/{venv_dir.name}" if project_hint else venv_dir.name
+        # Sized together: the walks are independent and are most of the scan (#92).
+        sizings = size_many([real for _venv_dir, real, _rst in found])
+        entries: list[Entry] = []
+        for (venv_dir, real, rst), sizing in zip(found, sizings, strict=True):
+            size = sizing.allocated_bytes
+            self._note_skipped(list(sizing.skipped_paths))
+            if size == 0:
+                continue
+            mtime: float | None = rst.st_mtime
 
-                entries.append(
-                    Entry(
-                        provider=self.name,
-                        id=str(real),
-                        path=real,
-                        label=label,
-                        size_bytes=size,
-                        mtime=mtime,
-                        risk=self.risk,
-                        recipe=[f"rm -rf {shlex.quote(str(real))}"],
-                        usage=DiskUsage(size, size),
-                        actions=(DeletePathAction(real),),
-                        hardlinks=sizing.hardlinks,
-                        **_stat_kwargs(real),
-                    )
+            # Label shows the enclosing project (parent of the venv dir)
+            # so "myproj/.venv" is what the user actually recognises.
+            project_hint = venv_dir.parent.name
+            label = f"{project_hint}/{venv_dir.name}" if project_hint else venv_dir.name
+
+            entries.append(
+                Entry(
+                    provider=self.name,
+                    id=str(real),
+                    path=real,
+                    label=label,
+                    size_bytes=size,
+                    mtime=mtime,
+                    risk=self.risk,
+                    recipe=[f"rm -rf {shlex.quote(str(real))}"],
+                    usage=DiskUsage(size, size),
+                    actions=(DeletePathAction(real),),
+                    hardlinks=sizing.hardlinks,
+                    **_stat_kwargs(real),
                 )
+            )
         return entries
 
 

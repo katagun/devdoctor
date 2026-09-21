@@ -16,7 +16,7 @@ from devdoctor.providers._walk import (
     DepthBudget,
 )
 from devdoctor.providers.base import Provider, _stat_kwargs
-from devdoctor.sizer import size_path_detailed
+from devdoctor.sizer import SizeResult, size_many
 from devdoctor.types import AdviceAction, DeletePathAction, DiskUsage, Entry, Risk
 
 _PROJECT_ROOTS = PROJECT_ROOTS
@@ -201,15 +201,38 @@ def _walkable_child(
     return metadata.st_dev == root_dev and stat_mod.S_ISDIR(metadata.st_mode)
 
 
-def _sized_entry(
-    provider: Provider,
-    project: Path,
-    artifact: Path,
-    *,
-    risk: Risk,
-    action: DeletePathAction | AdviceAction,
-) -> Entry | None:
-    sizing = size_path_detailed(artifact)
+@dataclass(frozen=True)
+class _Candidate:
+    """One artifact directory to size, and how it will be offered."""
+
+    project: Path
+    artifact: Path
+    risk: Risk
+    action: DeletePathAction | AdviceAction
+
+
+def _sized_entries(provider: Provider, candidates: list[_Candidate]) -> list[Entry]:
+    """Size every candidate together, then build the entries in candidate order.
+
+    Sizing is nearly all of a scan's time, and these directories are independent,
+    so they are walked a few at a time rather than one after another (#92).
+    """
+    sizings = size_many([candidate.artifact for candidate in candidates])
+    entries: list[Entry] = []
+    for candidate, sizing in zip(candidates, sizings, strict=True):
+        entry = _sized_entry(provider, candidate, sizing)
+        if entry is not None:
+            entries.append(entry)
+    return entries
+
+
+def _sized_entry(provider: Provider, candidate: _Candidate, sizing: SizeResult) -> Entry | None:
+    project, artifact, risk, action = (
+        candidate.project,
+        candidate.artifact,
+        candidate.risk,
+        candidate.action,
+    )
     provider._note_skipped(list(sizing.skipped_paths))
     size = sizing.allocated_bytes
     if size <= 0:
@@ -251,7 +274,7 @@ class NodeModulesProvider(Provider):
         self._index = index or ProjectArtifactIndex()
 
     def discover(self) -> list[Entry]:
-        entries: list[Entry] = []
+        candidates: list[_Candidate] = []
         for project, artifact in self._index.candidates("node"):
             has_lockfile = any((project / name).is_file() for name in _LOCKFILES)
             action: DeletePathAction | AdviceAction
@@ -265,10 +288,8 @@ class NodeModulesProvider(Provider):
                     "confirm dependencies can be reproduced before deleting it."
                 )
                 risk = Risk.DANGEROUS
-            entry = _sized_entry(self, project, artifact, risk=risk, action=action)
-            if entry is not None:
-                entries.append(entry)
-        return entries
+            candidates.append(_Candidate(project, artifact, risk, action))
+        return _sized_entries(self, candidates)
 
 
 class CargoTargetsProvider(NodeModulesProvider):
@@ -283,18 +304,13 @@ class CargoTargetsProvider(NodeModulesProvider):
         return self._entries(self._index.candidates("cargo"))
 
     def _entries(self, candidates: Iterable[tuple[Path, Path]]) -> list[Entry]:
-        entries: list[Entry] = []
-        for project, artifact in candidates:
-            entry = _sized_entry(
-                self,
-                project,
-                artifact,
-                risk=self.risk,
-                action=DeletePathAction(artifact),
-            )
-            if entry is not None:
-                entries.append(entry)
-        return entries
+        return _sized_entries(
+            self,
+            [
+                _Candidate(project, artifact, self.risk, DeletePathAction(artifact))
+                for project, artifact in candidates
+            ],
+        )
 
 
 class AndroidBuildProvider(CargoTargetsProvider):

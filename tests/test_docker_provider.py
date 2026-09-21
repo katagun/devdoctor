@@ -280,3 +280,50 @@ def test_discover_prefers_path_docker_over_bundled_cli(monkeypatch):
     assert entries["images"].recipe == ["docker image prune -a -f"]
     assert all(call[0] == "docker" for call in sh.calls)
     assert all(_BUNDLED_DOCKER not in note for note in provider.diagnostics)
+
+
+class _HangingDocker(FakeShell):
+    """A docker CLI whose daemon never answers: every run hits its timeout."""
+
+    def __init__(self) -> None:
+        super().__init__(which_table={"docker": "/usr/local/bin/docker"})
+        self.timeouts: list[float | None] = []
+
+    def run(self, argv, *, check=False, timeout=None, env=None):
+        import subprocess
+
+        self.timeouts.append(timeout)
+        raise subprocess.TimeoutExpired(argv, timeout or 0)
+
+
+def test_an_unresponsive_daemon_costs_a_bounded_wait_and_a_diagnostic():
+    """#92: a wedged Docker Desktop used to hang the whole scan with no output."""
+    shell = _HangingDocker()
+    provider = DockerProvider(shell)
+
+    assert provider.discover() == []
+    assert shell.timeouts == [60.0]  # bounded, and the second command is not attempted
+    (note,) = provider.diagnostics
+    assert "did not answer within 60 s" in note
+    assert "reporting no reclaimable docker space" in note
+
+
+def test_volume_details_that_time_out_disable_only_volume_cleanup():
+    import subprocess
+
+    class _SlowVolumes(FakeShell):
+        def run(self, argv, *, check=False, timeout=None, env=None):
+            if "--verbose" in argv:
+                raise subprocess.TimeoutExpired(argv, timeout or 0)
+            return super().run(argv, check=check, timeout=timeout, env=env)
+
+    shell = _SlowVolumes(
+        which_table={"docker": "/usr/local/bin/docker"},
+        responses={
+            ("docker", "system", "df", "--format", "json"): ShellResult(0, _DOCKER_DF_JSON, "")
+        },
+    )
+    provider = DockerProvider(shell)
+    ids = [entry.id for entry in provider.discover()]
+    assert "images" in ids and not any(i.startswith("volume:") for i in ids)
+    assert any("did not answer within 60 s" in note for note in provider.diagnostics)
