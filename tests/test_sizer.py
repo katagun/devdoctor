@@ -262,8 +262,23 @@ def test_no_more_walks_run_at_once_than_the_pool_allows(tmp_path: Path, monkeypa
     for root in roots:
         root.mkdir()
 
-    # Callers on many threads, as providers are: the bound is global, not per caller.
-    with ThreadPoolExecutor(8) as callers:
-        list(callers.map(size_many, [roots[i::8] for i in range(8)]))
+    # A pool of this test's own, so neither DEVDOCTOR_SIZER_WORKERS nor a pool an
+    # earlier test already created decides the bound being checked.
+    with ThreadPoolExecutor(3) as walkers:
+        monkeypatch.setattr(sizer, "_pool", walkers)
+        # Callers on many threads, as providers are: the bound is global, not per caller.
+        with ThreadPoolExecutor(8) as callers:
+            list(callers.map(size_many, [roots[i::8] for i in range(8)]))
 
-    assert 1 < peak <= sizer.MAX_CONCURRENT_WALKS
+    assert 1 < peak <= 3
+
+
+def test_the_worker_count_honours_the_environment(monkeypatch):
+    monkeypatch.delenv("DEVDOCTOR_SIZER_WORKERS", raising=False)
+    assert sizer._worker_count() == sizer.MAX_CONCURRENT_WALKS
+    monkeypatch.setenv("DEVDOCTOR_SIZER_WORKERS", "9")
+    assert sizer._worker_count() == 9
+    monkeypatch.setenv("DEVDOCTOR_SIZER_WORKERS", "0")
+    assert sizer._worker_count() == 1
+    monkeypatch.setenv("DEVDOCTOR_SIZER_WORKERS", "many")
+    assert sizer._worker_count() == sizer.MAX_CONCURRENT_WALKS
