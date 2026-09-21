@@ -329,3 +329,82 @@ def test_provider_names_may_be_comma_separated(tmp_path, monkeypatch):
     shell = _empty_catalogue(tmp_path, monkeypatch)
     result = CliRunner().invoke(build_cli(shell), ["scan", "--json", "--provider", "docker,ollama"])
     assert result.exit_code == 0, result.output
+
+
+def _two_caches(tmp_path, monkeypatch) -> FakeShell:
+    """An old small cache and a fresh large one, behind one YAML provider."""
+    import os
+    import time
+
+    old, fresh = tmp_path / "old-cache", tmp_path / "fresh-cache"
+    for directory, payload in ((old, b"x" * 10), (fresh, b"x" * 5000)):
+        directory.mkdir()
+        (directory / "f").write_bytes(payload)
+    a_year_ago = time.time() - 400 * 86400
+    os.utime(old, (a_year_ago, a_year_ago))
+    yaml = tmp_path / "p.yaml"
+    yaml.write_text(
+        "- name: caches\n"
+        "  description: t\n"
+        "  risk: safe\n"
+        "  platforms: [darwin, linux]\n"
+        f"  paths: [{old}, {fresh}]\n"
+        "  recipe: 'rm -rf {path}'\n"
+    )
+    monkeypatch.setenv("DEVDOCTOR_PATHS_YAML", str(yaml))
+    return FakeShell(which_table={"ollama": None, "docker": None})
+
+
+def _labels(result) -> list[str]:
+    return [Path(e["path"]).name for e in json.loads(result.output)["entries"]]
+
+
+def test_scan_older_than_keeps_only_entries_untouched_for_that_long(tmp_path, monkeypatch):
+    shell = _two_caches(tmp_path, monkeypatch)
+    everything = CliRunner().invoke(build_cli(shell), ["scan", "--json", "--provider", "caches"])
+    assert _labels(everything) == ["fresh-cache", "old-cache"]  # by size
+
+    result = CliRunner().invoke(
+        build_cli(shell), ["scan", "--json", "--provider", "caches", "--older-than", "6mo"]
+    )
+    assert result.exit_code == 0, result.output
+    assert _labels(result) == ["old-cache"]
+
+
+def test_scan_sort_age_lists_the_longest_untouched_first(tmp_path, monkeypatch):
+    shell = _two_caches(tmp_path, monkeypatch)
+    result = CliRunner().invoke(
+        build_cli(shell), ["scan", "--json", "--provider", "caches", "--sort", "age"]
+    )
+    assert result.exit_code == 0, result.output
+    assert _labels(result) == ["old-cache", "fresh-cache"]
+
+
+def test_an_unreadable_duration_is_a_usage_error(tmp_path, monkeypatch):
+    shell = _two_caches(tmp_path, monkeypatch)
+    for command in (["scan"], ["clean"]):
+        result = CliRunner().invoke(build_cli(shell), [*command, "--older-than", "3m"])
+        assert result.exit_code == 2, (command, result.output)
+        assert "use e.g. 12h, 90d, 2w, 6mo, 1y" in result.output
+
+
+def test_clean_older_than_never_touches_a_fresh_entry(tmp_path, monkeypatch):
+    shell = _two_caches(tmp_path, monkeypatch)
+    remove_old = ("rm", "-rf", "--", str((tmp_path / "old-cache").resolve()))
+    shell.responses[remove_old] = ShellResult(0, "", "")
+    result = CliRunner().invoke(
+        build_cli(shell),
+        [
+            "clean",
+            "--execute",
+            "--yes-safe",
+            "--yes",
+            "--provider",
+            "caches",
+            "--older-than",
+            "90d",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    # FakeShell raises on any unconfigured command, so the fresh cache was never offered.
+    assert [call for call in shell.calls if call[0] == "rm"] == [remove_old]

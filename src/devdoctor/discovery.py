@@ -325,6 +325,7 @@ def scan(
             risks=filters.risks,
             min_size=filters.min_size_bytes,
             providers=filters.providers,
+            modified_before=filters.modified_before,
         )
 
     return report

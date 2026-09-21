@@ -310,11 +310,19 @@ class ScanFilters:
     min_size_bytes: int = 0
     risks: frozenset[Risk] | None = None
     providers: frozenset[str] | None = None
+    # Keep only entries last modified before this instant (epoch seconds). An entry
+    # whose age is unknown never qualifies: "old enough" has to be shown, not assumed.
+    modified_before: float | None = None
 
     @property
     def is_unfiltered(self) -> bool:
         """Whether the scan shows everything: only such scans may be stored or summarised."""
-        return self.min_size_bytes == 0 and self.risks is None and self.providers is None
+        return (
+            self.min_size_bytes == 0
+            and self.risks is None
+            and self.providers is None
+            and self.modified_before is None
+        )
 
 
 def entry_matches_filters(
@@ -323,6 +331,7 @@ def entry_matches_filters(
     risks: set[Risk] | frozenset[Risk] | None = None,
     min_size: int = 0,
     providers: set[str] | frozenset[str] | None = None,
+    modified_before: float | None = None,
 ) -> bool:
     """Whether ``entry`` passes a scan's filters.
 
@@ -332,6 +341,8 @@ def entry_matches_filters(
     if risks is not None and entry.risk not in risks:
         return False
     if providers is not None and entry.provider not in providers:
+        return False
+    if modified_before is not None and (entry.mtime is None or entry.mtime >= modified_before):
         return False
     return entry.display_bytes >= min_size
 
@@ -451,12 +462,19 @@ class Report:
         risks: set[Risk] | frozenset[Risk] | None = None,
         min_size: int = 0,
         providers: set[str] | frozenset[str] | None = None,
+        modified_before: float | None = None,
     ) -> Report:
         return Report(
             entries=[
                 e
                 for e in self.entries
-                if entry_matches_filters(e, risks=risks, min_size=min_size, providers=providers)
+                if entry_matches_filters(
+                    e,
+                    risks=risks,
+                    min_size=min_size,
+                    providers=providers,
+                    modified_before=modified_before,
+                )
             ],
             scanned_at=self.scanned_at,
             hostname=self.hostname,

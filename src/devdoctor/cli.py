@@ -31,6 +31,7 @@ from devdoctor.rendering import (
 )
 from devdoctor.storage import build_storage
 from devdoctor.types import CleanResult, CleanupOpts, Report, Risk, ScanFilters
+from devdoctor.units import parse_duration
 
 _SIZE_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([KMGT]?)$", re.IGNORECASE)
 _SIZE_MULT = {"": 1, "K": 1_000, "M": 1_000_000, "G": 1_000_000_000, "T": 1_000_000_000_000}
@@ -108,6 +109,30 @@ def _parse_risks(values: tuple[str, ...]) -> frozenset[Risk] | None:
         return frozenset(Risk(v.strip()) for v in flat if v.strip())
     except ValueError as e:
         raise click.BadParameter(str(e)) from e
+
+
+def _sort_entries(report: Report, sort_by: str) -> None:
+    """Reorder a report in place; a scan arrives sorted by size."""
+    if sort_by == "age":
+        # Oldest first; an entry of unknown age goes last. The sort is stable, so
+        # entries of equal age keep their size order.
+        report.entries.sort(key=lambda e: (e.mtime is None, e.mtime or 0.0))
+
+
+def _parse_older_than(value: str | None) -> float | None:
+    """The instant before which an entry must have been last modified, or None."""
+    if value is None:
+        return None
+    try:
+        return datetime.now(UTC).timestamp() - parse_duration(value)
+    except ValueError as e:
+        raise click.BadParameter(str(e), param_hint="--older-than") from e
+
+
+_OLDER_THAN_HELP = (
+    "Include only entries untouched for at least this long (e.g. 12h, 90d, 2w, 6mo, 1y). "
+    "Entries of unknown age are left out."
+)
 
 
 def _parse_providers(values: tuple[str, ...], known: list[Provider]) -> frozenset[str] | None:
@@ -234,6 +259,15 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         multiple=True,
         help="Run only these providers (repeatable or comma-separated).",
     )
+    @click.option("--older-than", "older_than", default=None, help=_OLDER_THAN_HELP)
+    @click.option(
+        "--sort",
+        "sort_by",
+        type=click.Choice(["size", "age"]),
+        default="size",
+        show_default=True,
+        help="Order entries by size, or by age with the longest untouched first.",
+    )
     @click.pass_context
     def scan(
         ctx: click.Context,
@@ -241,20 +275,26 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         min_size: str | None,
         risk: tuple[str, ...],
         providers: tuple[str, ...],
+        older_than: str | None,
+        sort_by: str,
     ) -> None:
+        """Find reclaimable space; read-only."""
         providers_list = registry.load_providers(ctx.obj["shell"])
         filters = ScanFilters(
             min_size_bytes=_parse_size(min_size) if min_size else 0,
             risks=_parse_risks(risk),
             providers=_parse_providers(providers, providers_list),
+            modified_before=_parse_older_than(older_than),
         )
         console = Console()
         if json_out:
             report = discovery.scan(providers_list, filters, datetime.now(UTC))
+            _sort_entries(report, sort_by)
             click.echo(report.to_json())
             return
         with spinner(console, "Scanning..."):
             report = discovery.scan(providers_list, filters, datetime.now(UTC))
+        _sort_entries(report, sort_by)
         render_report_table(console, report)
 
     @cli.command()
@@ -322,6 +362,7 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         is_flag=True,
         help="Offer dangerous entries too (they are skipped otherwise).",
     )
+    @click.option("--older-than", "older_than", default=None, help=_OLDER_THAN_HELP)
     @click.pass_context
     def clean(
         ctx: click.Context,
@@ -331,14 +372,18 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         yes_safe: bool,
         yes_all: bool,
         allow_dangerous: bool,
+        older_than: str | None,
     ) -> None:
         """Clean up caches found by a scan: preview by default, act with --execute."""
+        # Options are checked before the terminal: a typo should read as a typo.
+        modified_before = _parse_older_than(older_than)
         if execute and not yes_all and not sys.stdin.isatty():
             raise click.ClickException("no terminal to confirm on; pass --yes to run unattended")
         providers_list = registry.load_providers(ctx.obj["shell"])
         filters = ScanFilters(
             risks=_parse_risks(risk),
             providers=_parse_providers(providers, providers_list),
+            modified_before=modified_before,
         )
         console = Console()
         presenter = CleanupPresenter(console)

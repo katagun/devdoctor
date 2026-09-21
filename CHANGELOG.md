@@ -85,6 +85,12 @@ entries under a versioned heading as described in
 
 ### Added
 
+- **`--older-than` on `scan` and `clean`, and `scan --sort age`.** Age was the
+  deciding factor in every "is this safe to remove?" judgement, and every entry
+  already carried its modification time. `--older-than 6mo` keeps only entries
+  untouched that long (`12h`, `90d`, `2w`, `6mo`, `1y`); entries of unknown age
+  are left out rather than assumed old. `--sort age` lists the longest untouched
+  first. The table's `Stale?` column is now `Age`. (#89)
 - **Time Machine local snapshots provider (`time-machine-local-snapshots`,
   macOS only).** Lists hourly APFS local snapshots via
   `tmutil listlocalsnapshots /` and offers one bundle that deletes all but the
