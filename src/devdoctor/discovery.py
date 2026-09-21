@@ -229,7 +229,7 @@ def scan(
     contain: bool = True,
     on_progress: ScanProgressCallback | None = None,
 ) -> Report:
-    """Run every available provider, collect entries, apply filters, sort.
+    """Run every available provider the filters name, collect entries, filter, sort.
 
     Providers' discover() calls run concurrently in a bounded thread pool —
     they are I/O-bound (filesystem walks and subprocesses), so overlapping the
@@ -259,7 +259,14 @@ def scan(
     # Freeze the set (and order) of available providers up front; availability
     # is cheap and synchronous, and pinning it here keeps result reassembly
     # deterministic regardless of thread completion order.
-    available = [p for p in providers if p.available()]
+    #
+    # A provider filter is applied here, before anything runs (#92): a provider the
+    # view will not show is never asked whether it is available, let alone walked.
+    # Filtered scans are never stored or summarised (``ScanFilters.is_unfiltered``),
+    # so their totals only ever describe the providers that ran. Risk and size
+    # filters cannot be decided without the entries and still apply afterwards.
+    wanted = [p for p in providers if filters.providers is None or p.name in filters.providers]
+    available = [p for p in wanted if p.available()]
 
     _notify(on_progress, ScanStarted(providers=tuple(p.name for p in available)))
 

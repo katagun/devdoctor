@@ -71,6 +71,64 @@ def test_scan_namespaces_ids_to_avoid_cross_provider_collision():
     assert by_provider["ollama"].label == "ollama/images"
 
 
+class _Counting(_Stub):
+    """A stub that records whether discovery ever ran."""
+
+    def __init__(self, shell, name, entries):
+        super().__init__(shell, name, entries)
+        self.discover_calls = 0
+        self.available_calls = 0
+
+    def available(self) -> bool:
+        self.available_calls += 1
+        return True
+
+    def discover(self) -> list[Entry]:
+        self.discover_calls += 1
+        return super().discover()
+
+
+def test_a_provider_filter_runs_only_the_named_providers():
+    """#92: the filter used to apply after every provider had already run."""
+    wanted = _Counting(FakeShell(), "a", [_e("a", "1", 100)])
+    other = _Counting(FakeShell(), "b", [_e("b", "1", 200)])
+    events, on_progress = _collect_progress()
+
+    r = scan(
+        [wanted, other],
+        ScanFilters(providers=frozenset({"a"})),
+        datetime(2026, 4, 18, tzinfo=UTC),
+        on_progress=on_progress,
+    )
+
+    assert (wanted.discover_calls, other.discover_calls) == (1, 0)
+    assert other.available_calls == 0  # availability can shell out; skip that too
+    assert [e.provider for e in r.entries] == ["a"]
+    assert [pt.name for pt in r.per_provider] == ["a"]
+    assert events[0] == discovery.ScanStarted(providers=("a",))
+
+
+def test_a_skipped_provider_contributes_no_diagnostics():
+    class _Noisy(_Stub):
+        def discover(self) -> list[Entry]:
+            self.diagnostics.append("b: something irrelevant to this view")
+            return super().discover()
+
+    wanted = _Stub(FakeShell(), "a", [_e("a", "1", 100)])
+    noisy = _Noisy(FakeShell(), "b", [_e("b", "1", 200)])
+    r = scan(
+        [wanted, noisy], ScanFilters(providers=frozenset({"a"})), datetime(2026, 4, 18, tzinfo=UTC)
+    )
+    assert r.diagnostics == []
+
+
+def test_risk_and_size_filters_still_run_every_provider():
+    a = _Counting(FakeShell(), "a", [_e("a", "1", 100)])
+    b = _Counting(FakeShell(), "b", [_e("b", "1", 200, risk=Risk.DANGEROUS)])
+    scan([a, b], ScanFilters(risks=frozenset({Risk.SAFE})), datetime(2026, 4, 18, tzinfo=UTC))
+    assert (a.discover_calls, b.discover_calls) == (1, 1)
+
+
 def test_scan_skips_unavailable_providers():
     p1 = _Stub(FakeShell(), "a", [_e("a", "1", 100)])
     p2 = _Stub(FakeShell(), "b", [_e("b", "1", 200)], available=False)
