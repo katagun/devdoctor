@@ -282,3 +282,29 @@ def test_the_worker_count_honours_the_environment(monkeypatch):
     assert sizer._worker_count() == 1
     monkeypatch.setenv("DEVDOCTOR_SIZER_WORKERS", "many")
     assert sizer._worker_count() == sizer.MAX_CONCURRENT_WALKS
+
+
+def test_the_newest_modification_anywhere_in_the_tree_is_reported(tmp_path: Path):
+    """A directory's own mtime does not move when a file deep inside it changes."""
+    tree = tmp_path / "cache"
+    deep = tree / "a" / "b" / "fresh.bin"
+    deep.parent.mkdir(parents=True)
+    deep.write_bytes(b"x")
+    (tree / "stale.bin").write_bytes(b"y")
+    long_ago, recent = 1_000_000.0, 2_000_000_000.0
+    for path in (tree / "stale.bin", tree / "a" / "b", tree / "a", tree):
+        os.utime(path, (long_ago, long_ago))
+    os.utime(deep, (recent, recent))
+
+    assert size_path_detailed(tree).newest_mtime == recent
+
+
+def test_an_empty_tree_is_as_old_as_its_root(tmp_path: Path):
+    tree = tmp_path / "empty"
+    tree.mkdir()
+    os.utime(tree, (1_000_000.0, 1_000_000.0))
+    assert size_path_detailed(tree).newest_mtime == 1_000_000.0
+
+
+def test_a_missing_root_has_no_age(tmp_path: Path):
+    assert size_path_detailed(tmp_path / "missing").newest_mtime is None

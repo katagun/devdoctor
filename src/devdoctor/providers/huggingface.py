@@ -42,10 +42,7 @@ class HuggingFaceProvider(Provider):
             size = sizing.allocated_bytes
             self._note_skipped(list(sizing.skipped_paths))
             label = f"{kind}:{repo_id}"
-            try:
-                mtime: float | None = repo.lstat().st_mtime
-            except OSError:
-                mtime = None
+            mtime = sizing.newest_mtime
             entries.append(
                 Entry(
                     provider=self.name,

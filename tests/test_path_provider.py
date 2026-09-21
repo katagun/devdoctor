@@ -228,3 +228,31 @@ def test_resolve_paths_filters_nonexistent(tmp_path: Path) -> None:
 
     p = _make_resolve_provider((str(real), str(tmp_path / "missing")))
     assert p.resolve_paths() == [real]
+
+
+def test_an_entry_is_as_young_as_the_newest_file_inside_it(tmp_path):
+    """`clean --older-than` judges entries by this; a stale top-level mtime must not
+    make a cache written to yesterday look untouched for years."""
+    import os
+
+    cache = tmp_path / "cache"
+    (cache / "bucket").mkdir(parents=True)
+    (cache / "bucket" / "blob").write_bytes(b"x" * 10)
+    long_ago, recent = 1_000_000.0, 2_000_000_000.0
+    for path in (cache / "bucket", cache):
+        os.utime(path, (long_ago, long_ago))
+    os.utime(cache / "bucket" / "blob", (recent, recent))
+
+    provider = PathProvider.from_yaml(
+        {
+            "name": "c",
+            "description": "d",
+            "risk": "safe",
+            "platforms": ["darwin", "linux"],
+            "paths": [str(cache)],
+            "recipe": "rm -rf {path}",
+        },
+        FakeShell(),
+    )
+    (entry,) = provider.discover()
+    assert entry.mtime == recent

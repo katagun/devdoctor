@@ -71,6 +71,10 @@ class SizeResult:
     allocated_bytes: int
     skipped_paths: tuple[Path, ...]
     hardlinks: tuple[HardlinkRecord, ...]
+    # The most recent modification of the root or anything inside it; None when the
+    # root could not be read. A directory's own mtime only moves when its direct
+    # children change, so it says nothing about files further down.
+    newest_mtime: float | None = None
 
 
 def size_path(root: Path) -> tuple[int, list[Path]]:
@@ -145,10 +149,12 @@ def _lstat(entry: os.DirEntry[str]) -> os.stat_result:
 def _walk(root: Path) -> SizeResult:
     skipped: list[Path] = []
     try:
-        root_dev = root.lstat().st_dev
+        root_stat = root.lstat()
     except OSError:
         return SizeResult(0, (root,), ())
 
+    root_dev = root_stat.st_dev
+    newest = root_stat.st_mtime
     total = 0
     # Only a file with more than one name can be met twice, so only those are tracked.
     hardlinks: dict[tuple[int, int], tuple[int, int, list[str]]] = {}
@@ -173,11 +179,12 @@ def _walk(root: Path) -> SizeResult:
                     if entry.is_symlink():
                         continue
                     try:
-                        same_device = _lstat(entry).st_dev == root_dev
+                        st = _lstat(entry)
                     except OSError:
                         skipped.append(Path(entry.path))
                         continue
-                    if same_device:
+                    if st.st_dev == root_dev:
+                        newest = max(newest, st.st_mtime)
                         pending.append(entry.path)
                     continue
                 try:
@@ -185,6 +192,7 @@ def _walk(root: Path) -> SizeResult:
                 except OSError:
                     skipped.append(Path(entry.path))
                     continue
+                newest = max(newest, st.st_mtime)
                 # Actual on-disk usage via st_blocks handles sparse files correctly
                 # (e.g. Docker.raw reports 80 GB apparent but uses only megabytes).
                 # For non-sparse files st_blocks*512 rounds up to a block boundary,
@@ -210,4 +218,4 @@ def _walk(root: Path) -> SizeResult:
         )
         for (device, inode), (allocated, link_count, paths) in sorted(hardlinks.items())
     )
-    return SizeResult(total, tuple(skipped), records)
+    return SizeResult(total, tuple(skipped), records, newest_mtime=newest)

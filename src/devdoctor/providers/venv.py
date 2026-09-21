@@ -106,7 +106,7 @@ class VenvProvider(Provider):
             self._note_skipped(list(sizing.skipped_paths))
             if size == 0:
                 continue
-            mtime: float | None = rst.st_mtime
+            mtime = sizing.newest_mtime if sizing.newest_mtime is not None else rst.st_mtime
 
             # Label shows the enclosing project (parent of the venv dir)
             # so "myproj/.venv" is what the user actually recognises.

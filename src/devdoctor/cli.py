@@ -375,16 +375,15 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         older_than: str | None,
     ) -> None:
         """Clean up caches found by a scan: preview by default, act with --execute."""
-        # Options are checked before the terminal: a typo should read as a typo.
-        modified_before = _parse_older_than(older_than)
-        if execute and not yes_all and not sys.stdin.isatty():
-            raise click.ClickException("no terminal to confirm on; pass --yes to run unattended")
+        # Every option is checked before the terminal: a typo should read as a typo.
         providers_list = registry.load_providers(ctx.obj["shell"])
         filters = ScanFilters(
             risks=_parse_risks(risk),
             providers=_parse_providers(providers, providers_list),
-            modified_before=modified_before,
+            modified_before=_parse_older_than(older_than),
         )
+        if execute and not yes_all and not sys.stdin.isatty():
+            raise click.ClickException("no terminal to confirm on; pass --yes to run unattended")
         console = Console()
         presenter = CleanupPresenter(console)
         with presenter.scanning():

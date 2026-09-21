@@ -201,8 +201,10 @@ providers are never started, so a scoped scan takes as long as its providers
 do. An unknown name is an error; `devdoctor providers` lists them.
 
 `--older-than` takes whole hours, days, weeks, months (30 days) or years:
-`12h`, `90d`, `2w`, `6mo`, `1y`. Age is the entry's last modification; for a git
-worktree it is the last commit on its branch. Entries whose age is unknown are
+`12h`, `90d`, `2w`, `6mo`, `1y`. Age is the newest modification of anything inside
+the entry, not of the directory itself, whose own timestamp does not move when
+a file deep inside changes. For a git worktree it is the last commit on its
+branch; for the Time Machine bundle, the youngest snapshot it deletes. Entries whose age is unknown are
 left out, because "old enough" has to be shown, not assumed. The table's `Age`
 column shows the same figure.
 
