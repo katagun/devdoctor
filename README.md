@@ -31,6 +31,8 @@ uv tool install .
 devdoctor scan                       # Rich table of all known caches, sorted by size
 devdoctor scan --json                # same, as JSON to stdout
 devdoctor scan --min-size 100M --risk safe,reclaimable
+devdoctor scan --older-than 6mo --sort age   # untouched for six months, oldest first
+devdoctor scan --coverage            # + the largest directories no provider accounts for
 
 devdoctor recipe                     # emit a commented-out cleanup shell script
 devdoctor recipe --provider ollama   # only one section

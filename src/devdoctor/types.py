@@ -410,6 +410,77 @@ class DiffReport:
     rows: list[DiffRow]
 
 
+@dataclass(frozen=True)
+class Unclassified:
+    """A directory no provider accounts for, and what it occupies outside classified paths."""
+
+    path: Path
+    bytes: int
+    # True when ``bytes`` is only the files directly inside ``path``: its
+    # subdirectories are listed on their own.
+    files_only: bool = False
+
+
+@dataclass(frozen=True)
+class Coverage:
+    """How much of the volume's used space the scan accounts for (#81).
+
+    ``unclassified`` is None until someone asks for the detail, which costs a walk
+    of the home directory; an empty tuple means it was asked for and found nothing.
+    """
+
+    used_bytes: int
+    classified_bytes: int
+    unclassified: tuple[Unclassified, ...] | None = None
+    skipped: int = 0
+
+    @property
+    def ratio(self) -> float | None:
+        if self.used_bytes <= 0:
+            return None
+        return min(1.0, self.classified_bytes / self.used_bytes)
+
+    def to_dict(self) -> dict[str, object]:
+        ratio = self.ratio
+        return {
+            "used_bytes": self.used_bytes,
+            "classified_bytes": self.classified_bytes,
+            "ratio": None if ratio is None else round(ratio, 4),
+            "unclassified": (
+                None
+                if self.unclassified is None
+                else [
+                    {"path": str(u.path), "bytes": u.bytes, "files_only": u.files_only}
+                    for u in self.unclassified
+                ]
+            ),
+            "skipped": self.skipped,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: object) -> Coverage | None:
+        """Coverage from a snapshot; None for anything that is not a usable record."""
+        if not isinstance(raw, dict):
+            return None
+        used, classified = (
+            _optional_size(raw.get("used_bytes")),
+            _optional_size(raw.get("classified_bytes")),
+        )
+        if used is None or classified is None:
+            return None
+        rows = raw.get("unclassified")
+        unclassified: tuple[Unclassified, ...] | None = None
+        if isinstance(rows, list):
+            unclassified = tuple(
+                Unclassified(Path(row["path"]), size, bool(row.get("files_only", False)))
+                for row in rows
+                if isinstance(row, dict)
+                and isinstance(row.get("path"), str)
+                and (size := _optional_size(row.get("bytes"))) is not None
+            )
+        return cls(used, classified, unclassified, _optional_size(raw.get("skipped")) or 0)
+
+
 @dataclass
 class Report:
     entries: list[Entry]
@@ -430,6 +501,8 @@ class Report:
     started_at: datetime | None = None
     duration_ms: int | None = None
     per_provider: list[ProviderTiming] = field(default_factory=list)
+    # Set on unfiltered scans only: a partial view accounts for a part of nothing.
+    coverage: Coverage | None = None
     # Override for total_bytes(). Populated by from_json() so auto snapshots —
     # whose entries list is intentionally dropped on disk — still report the
     # correct total. Leave None for in-memory Reports; total_bytes() falls back
@@ -567,6 +640,7 @@ class Report:
             "entries": entries_payload,
             "skipped_paths": list(self.skipped_paths),
             "diagnostics": list(self.diagnostics),
+            "coverage": None if self.coverage is None else self.coverage.to_dict(),
         }
         return json.dumps(payload, indent=2, sort_keys=True)
 
@@ -676,6 +750,7 @@ class Report:
             started_at=started_at,
             duration_ms=payload.get("duration_ms"),
             per_provider=per_provider,
+            coverage=Coverage.from_dict(payload.get("coverage")),
             _total_bytes_override=total_bytes_override,
             _total_footprint_bytes_override=(
                 int(total_footprint_raw)

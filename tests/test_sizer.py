@@ -277,14 +277,14 @@ def test_no_more_walks_run_at_once_than_the_pool_allows(tmp_path: Path, monkeypa
     lock = threading.Lock()
     real_walk = sizer._walk
 
-    def tracking_walk(root):
+    def tracking_walk(root, exclude=frozenset()):
         nonlocal active, peak
         with lock:
             active += 1
             peak = max(peak, active)
         time.sleep(0.02)
         try:
-            return real_walk(root)
+            return real_walk(root, exclude)
         finally:
             with lock:
                 active -= 1
@@ -355,3 +355,15 @@ def test_an_empty_tree_is_as_old_as_its_root(tmp_path: Path):
 
 def test_a_missing_root_has_no_age(tmp_path: Path):
     assert size_path_detailed(tmp_path / "missing").newest_mtime is None
+
+
+def test_a_symlink_to_a_file_is_worth_what_deleting_it_frees(tmp_path: Path):
+    """Removing the entry unlinks the link; the target's bytes stay, so they are not
+    promised. Nor is the link 'permission denied or vanished'."""
+    target = tmp_path / "model.gguf"
+    target.write_bytes(b"x" * 4096)
+    link = tmp_path / "link.gguf"
+    link.symlink_to(target)
+
+    result = size_path_detailed(link)
+    assert (result.allocated_bytes, result.skipped_paths) == (0, ())

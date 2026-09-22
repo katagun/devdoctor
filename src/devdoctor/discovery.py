@@ -10,7 +10,9 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
+from pathlib import Path
 
+from devdoctor import coverage
 from devdoctor.containment import contain_worktree_contents
 from devdoctor.providers.base import Provider
 from devdoctor.types import (
@@ -318,7 +320,10 @@ def scan(
         diagnostics=diagnostics,
     )
 
-    if not filters.is_unfiltered:
+    if filters.is_unfiltered:
+        # One short `df` call. The list of what is missing costs a walk and is opt-in (#81).
+        report.coverage = coverage.summarise(entries, Path.home())
+    else:
         report = report.filter(
             risks=filters.risks,
             min_size=filters.min_size_bytes,

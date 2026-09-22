@@ -16,6 +16,7 @@ devdoctor scan --risk safe,reclaimable   # include only these risks
 devdoctor scan --provider docker     # run only these providers
 devdoctor scan --older-than 6mo      # only entries untouched for that long
 devdoctor scan --sort age            # longest untouched first (default: size)
+devdoctor scan --coverage            # also list what no provider accounts for
 ```
 
 `--risk` accepts `safe`, `reclaimable`, `dangerous`, repeatable or
@@ -33,6 +34,16 @@ branch; for the Time Machine bundle, the youngest snapshot it deletes. Entries w
 left out, because "old enough" has to be shown, not assumed. The table's `Age`
 column shows the same figure.
 
+Every unfiltered scan ends with a coverage line: how much of the used space on
+the volume holding your home directory the scan accounts for. A scan reports
+what its providers know about, which is rarely most of the disk, and the line
+says so instead of letting the total read as "that is all there is".
+`--coverage` goes further: it sizes the home directory outside every classified
+path and lists the ten largest directories no provider accounts for, three
+levels deep. It walks what the scan did not, so expect it to take longer than
+the scan itself. It needs an unfiltered scan. Paths macOS will not let the
+terminal read are counted and reported, not guessed at.
+
 ### `scan --json` contract
 
 Top-level object:
@@ -49,6 +60,7 @@ Top-level object:
 | `per_provider` | Per-provider totals: `name`, `bytes`, `entries`, `duration_ms`, `footprint_bytes`, `reclaimable_bytes`, `shared_bytes` |
 | `entries` | One object per entry (omitted for auto snapshots) |
 | `diagnostics` | Unreadable paths and provider warnings |
+| `coverage` | `used_bytes`, `classified_bytes`, `ratio`; with `--coverage` also `unclassified` (`path`, `bytes`, `files_only`) and `skipped`. `null` on a filtered scan |
 
 Each entry carries `provider`, `id`, `path` (may be `null`), `label`,
 `size_bytes`, `footprint_bytes`, `reclaimable_bytes`, `shared_bytes`,

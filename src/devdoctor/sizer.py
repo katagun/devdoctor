@@ -115,13 +115,23 @@ def _worker_count() -> int:
         return MAX_CONCURRENT_WALKS
 
 
-def size_many(roots: Sequence[Path]) -> list[SizeResult]:
+FileId = tuple[int, int]  # (st_dev, st_ino)
+
+
+def size_many(
+    roots: Sequence[Path], *, exclude: frozenset[FileId] = frozenset()
+) -> list[SizeResult]:
     """Size every root, a few at a time; results keep the order of ``roots``.
+
+    ``exclude`` identifies files and directories that are neither counted nor
+    entered. They are matched by device and inode rather than by path, so a path
+    spelled in another case on a case-insensitive volume, or a second name for the
+    same file, is still the same thing.
 
     Walks never start other walks, so callers blocking here cannot deadlock the pool.
     """
     pool = _walk_pool()
-    futures = [pool.submit(_walk, root) for root in roots]
+    futures = [pool.submit(_walk, root, exclude) for root in roots]
     return [future.result() for future in futures]
 
 
@@ -191,28 +201,40 @@ def _records(hardlinks: _Hardlinks) -> tuple[HardlinkRecord, ...]:
     )
 
 
-def _walk(root: Path) -> SizeResult:
+def _size_file(root: Path, st: os.stat_result) -> SizeResult:
+    """A path provider may name a file (a model, a disk image) rather than a directory."""
+    hardlinks: _Hardlinks = {}
+    allocated = allocated_bytes(st)
+    if st.st_nlink > 1:
+        _seen_before(hardlinks, st, allocated, os.fspath(root))
+    return SizeResult(
+        allocated, (), _records(hardlinks), apparent_bytes=st.st_size, newest_mtime=st.st_mtime
+    )
+
+
+def _size_non_directory(root: Path, st: os.stat_result) -> SizeResult | None:
+    """The result for a root that is not a tree to walk, or None when it is one."""
+    if stat_mod.S_ISREG(st.st_mode):
+        return _size_file(root, st)
+    if stat_mod.S_ISLNK(st.st_mode) and not root.is_dir():
+        # Deleting this entry unlinks the link and frees nothing; it was not unreadable.
+        return SizeResult(0, (), (), newest_mtime=st.st_mtime)
+    return None
+
+
+def _walk(root: Path, exclude: frozenset[FileId] = frozenset()) -> SizeResult:
     skipped: list[Path] = []
     try:
         root_stat = root.lstat()
     except OSError:
         return SizeResult(0, (root,), ())
 
+    single = _size_non_directory(root, root_stat)
+    if single is not None:
+        return single
+
     # Only a file with more than one name can be met twice, so only those are tracked.
     hardlinks: _Hardlinks = {}
-    if stat_mod.S_ISREG(root_stat.st_mode):
-        # A path provider may name a file (a model, a disk image) rather than a directory.
-        allocated = allocated_bytes(root_stat)
-        if root_stat.st_nlink > 1:
-            _seen_before(hardlinks, root_stat, allocated, os.fspath(root))
-        return SizeResult(
-            allocated,
-            (),
-            _records(hardlinks),
-            apparent_bytes=root_stat.st_size,
-            newest_mtime=root_stat.st_mtime,
-        )
-
     root_dev = root_stat.st_dev
     newest = root_stat.st_mtime
     total = 0
@@ -240,6 +262,8 @@ def _walk(root: Path) -> SizeResult:
                     st = _lstat(entry)
                 except OSError:
                     skipped.append(Path(entry.path))
+                    continue
+                if exclude and (st.st_dev, st.st_ino) in exclude:
                     continue
                 if is_dir:
                     if st.st_dev == root_dev:

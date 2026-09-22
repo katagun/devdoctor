@@ -22,6 +22,7 @@ from devdoctor.rendering import (
 from devdoctor.types import (
     AdviceAction,
     CleanResult,
+    Coverage,
     DeletePathAction,
     DiffReport,
     DiffRow,
@@ -30,6 +31,7 @@ from devdoctor.types import (
     ProviderTiming,
     Report,
     Risk,
+    Unclassified,
 )
 
 
@@ -436,3 +438,40 @@ def test_a_sparse_image_gets_a_note_that_never_calls_the_gap_reclaimable():
 def test_no_sparse_note_without_a_sparse_entry():
     out = _render(render_report_table, _rep(_e("uv-cache", "/x", 1_500_000_000)))
     assert "sparse" not in out.lower()
+
+
+def test_the_table_says_how_much_of_the_disk_the_scan_accounts_for():
+    gib = 1024**3
+    report = dataclasses.replace(
+        _rep(_e("uv-cache", "/x", 90 * gib)),
+        coverage=Coverage(used_bytes=396 * gib, classified_bytes=90 * gib),
+    )
+    out = " ".join(_render(render_report_table, report).split())
+    assert "Coverage: 90.0G of 396.0G used on this volume is accounted for (23%)." in out
+    assert "scan --coverage" in out  # how to see the rest
+
+
+def test_the_largest_unclassified_directories_are_listed_when_measured():
+    gib = 1024**3
+    report = dataclasses.replace(
+        _rep(_e("uv-cache", "/x", 90 * gib)),
+        coverage=Coverage(
+            used_bytes=396 * gib,
+            classified_bytes=90 * gib,
+            unclassified=(
+                Unclassified(Path("/Users/u/.codex/sessions"), 9 * gib),
+                Unclassified(Path("/Users/u/Downloads"), 2 * gib, files_only=True),
+            ),
+            skipped=3,
+        ),
+    )
+    out = " ".join(_render(render_report_table, report).split())
+    assert "Largest directories no provider accounts for:" in out
+    assert "9.0G /Users/u/.codex/sessions" in out
+    assert "2.0G /Users/u/Downloads (files directly inside)" in out
+    assert "3 paths could not be read and are not counted" in out
+    assert "scan --coverage" not in out
+
+
+def test_no_coverage_line_without_coverage():
+    assert "Coverage:" not in _render(render_report_table, _rep(_e("uv-cache", "/x", 5)))

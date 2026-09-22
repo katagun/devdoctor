@@ -411,6 +411,30 @@ def test_clean_older_than_never_touches_a_fresh_entry(tmp_path, monkeypatch):
     assert [call for call in shell.calls if call[0] == "rm"] == [remove_old]
 
 
+def test_scan_coverage_lists_what_no_provider_accounts_for(tmp_path, monkeypatch):
+    shell = _two_caches(tmp_path, monkeypatch)
+    home = tmp_path / "home"
+    (home / "Movies" / "raw").mkdir(parents=True)
+    (home / "Movies" / "raw" / "clip.mov").write_bytes(b"x" * 4000)
+    monkeypatch.setenv("HOME", str(home))
+
+    result = CliRunner().invoke(build_cli(shell), ["scan", "--json", "--coverage"])
+    assert result.exit_code == 0, result.output
+    coverage = json.loads(result.output)["coverage"]
+    assert coverage["unclassified"][0] == {
+        "path": str((home / "Movies" / "raw").resolve()),
+        "bytes": 4000,
+        "files_only": False,
+    }
+
+
+def test_coverage_refuses_a_filtered_scan(tmp_path, monkeypatch):
+    shell = _two_caches(tmp_path, monkeypatch)
+    result = CliRunner().invoke(build_cli(shell), ["scan", "--coverage", "--provider", "caches"])
+    assert result.exit_code == 2
+    assert "--coverage describes the whole scan" in result.output
+
+
 def test_a_stale_directory_holding_a_fresh_file_is_not_old(tmp_path, monkeypatch):
     """The directory's own mtime does not move when a file inside it is rewritten."""
     import os
