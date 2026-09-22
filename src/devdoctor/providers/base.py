@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, ClassVar, TypedDict
 
 from devdoctor.ports import Shell
-from devdoctor.sizer import size_path_detailed, stat_fields
+from devdoctor.sizer import size_many, stat_fields
 from devdoctor.types import (
     AdviceAction,
     CleanupAction,
@@ -234,8 +234,8 @@ class PathProvider(Provider):
 
     def discover(self) -> list[Entry]:
         entries: list[Entry] = []
-        for p in self.resolve_paths():
-            sizing = size_path_detailed(p)
+        paths = self.resolve_paths()
+        for p, sizing in zip(paths, size_many(paths), strict=True):
             size = sizing.allocated_bytes
             self._note_skipped(list(sizing.skipped_paths))
             quoted = shlex.quote(str(p))

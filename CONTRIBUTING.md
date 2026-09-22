@@ -55,6 +55,24 @@ A pre-commit hook config is included; enable it with
 `uv run --extra dev pre-commit install` to catch lint/format issues before you
 commit.
 
+### Measuring scan time
+
+A scan's time is almost entirely directory sizing, so it grows with every
+provider that finds more bytes (#92). Two rules keep it in check:
+
+- Size directories through `devdoctor.sizer`. A provider with several
+  directories calls `size_many(paths)` once instead of sizing them in a loop.
+  Every walk runs on one shared pool of four: fewer leaves the disk idle, more
+  made the same trees slower to size on APFS.
+- Measure before and after. `uv run python scripts/bench_sizer.py` compares one
+  walk at a time with the pool, on synthetic trees or on directories you name,
+  and fails if the totals differ. The script's docstring shows how to rank the
+  providers of a real scan by duration.
+
+Sizes are never cached between scans. A directory's modification time does not
+change when a file deep inside it does, so no cheap key can prove a cached size
+is still right, and accurate sizes are the point of the tool.
+
 ## Conventions
 
 - **Presentation observes, never decides.** `cleanup.iter_cleanup_events` is the

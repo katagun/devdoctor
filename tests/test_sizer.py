@@ -1,9 +1,13 @@
 import os
 import pwd
 import stat as stat_mod
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from devdoctor.sizer import StatFields, size_path, stat_fields
+from devdoctor import sizer
+from devdoctor.sizer import StatFields, size_many, size_path, size_path_detailed, stat_fields
 
 
 def _write(p: Path, data: bytes) -> None:
@@ -90,15 +94,15 @@ def test_size_path_skips_file_that_vanishes_between_walk_and_lstat(tmp_path: Pat
     """File disappears between os.walk listing it and our lstat() call."""
     (tmp_path / "real.txt").write_bytes(b"k" * 42)
 
-    real_lstat = Path.lstat
+    real_lstat = sizer._lstat
     target = tmp_path / "real.txt"
 
-    def flaky_lstat(self):
-        if self == target:
-            raise FileNotFoundError(str(self))
-        return real_lstat(self)
+    def flaky_lstat(entry):
+        if entry.path == str(target):
+            raise FileNotFoundError(entry.path)
+        return real_lstat(entry)
 
-    monkeypatch.setattr(Path, "lstat", flaky_lstat)
+    monkeypatch.setattr(sizer, "_lstat", flaky_lstat)
     size, skipped = size_path(tmp_path)
     # File raised → not counted, recorded in skipped.
     assert size == 0
@@ -128,15 +132,15 @@ def test_size_path_prunes_subdir_on_lstat_error(tmp_path: Path, monkeypatch):
     (tmp_path / "sub" / "f.txt").write_bytes(b"q" * 10)
     (tmp_path / "top.txt").write_bytes(b"z" * 5)
 
-    real_lstat = Path.lstat
+    real_lstat = sizer._lstat
     bad = tmp_path / "sub"
 
-    def flaky_lstat(self):
-        if self == bad:
-            raise PermissionError(str(self))
-        return real_lstat(self)
+    def flaky_lstat(entry):
+        if entry.path == str(bad):
+            raise PermissionError(entry.path)
+        return real_lstat(entry)
 
-    monkeypatch.setattr(Path, "lstat", flaky_lstat)
+    monkeypatch.setattr(sizer, "_lstat", flaky_lstat)
     size, skipped = size_path(tmp_path)
     # Only top.txt was counted; sub was pruned before descent.
     assert size == 5
@@ -186,3 +190,95 @@ def test_stat_fields_owner_falls_back_to_numeric_for_unknown_uid(tmp_path: Path)
     _group_name.cache_clear()
     assert _owner_name(999999999) == "999999999"
     assert _group_name(999999999) == "999999999"
+
+
+def test_a_symlink_to_a_directory_is_neither_counted_nor_entered(tmp_path: Path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "big.bin").write_bytes(b"x" * 5000)
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    (tree / "own.txt").write_bytes(b"y" * 7)
+    (tree / "link").symlink_to(outside, target_is_directory=True)
+
+    result = size_path_detailed(tree)
+    assert result.allocated_bytes == 7
+    assert result.skipped_paths == ()
+
+
+def test_a_file_root_is_reported_as_skipped_like_before(tmp_path: Path):
+    target = tmp_path / "f.bin"
+    target.write_bytes(b"x" * 10)
+    result = size_path_detailed(target)
+    assert (result.allocated_bytes, result.skipped_paths) == (0, (target,))
+
+
+def test_hard_link_records_survive_the_walk(tmp_path: Path):
+    src = tmp_path / "a.bin"
+    src.write_bytes(b"x" * 4096)
+    (tmp_path / "sub").mkdir()
+    os.link(src, tmp_path / "sub" / "b.bin")
+
+    (record,) = size_path_detailed(tmp_path).hardlinks
+    assert record.link_count == 2
+    assert record.paths == tuple(sorted([str(src), str(tmp_path / "sub" / "b.bin")]))
+
+
+def test_size_many_keeps_input_order_and_matches_single_walks(tmp_path: Path):
+    roots = []
+    for index in range(6):
+        root = tmp_path / f"r{index}"
+        root.mkdir()
+        (root / "f").write_bytes(b"x" * (index + 1) * 10)
+        roots.append(root)
+    roots.append(tmp_path / "missing")
+
+    results = size_many(roots)
+    assert [r.allocated_bytes for r in results] == [10, 20, 30, 40, 50, 60, 0]
+    assert results == [size_path_detailed(root) for root in roots]
+
+
+def test_no_more_walks_run_at_once_than_the_pool_allows(tmp_path: Path, monkeypatch):
+    """More concurrent walks than this made the same trees slower to size (#92)."""
+    active = 0
+    peak = 0
+    lock = threading.Lock()
+    real_walk = sizer._walk
+
+    def tracking_walk(root):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.02)
+        try:
+            return real_walk(root)
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(sizer, "_walk", tracking_walk)
+    roots = [tmp_path / f"r{i}" for i in range(24)]
+    for root in roots:
+        root.mkdir()
+
+    # A pool of this test's own, so neither DEVDOCTOR_SIZER_WORKERS nor a pool an
+    # earlier test already created decides the bound being checked.
+    with ThreadPoolExecutor(3) as walkers:
+        monkeypatch.setattr(sizer, "_pool", walkers)
+        # Callers on many threads, as providers are: the bound is global, not per caller.
+        with ThreadPoolExecutor(8) as callers:
+            list(callers.map(size_many, [roots[i::8] for i in range(8)]))
+
+    assert 1 < peak <= 3
+
+
+def test_the_worker_count_honours_the_environment(monkeypatch):
+    monkeypatch.delenv("DEVDOCTOR_SIZER_WORKERS", raising=False)
+    assert sizer._worker_count() == sizer.MAX_CONCURRENT_WALKS
+    monkeypatch.setenv("DEVDOCTOR_SIZER_WORKERS", "9")
+    assert sizer._worker_count() == 9
+    monkeypatch.setenv("DEVDOCTOR_SIZER_WORKERS", "0")
+    assert sizer._worker_count() == 1
+    monkeypatch.setenv("DEVDOCTOR_SIZER_WORKERS", "many")
+    assert sizer._worker_count() == sizer.MAX_CONCURRENT_WALKS

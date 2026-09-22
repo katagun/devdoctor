@@ -14,6 +14,18 @@ entries under a versioned heading as described in
 
 ### Changed
 
+- **Scans are about 2.4x faster with byte-identical results.** Directory sizing
+  was 83% of a scan and ran one tree at a time inside each provider. Trees are
+  now walked with one `stat` per entry and no per-file path objects, a few at a
+  time on one shared pool of four walks (more made the same trees slower on
+  APFS). Reference machine, 503 entries and 168 GB: 160 s to 68 s, with 471 of
+  474 comparable entries identical to the byte and the other three changed on
+  disk between runs. `scripts/bench_sizer.py` reproduces the comparison, and
+  `DEVDOCTOR_SIZER_WORKERS` overrides the pool size. Sizes are still never
+  cached between scans: no cheap key proves a cached size is current. (#92)
+- **A wedged Docker daemon no longer hangs the scan.** `docker system df` blocks
+  for as long as the daemon does; each Docker query is now bounded at 60 s and
+  reports a diagnostic instead. (#92)
 - **`--provider` decides what runs, not just what is shown.** A scan limited to
   some providers used to run every provider and filter afterwards, so
   `scan --provider time-machine-local-snapshots` took as long as a full scan
