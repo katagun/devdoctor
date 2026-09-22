@@ -10,6 +10,7 @@ from sse_starlette.sse import EventSourceResponse
 from starlette.responses import JSONResponse, Response
 
 from devdoctor import discovery, registry
+from devdoctor.providers.base import Provider
 from devdoctor.providers.git_worktrees import GitWorktreeProvider
 from devdoctor.types import CleanupOpts, ScanFilters, ShellResult
 from devdoctor.web.cleanup_runner import CleanupRunner
@@ -19,12 +20,34 @@ from devdoctor.web.subprocess_stream import OnChunk, run_argv_streaming
 router = APIRouter(prefix="/api/clean")
 
 
+def _owning_providers(entry_ids: list[str], providers: list[Provider]) -> frozenset[str] | None:
+    """The providers named by the ``"{provider}:{id}"`` prefix of every selected id.
+
+    ``None`` (scan everything) when any id has no such prefix, so an id this build
+    cannot attribute is still looked for everywhere before it is called unknown.
+    """
+    names = {provider.name for provider in providers}
+    owners: set[str] = set()
+    for entry_id in entry_ids:
+        owner = next((name for name in names if entry_id.startswith(f"{name}:")), None)
+        if owner is None:
+            return None
+        owners.add(owner)
+    return frozenset(owners) if owners else None
+
+
 @router.post("/jobs")
 async def start_job(body: CleanJobCreate, request: Request) -> Response:
     providers_list = registry.load_providers(request.app.state.shell)
     # Uncontained: this scan establishes current state for the selection, so every id
     # a filtered view could have shown still exists (spec §6.4).
-    report = discovery.scan(providers_list, ScanFilters(), datetime.now(UTC), contain=False)
+    #
+    # Only the providers that own a selected id are re-run (#92). Coverers and the
+    # entries they cover share a provider, and execute-time worktree containment
+    # only ever looks at selected entries, so nothing outside those providers can
+    # affect the job.
+    filters = ScanFilters(providers=_owning_providers(body.entry_ids, providers_list))
+    report = discovery.scan(providers_list, filters, datetime.now(UTC), contain=False)
     # Entry ids are globally unique (namespaced "{provider}:{id}" in
     # discovery.scan), so selecting by bare id can never cross providers.
     known_ids = {e.id for e in report.entries}

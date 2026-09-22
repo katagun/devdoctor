@@ -225,3 +225,56 @@ async def test_cleanup_job_keeps_every_selected_entry_from_an_uncontained_scan(
         ]
         await runner.cancel()
     assert contain_args == [False]
+
+
+@pytest.mark.asyncio
+async def test_cleanup_rescans_only_the_providers_the_selection_names(tmp_path, monkeypatch):
+    """#92: a job for one cache used to re-run every provider before it could start."""
+    from devdoctor.web import routes_clean
+
+    app = _build(tmp_path, monkeypatch)
+    real_scan = routes_clean.discovery.scan
+    seen: list[frozenset[str] | None] = []
+
+    def spy(providers, filters, now, **kwargs):
+        seen.append(filters.providers)
+        return real_scan(providers, filters, now, **kwargs)
+
+    monkeypatch.setattr(routes_clean.discovery, "scan", spy)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        r = await client.post(
+            "/api/clean/jobs",
+            json={"entry_ids": [f"t:{tmp_path}/cache"]},
+            headers={"Host": "testserver"},
+        )
+        assert r.status_code == 200, r.text
+        await app.state.runner_registry.active().cancel()
+    assert seen == [frozenset({"t"})]
+
+
+@pytest.mark.asyncio
+async def test_an_id_no_provider_owns_falls_back_to_a_full_rescan(tmp_path, monkeypatch):
+    from devdoctor.web import routes_clean
+
+    app = _build(tmp_path, monkeypatch)
+    real_scan = routes_clean.discovery.scan
+    seen: list[frozenset[str] | None] = []
+
+    def spy(providers, filters, now, **kwargs):
+        seen.append(filters.providers)
+        return real_scan(providers, filters, now, **kwargs)
+
+    monkeypatch.setattr(routes_clean.discovery, "scan", spy)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        r = await client.post(
+            "/api/clean/jobs",
+            json={"entry_ids": [f"t:{tmp_path}/cache", "bare-legacy-id"]},
+            headers={"Host": "testserver"},
+        )
+    assert r.status_code == 400
+    assert r.json()["error"]["ids"] == ["bare-legacy-id"]
+    assert seen == [None]

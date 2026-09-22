@@ -306,3 +306,26 @@ def test_clean_help_describes_every_option(tmp_path, monkeypatch):
     for flag in ("--provider", "--risk", "--execute", "--yes-safe", "--yes", "--allow-dangerous"):
         assert flag in result.output
     assert "plan still prints" in result.output
+
+
+def _empty_catalogue(tmp_path, monkeypatch) -> FakeShell:
+    yaml = tmp_path / "p.yaml"
+    yaml.write_text("[]\n")
+    monkeypatch.setenv("DEVDOCTOR_PATHS_YAML", str(yaml))
+    return FakeShell(which_table={"ollama": None, "docker": None})
+
+
+def test_an_unknown_provider_name_is_a_usage_error(tmp_path, monkeypatch):
+    """The filter now decides what runs, so a typo would scan nothing and say nothing."""
+    shell = _empty_catalogue(tmp_path, monkeypatch)
+    for command in (["scan"], ["clean"], ["recipe"]):
+        result = CliRunner().invoke(build_cli(shell), [*command, "--provider", "dcoker"])
+        assert result.exit_code == 2, (command, result.output)
+        assert "unknown provider: dcoker" in result.output
+        assert "devdoctor providers" in result.output
+
+
+def test_provider_names_may_be_comma_separated(tmp_path, monkeypatch):
+    shell = _empty_catalogue(tmp_path, monkeypatch)
+    result = CliRunner().invoke(build_cli(shell), ["scan", "--json", "--provider", "docker,ollama"])
+    assert result.exit_code == 0, result.output

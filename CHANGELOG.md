@@ -14,6 +14,14 @@ entries under a versioned heading as described in
 
 ### Changed
 
+- **`--provider` decides what runs, not just what is shown.** A scan limited to
+  some providers used to run every provider and filter afterwards, so
+  `scan --provider time-machine-local-snapshots` took as long as a full scan
+  (160 s on the reference machine, now 0.2 s). `scan`, `clean`, `recipe` and the
+  web recipe endpoint now run only the named providers, and a web cleanup job
+  re-scans only the providers that own the selected entries. Provider names may
+  be comma-separated, and an unknown name is a usage error instead of an empty
+  result. (#92)
 - **`devdoctor clean --execute` shows what it will do before it does it.** The
   itemized plan (path, risk, estimated reclaim, exact command) prints before
   the single confirmation whatever the flags; each entry prints a line as it

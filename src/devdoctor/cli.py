@@ -19,6 +19,7 @@ from devdoctor.cleanup import run as cleanup_run
 from devdoctor.config import load_app_settings
 from devdoctor.logging_config import configure_logging
 from devdoctor.ports import RealShell, Shell
+from devdoctor.providers.base import Provider
 from devdoctor.providers.git_worktrees import GitWorktreeProvider
 from devdoctor.rendering import (
     CleanupPresenter,
@@ -107,6 +108,26 @@ def _parse_risks(values: tuple[str, ...]) -> frozenset[Risk] | None:
         return frozenset(Risk(v.strip()) for v in flat if v.strip())
     except ValueError as e:
         raise click.BadParameter(str(e)) from e
+
+
+def _parse_providers(values: tuple[str, ...], known: list[Provider]) -> frozenset[str] | None:
+    """The provider names a command was limited to; repeatable or comma-separated.
+
+    The names decide which providers run at all (``discovery.scan``), so a typo
+    would scan nothing and report nothing. It is a usage error instead.
+    """
+    names = [name.strip() for value in values for name in value.split(",") if name.strip()]
+    if not names:
+        return None
+    known_names = {provider.name for provider in known}
+    unknown = sorted(set(names) - known_names)
+    if unknown:
+        noun = "provider" if len(unknown) == 1 else "providers"
+        raise click.BadParameter(
+            f"unknown {noun}: {', '.join(unknown)} (list them with `devdoctor providers`)",
+            param_hint="--provider",
+        )
+    return frozenset(names)
 
 
 def _free_bytes() -> int | None:
@@ -207,7 +228,12 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         multiple=True,
         help="Include only these risks (repeatable or comma-separated).",
     )
-    @click.option("--provider", "providers", multiple=True, help="Limit to these providers.")
+    @click.option(
+        "--provider",
+        "providers",
+        multiple=True,
+        help="Run only these providers (repeatable or comma-separated).",
+    )
     @click.pass_context
     def scan(
         ctx: click.Context,
@@ -216,12 +242,12 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         risk: tuple[str, ...],
         providers: tuple[str, ...],
     ) -> None:
+        providers_list = registry.load_providers(ctx.obj["shell"])
         filters = ScanFilters(
             min_size_bytes=_parse_size(min_size) if min_size else 0,
             risks=_parse_risks(risk),
-            providers=frozenset(providers) if providers else None,
+            providers=_parse_providers(providers, providers_list),
         )
-        providers_list = registry.load_providers(ctx.obj["shell"])
         console = Console()
         if json_out:
             report = discovery.scan(providers_list, filters, datetime.now(UTC))
@@ -232,7 +258,12 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         render_report_table(console, report)
 
     @cli.command()
-    @click.option("--provider", "providers", multiple=True)
+    @click.option(
+        "--provider",
+        "providers",
+        multiple=True,
+        help="Run only these providers (repeatable or comma-separated).",
+    )
     @click.option(
         "-o",
         "--output",
@@ -248,7 +279,7 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         providers_list = registry.load_providers(ctx.obj["shell"])
         report = discovery.scan(
             providers_list,
-            ScanFilters(providers=frozenset(providers) if providers else None),
+            ScanFilters(providers=_parse_providers(providers, providers_list)),
             datetime.now(UTC),
         )
         script = build_script(report)
@@ -258,7 +289,12 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
             output.write_text(script)
 
     @cli.command()
-    @click.option("--provider", "providers", multiple=True, help="Limit to these providers.")
+    @click.option(
+        "--provider",
+        "providers",
+        multiple=True,
+        help="Run only these providers (repeatable or comma-separated).",
+    )
     @click.option(
         "--risk",
         "risk",
@@ -302,7 +338,7 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         providers_list = registry.load_providers(ctx.obj["shell"])
         filters = ScanFilters(
             risks=_parse_risks(risk),
-            providers=frozenset(providers) if providers else None,
+            providers=_parse_providers(providers, providers_list),
         )
         console = Console()
         presenter = CleanupPresenter(console)
@@ -326,7 +362,7 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
                         execute=True,
                         yes_safe=yes_safe,
                         allow_dangerous=allow_dangerous,
-                        providers=frozenset(providers) if providers else None,
+                        providers=filters.providers,
                     ),
                     # Re-check each worktree immediately before removing it (#110).
                     verify=GitWorktreeProvider(ctx.obj["shell"]).verify_removable,
