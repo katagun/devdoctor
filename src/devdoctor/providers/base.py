@@ -241,10 +241,7 @@ class PathProvider(Provider):
             quoted = shlex.quote(str(p))
             recipe = [line.format(path=quoted) for line in self.recipe_template]
             actions = _typed_path_actions(recipe, p)
-            try:
-                mtime: float | None = p.lstat().st_mtime
-            except OSError:
-                mtime = None
+            mtime = sizing.newest_mtime
             entries.append(
                 Entry(
                     provider=self.name,

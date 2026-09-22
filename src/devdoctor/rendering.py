@@ -64,7 +64,7 @@ def render_report_table(console: Console, report: Report) -> None:
     table.add_column("Est. reclaim", justify="right")
     table.add_column("Shared", justify="right")
     table.add_column("Risk", justify="center")
-    table.add_column("Stale?", justify="center")
+    table.add_column("Age", justify="center")
     table.add_column("Recipe hint", overflow="ellipsis")
 
     term_width = shutil.get_terminal_size((120, 24)).columns

@@ -38,6 +38,7 @@ def contain_worktree_contents(entries: list[Entry], filters: ScanFilters) -> lis
             risks=filters.risks,
             min_size=filters.min_size_bytes,
             providers=filters.providers,
+            modified_before=filters.modified_before,
         )
     ]
     return _without_contents(entries, owners)

@@ -99,6 +99,10 @@ If your change touches discovery, recipes, or cleanup, keep these intact:
   out** and free of injectable content.
 - Prefer marking a path **dangerous** over risking user data when a directory
   mixes cache with real data (uploads, chat history, generated output).
+- **An entry is as young as the youngest thing it deletes.** `--older-than`
+  judges an entry by its `mtime`. An entry that stands for several objects, such
+  as the Time Machine bundle, takes the newest of them, or an age filter will
+  offer it while it deletes things the filter excluded.
 
 ## Reporting bugs and requesting features
 

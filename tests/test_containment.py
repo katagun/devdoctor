@@ -63,6 +63,7 @@ def test_advice_worktrees_contain_nothing():
         pytest.param(
             ScanFilters(providers=frozenset({"node-project-dependencies"})), id="provider"
         ),
+        pytest.param(ScanFilters(modified_before=1.0), id="age"),
     ],
 )
 def test_an_owner_outside_the_view_contains_nothing(filters):

@@ -523,7 +523,24 @@ def test_malformed_covers_never_fabricates_ids(
         pytest.param(ScanFilters(min_size_bytes=1), False, id="min-size"),
         pytest.param(ScanFilters(risks=frozenset({Risk.SAFE})), False, id="risks"),
         pytest.param(ScanFilters(providers=frozenset({"a"})), False, id="providers"),
+        pytest.param(ScanFilters(modified_before=1.0), False, id="age"),
     ],
 )
 def test_scan_filters_is_unfiltered(filters, expected):
     assert filters.is_unfiltered is expected
+
+
+@pytest.mark.parametrize(
+    ("mtime", "expected"),
+    [
+        pytest.param(999.0, True, id="older"),
+        pytest.param(1000.0, False, id="exactly-the-cutoff"),
+        pytest.param(1001.0, False, id="newer"),
+        pytest.param(None, False, id="unknown-age-never-proves-old"),
+    ],
+)
+def test_an_age_filter_keeps_only_entries_known_to_be_older(mtime, expected):
+    entry = Entry("p", "1", None, "l", 100, mtime, Risk.SAFE, [])
+    assert entry_matches_filters(entry, modified_before=1000.0) is expected
+    report = Report(entries=[entry], scanned_at=datetime.now(UTC), hostname="h", platform="darwin")
+    assert bool(report.filter(modified_before=1000.0).entries) is expected

@@ -85,6 +85,19 @@ entries under a versioned heading as described in
 
 ### Added
 
+- **`--older-than` on `scan` and `clean`, and `scan --sort age`.** Age was the
+  deciding factor in every "is this safe to remove?" judgement, and every entry
+  already carried its modification time. `--older-than 6mo` keeps only entries
+  untouched that long (`12h`, `90d`, `2w`, `6mo`, `1y`); entries of unknown age
+  are left out rather than assumed old. `--sort age` lists the longest untouched
+  first. The table's `Stale?` column is now `Age`. (#89)
+- **An entry's age is the newest modification anywhere inside it.** It was the
+  top-level directory's own modification time, which does not move when a file
+  deep inside is rewritten: Docker's `vms` directory read as 6.9 years old with
+  an image written that day. The sizer already stats every file, so it reports
+  the newest at no extra cost. The Time Machine bundle is likewise dated by the
+  youngest snapshot it deletes, not the oldest, so an age filter can no longer
+  offer it while it removes snapshots the filter excluded. (#89)
 - **Time Machine local snapshots provider (`time-machine-local-snapshots`,
   macOS only).** Lists hourly APFS local snapshots via
   `tmutil listlocalsnapshots /` and offers one bundle that deletes all but the

@@ -13,11 +13,25 @@ devdoctor scan
 devdoctor scan --json                # structured Report JSON to stdout
 devdoctor scan --min-size 100M       # hide entries below this size
 devdoctor scan --risk safe,reclaimable   # include only these risks
-devdoctor scan --provider docker     # repeatable; limit to providers
+devdoctor scan --provider docker     # run only these providers
+devdoctor scan --older-than 6mo      # only entries untouched for that long
+devdoctor scan --sort age            # longest untouched first (default: size)
 ```
 
 `--risk` accepts `safe`, `reclaimable`, `dangerous`, repeatable or
 comma-separated.
+
+`--provider` is repeatable or comma-separated and decides what runs: the other
+providers are never started, so a scoped scan takes as long as its providers
+do. An unknown name is an error; `devdoctor providers` lists them.
+
+`--older-than` takes whole hours, days, weeks, months (30 days) or years:
+`12h`, `90d`, `2w`, `6mo`, `1y`. Age is the newest modification of anything inside
+the entry, not of the directory itself, whose own timestamp does not move when
+a file deep inside changes. For a git worktree it is the last commit on its
+branch; for the Time Machine bundle, the youngest snapshot it deletes. Entries whose age is unknown are
+left out, because "old enough" has to be shown, not assumed. The table's `Age`
+column shows the same figure.
 
 ### `scan --json` contract
 
@@ -59,7 +73,8 @@ devdoctor clean --execute --allow-dangerous  # include dangerous entries (explic
 | `--yes-safe` | Auto-approve `safe` entries; reclaimable still prompted. |
 | `--yes` | Skip the final confirmation (plan still prints). Unattended runs also need `--yes-safe`. |
 | `--risk` | Include only these risks (`safe`, `reclaimable`, `dangerous`; repeatable or comma-separated). |
-| `--provider` | Limit to these providers (repeatable). |
+| `--provider` | Run only these providers (repeatable or comma-separated). |
+| `--older-than` | Include only entries untouched for at least this long (`12h`, `90d`, `2w`, `6mo`, `1y`). |
 | `--allow-dangerous` | Offer dangerous entries too; otherwise skipped. Never pass without explicit user say-so. |
 
 During a run each entry prints one line: `✓` done, `✗` failed (with the
