@@ -260,6 +260,8 @@ class PathProvider(Provider):
                             or any(isinstance(action, AdviceAction) for action in actions)
                             else size
                         ),
+                        # VM disk images live behind path providers; see devdoctor.sparse.
+                        apparent_bytes=sizing.apparent_bytes,
                     ),
                     actions=actions,
                     hardlinks=sizing.hardlinks,

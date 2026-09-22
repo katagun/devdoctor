@@ -71,6 +71,9 @@ class SizeResult:
     allocated_bytes: int
     skipped_paths: tuple[Path, ...]
     hardlinks: tuple[HardlinkRecord, ...]
+    # The sum of the files' lengths. It exceeds ``allocated_bytes`` for a sparse
+    # file such as a VM disk image, which reserves address space it has not written.
+    apparent_bytes: int = 0
     # The most recent modification of the root or anything inside it; None when the
     # root could not be read. A directory's own mtime only moves when its direct
     # children change, so it says nothing about files further down.
@@ -146,6 +149,48 @@ def _lstat(entry: os.DirEntry[str]) -> os.stat_result:
     return entry.stat(follow_symlinks=False)
 
 
+def allocated_bytes(st: os.stat_result) -> int:
+    """What a file occupies on disk, never more than its length.
+
+    ``st_blocks`` is the truth for sparse files (``Docker.raw`` is 80 GB long and
+    occupies what Docker has written), and rounds a small file up to a block, so
+    the length caps it. Zero blocks means nothing is allocated: a file that is all
+    hole, or one evicted to iCloud. Only a platform with no ``st_blocks`` at all
+    falls back to the length.
+    """
+    blocks: int | None = getattr(st, "st_blocks", None)
+    if blocks is None:
+        return st.st_size
+    return min(st.st_size, blocks * 512)
+
+
+_Hardlinks = dict[tuple[int, int], tuple[int, int, list[str]]]
+
+
+def _seen_before(hardlinks: _Hardlinks, st: os.stat_result, allocated: int, path: str) -> bool:
+    """Record one more name for a multiply-linked file; True when its bytes are counted."""
+    key = (st.st_dev, st.st_ino)
+    current = hardlinks.get(key)
+    if current is not None:
+        current[2].append(path)
+        return True
+    hardlinks[key] = (allocated, st.st_nlink, [path])
+    return False
+
+
+def _records(hardlinks: _Hardlinks) -> tuple[HardlinkRecord, ...]:
+    return tuple(
+        HardlinkRecord(
+            device=device,
+            inode=inode,
+            allocated_bytes=allocated,
+            link_count=link_count,
+            paths=tuple(sorted(set(paths))),
+        )
+        for (device, inode), (allocated, link_count, paths) in sorted(hardlinks.items())
+    )
+
+
 def _walk(root: Path) -> SizeResult:
     skipped: list[Path] = []
     try:
@@ -153,11 +198,25 @@ def _walk(root: Path) -> SizeResult:
     except OSError:
         return SizeResult(0, (root,), ())
 
+    # Only a file with more than one name can be met twice, so only those are tracked.
+    hardlinks: _Hardlinks = {}
+    if stat_mod.S_ISREG(root_stat.st_mode):
+        # A path provider may name a file (a model, a disk image) rather than a directory.
+        allocated = allocated_bytes(root_stat)
+        if root_stat.st_nlink > 1:
+            _seen_before(hardlinks, root_stat, allocated, os.fspath(root))
+        return SizeResult(
+            allocated,
+            (),
+            _records(hardlinks),
+            apparent_bytes=root_stat.st_size,
+            newest_mtime=root_stat.st_mtime,
+        )
+
     root_dev = root_stat.st_dev
     newest = root_stat.st_mtime
     total = 0
-    # Only a file with more than one name can be met twice, so only those are tracked.
-    hardlinks: dict[tuple[int, int], tuple[int, int, list[str]]] = {}
+    apparent = 0
     # Plain strings and one stat per entry: a Path per file cost a third of the walk.
     pending = [os.fspath(root)]
     while pending:
@@ -175,47 +234,25 @@ def _walk(root: Path) -> SizeResult:
                     is_dir = entry.is_dir()
                 except OSError:
                     is_dir = False
-                if is_dir:
-                    if entry.is_symlink():
-                        continue
-                    try:
-                        st = _lstat(entry)
-                    except OSError:
-                        skipped.append(Path(entry.path))
-                        continue
-                    if st.st_dev == root_dev:
-                        newest = max(newest, st.st_mtime)
-                        pending.append(entry.path)
+                if is_dir and entry.is_symlink():
                     continue
                 try:
                     st = _lstat(entry)
                 except OSError:
                     skipped.append(Path(entry.path))
                     continue
+                if is_dir:
+                    if st.st_dev == root_dev:
+                        newest = max(newest, st.st_mtime)
+                        pending.append(entry.path)
+                    continue
                 newest = max(newest, st.st_mtime)
-                # Actual on-disk usage via st_blocks handles sparse files correctly
-                # (e.g. Docker.raw reports 80 GB apparent but uses only megabytes).
-                # For non-sparse files st_blocks*512 rounds up to a block boundary,
-                # so we cap at st_size to preserve per-byte accuracy for normal files.
-                blocks = getattr(st, "st_blocks", 0) * 512
-                allocated = min(st.st_size, blocks) if blocks else st.st_size
-                if st.st_nlink > 1:
-                    key = (st.st_dev, st.st_ino)
-                    current = hardlinks.get(key)
-                    if current is not None:
-                        current[2].append(entry.path)
-                        continue
-                    hardlinks[key] = (allocated, st.st_nlink, [entry.path])
+                allocated = allocated_bytes(st)
+                if st.st_nlink > 1 and _seen_before(hardlinks, st, allocated, entry.path):
+                    continue
                 total += allocated
+                apparent += st.st_size
 
-    records = tuple(
-        HardlinkRecord(
-            device=device,
-            inode=inode,
-            allocated_bytes=allocated,
-            link_count=link_count,
-            paths=tuple(sorted(set(paths))),
-        )
-        for (device, inode), (allocated, link_count, paths) in sorted(hardlinks.items())
+    return SizeResult(
+        total, tuple(skipped), _records(hardlinks), apparent_bytes=apparent, newest_mtime=newest
     )
-    return SizeResult(total, tuple(skipped), records, newest_mtime=newest)

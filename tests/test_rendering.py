@@ -25,6 +25,7 @@ from devdoctor.types import (
     DeletePathAction,
     DiffReport,
     DiffRow,
+    DiskUsage,
     Entry,
     ProviderTiming,
     Report,
@@ -417,3 +418,21 @@ def test_render_history_run_falls_back_to_results_for_events_recorded_before_the
     assert "x" in out
     assert "ok" in out
     assert "(no plan recorded)" not in out
+
+
+def test_a_sparse_image_gets_a_note_that_never_calls_the_gap_reclaimable():
+    gib = 1024**3
+    image = dataclasses.replace(
+        _e("docker-vm-disk", "Docker.raw", 34 * gib, risk=Risk.RECLAIMABLE),
+        usage=DiskUsage(34 * gib, 34 * gib, apparent_bytes=80 * gib),
+    )
+    out = " ".join(_render(render_report_table, _rep(image)).split())
+    assert "docker-vm-disk/Docker.raw occupies 34.0G on disk." in out
+    assert "It is a sparse image 80.0G long" in out
+    assert "returns to the host only when the image is compacted" in out
+    assert "reclaim" not in out.split("Sparse")[1].lower()
+
+
+def test_no_sparse_note_without_a_sparse_entry():
+    out = _render(render_report_table, _rep(_e("uv-cache", "/x", 1_500_000_000)))
+    assert "sparse" not in out.lower()

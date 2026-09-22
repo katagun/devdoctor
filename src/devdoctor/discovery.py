@@ -158,10 +158,8 @@ def _reconcile_shared_usage(entries: list[Entry]) -> list[Entry]:
         reconciled.append(
             dataclasses.replace(
                 entry,
-                usage=DiskUsage(
-                    footprint_bytes=usage.footprint_bytes,
-                    reclaimable_bytes=reclaimable,
-                    shared_bytes=shared,
+                usage=dataclasses.replace(
+                    usage, reclaimable_bytes=reclaimable, shared_bytes=shared
                 ),
             )
         )

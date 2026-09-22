@@ -39,15 +39,26 @@ class DiskUsage:
     footprint_bytes: int | None
     reclaimable_bytes: int | None
     shared_bytes: int = 0
+    # The files' summed lengths, when the provider measured them. Far above the
+    # footprint for a sparse file (a VM disk image); never space that deleting frees.
+    apparent_bytes: int | None = None
 
     def __post_init__(self) -> None:
         for name, value in (
             ("footprint_bytes", self.footprint_bytes),
             ("reclaimable_bytes", self.reclaimable_bytes),
             ("shared_bytes", self.shared_bytes),
+            ("apparent_bytes", self.apparent_bytes),
         ):
             if value is not None and value < 0:
                 raise ValueError(f"{name} must be non-negative")
+
+
+def _optional_size(raw: object) -> int | None:
+    """A byte count from a snapshot, or None when it is absent or not a usable number."""
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+        return None
+    return raw
 
 
 @dataclass(frozen=True)
@@ -208,6 +219,10 @@ class Entry:
     @property
     def shared_bytes(self) -> int:
         return self.usage.shared_bytes if self.usage is not None else 0
+
+    @property
+    def apparent_bytes(self) -> int | None:
+        return self.usage.apparent_bytes if self.usage is not None else None
 
     @property
     def display_bytes(self) -> int:
@@ -499,6 +514,7 @@ class Report:
                 "footprint_bytes": e.footprint_bytes,
                 "reclaimable_bytes": e.reclaimable_bytes,
                 "shared_bytes": e.shared_bytes,
+                "apparent_bytes": e.apparent_bytes,
                 "usage_explicit": e.usage is not None,
                 "mtime": e.mtime,
                 "risk": e.risk.value,
@@ -581,6 +597,7 @@ class Report:
                     footprint_bytes=e.get("footprint_bytes"),
                     reclaimable_bytes=e.get("reclaimable_bytes"),
                     shared_bytes=int(e.get("shared_bytes", 0)),
+                    apparent_bytes=_optional_size(e.get("apparent_bytes")),
                 )
                 if has_usage
                 else None

@@ -15,8 +15,12 @@ The three usual causes, in order of likelihood on macOS:
    change lagging the estimate for this reason.
 2. **Docker Desktop compacts its VM disk later.** A prune frees space
    *inside* the VM; the `Docker.raw` file on your Mac shrinks afterwards,
-   not instantly. Judge the prune with `docker system df`, give it time
-   (or restart Docker Desktop), and re-check Finder later.
+   not instantly. Judge the prune with `docker system df`, then give it time
+   or force it with
+   `docker run --privileged --pid=host docker/desktop-reclaim-space`. Docker
+   may stop answering for a few minutes while it compacts. Deleting files
+   inside a running container frees nothing on the host; only removing images,
+   containers, volumes or build cache does.
 3. **You cleaned advice-only entries.** Entries marked `·` in the run output
    print guidance instead of running anything — re-read the summary's
    estimated-vs-planned numbers.
@@ -31,6 +35,14 @@ Three distinct numbers, kept separate on purpose:
 - **Estimated reclaimable** — what cleanup is expected to free. An estimate,
   not a promise.
 - **Shared** — allocations hard-linked from multiple places and counted once.
+
+A fourth figure appears only for sparse files: **apparent size**, the file's
+length. Docker Desktop's `Docker.raw` is 80 GB long by default and occupies
+only what Docker has written, often less than half. DevDoctor counts what it
+occupies, because that is what your disk gives up; Finder and `ls` show the
+length. `scan` prints a `Sparse:` note under the table for such an entry, and
+`--json` carries `apparent_bytes`. The difference was never on your disk, so
+it is described and never offered as reclaimable.
 
 Cleanup results remain estimates unless a provider explicitly verifies the
 post-clean size. The summary reports estimated reclaimed vs. planned plus

@@ -85,6 +85,13 @@ entries under a versioned heading as described in
 
 ### Added
 
+- **Sparse files are explained instead of silently under-reported.** Docker
+  Desktop's `Docker.raw` is 80 GB long and occupies what Docker has written, so
+  DevDoctor's figure and Finder's disagree by tens of gigabytes. Entries from
+  path providers and `large-files` now carry `apparent_bytes` in `--json`, and
+  `scan` prints a `Sparse:` note when an entry reserves at least 1 GiB and a
+  tenth more than it occupies. The gap was never on the disk, so it is
+  described and never offered as reclaimable. (#86)
 - **`--older-than` on `scan` and `clean`, and `scan --sort age`.** Age was the
   deciding factor in every "is this safe to remove?" judgement, and every entry
   already carried its modification time. `--older-than 6mo` keeps only entries
@@ -204,6 +211,23 @@ entries under a versioned heading as described in
 
 ### Fixed
 
+- **A file that occupies nothing is counted as nothing.** Zero allocated blocks
+  was read as "this filesystem hides block counts" and the file was counted at
+  its full length, so a VM disk image that had never been written to read as
+  its whole size limit, and no `Sparse:` note appeared for it. Only a platform
+  with no block counts at all falls back to the length now. Symlinks, whose
+  length is their target path and which occupy no blocks, stop contributing a
+  few bytes each: about 2 KB on a 700 MB `node_modules`. (#86)
+- **A path provider that names a file reports its size.** Sizing walked
+  directories only, so a model matched by `*.gguf` sized to zero, was dropped
+  from the scan, and left a misleading "permission denied or vanished"
+  diagnostic. (#86)
+- **The Docker disk image advice no longer walks users into data loss.** It
+  suggested lowering the disk image size limit when usage was small; per
+  Docker's documentation that deletes the image and every container, image and
+  volume in it, which the text did not say. The advice now explains that space
+  freed inside Docker returns to macOS when the image is compacted, gives the
+  command that forces it, and names what the destructive options destroy. (#86)
 - **Risk chips no longer rerun the scan, the estimate counts down, and the
   Dashboard and Disk pages share one scan.** Each chip click used to send a new
   `risk` filter to the server and wait for a full scan (minutes on a large

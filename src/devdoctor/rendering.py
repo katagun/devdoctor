@@ -24,6 +24,7 @@ from devdoctor.cleanup import (
     PlannedEntry,
 )
 from devdoctor.discovery import ProviderFinished, ProviderStarted, ScanProgressEvent, ScanStarted
+from devdoctor.sparse import sparse_findings
 from devdoctor.types import (
     Choice,
     CleanResult,
@@ -93,12 +94,32 @@ def render_report_table(console: Console, report: Report) -> None:
         f"shared: {_human_bytes(report.total_shared_bytes())}"
     )
     console.print(table)
+    _render_sparse_notes(console, report)
     _render_diagnostics(console, report)
 
 
 # Show at most this many diagnostic lines under the table; the rest collapse
 # into a "+N more" note so a pathological scan can't flood the terminal.
 _MAX_DIAGNOSTIC_LINES = 5
+
+
+def _render_sparse_notes(console: Console, report: Report) -> None:
+    """Explain an entry whose size elsewhere looks far larger than the one shown.
+
+    The gap is address space the image never wrote, so it is described and never
+    offered: only compaction returns space freed inside the image (#86).
+    """
+    for finding in sparse_findings(report.entries):
+        console.print(
+            Text(
+                f"Sparse: {_strip_controls(finding.entry.label)} occupies "
+                f"{_human_bytes(finding.allocated_bytes)} on disk. It is a sparse image "
+                f"{_human_bytes(finding.apparent_bytes)} long, which is the figure Finder and "
+                "ls show. Space freed inside it returns to the host only when the image is "
+                "compacted; see the entry's advice.",
+                style="dim",
+            )
+        )
 
 
 def _render_diagnostics(console: Console, report: Report) -> None:

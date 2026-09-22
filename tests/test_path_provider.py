@@ -230,6 +230,46 @@ def test_resolve_paths_filters_nonexistent(tmp_path: Path) -> None:
     assert p.resolve_paths() == [real]
 
 
+def test_a_path_entry_reports_what_a_sparse_image_reserves(tmp_path):
+    image = tmp_path / "vms" / "Docker.raw"
+    image.parent.mkdir()
+    with image.open("wb") as f:
+        f.seek(10 * 1024 * 1024)
+        f.write(b"!")
+    provider = PathProvider.from_yaml(
+        {
+            "name": "vm-disk",
+            "description": "d",
+            "risk": "reclaimable",
+            "platforms": ["darwin", "linux"],
+            "paths": [str(tmp_path / "vms")],
+            "recipe": "echo 'advice'",
+        },
+        FakeShell(),
+    )
+    (entry,) = provider.discover()
+    assert entry.apparent_bytes == 10 * 1024 * 1024 + 1
+    assert entry.footprint_bytes is not None and entry.footprint_bytes <= entry.apparent_bytes
+
+
+def test_the_docker_disk_advice_names_the_costs_it_asks_the_user_to_accept():
+    """Lowering the size limit deletes the image; advice that omits that is a trap."""
+    import yaml
+
+    from devdoctor.registry import _locate_paths_yaml
+
+    specs = {spec["name"]: spec for spec in yaml.safe_load(_locate_paths_yaml().read_text())}
+    advice = " ".join(
+        specs["docker-vm-disk"]["recipe"]
+        if isinstance(specs["docker-vm-disk"]["recipe"], list)
+        else [specs["docker-vm-disk"]["recipe"]]
+    )
+    assert "docker/desktop-reclaim-space" in advice
+    assert "deletes every container, image and volume" in advice
+    assert "while Docker is running" in advice
+    assert "shrink the Docker Desktop disk-image quota" not in advice
+
+
 def test_an_entry_is_as_young_as_the_newest_file_inside_it(tmp_path):
     """`clean --older-than` judges entries by this; a stale top-level mtime must not
     make a cache written to yesterday look untouched for years."""

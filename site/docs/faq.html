@@ -18,7 +18,7 @@
 <pre><code>devdoctor scan --provider time-machine-local-snapshots
 devdoctor clean --execute --provider time-machine-local-snapshots</code></pre>
 The end-of-run summary says so explicitly when it detects the measured change lagging the estimate for this reason.</li>
-<li><b>Docker Desktop compacts its VM disk later.</b> A prune frees space <em>inside</em> the VM; the <code>Docker.raw</code> file on your Mac shrinks afterwards, not instantly. Judge with <code>docker system df</code> and re-check Finder later.</li>
+<li><b>Docker Desktop compacts its VM disk later.</b> A prune frees space <em>inside</em> the VM; the <code>Docker.raw</code> file on your Mac shrinks afterwards, not instantly. Judge with <code>docker system df</code>, then give it time or force it with <code>docker run --privileged --pid=host docker/desktop-reclaim-space</code>. Docker may stop answering for a few minutes while it compacts. Deleting files inside a running container frees nothing on the host; only removing images, containers, volumes or build cache does.</li>
 <li><b>You cleaned advice-only entries.</b> Entries marked <code>·</code> print guidance instead of running anything — re-read the summary's estimated-vs-planned numbers.</li>
 </ol>
 <p>On Linux, cause 1 does not apply; check 2 and 3.</p>
@@ -29,6 +29,7 @@ The end-of-run summary says so explicitly when it detects the measured change la
 <li><b>Estimated reclaimable</b> — what cleanup is expected to free. An estimate, not a promise.</li>
 <li><b>Shared</b> — allocations hard-linked from multiple places and counted once.</li>
 </ul>
+<p>A fourth figure appears only for sparse files: <b>apparent size</b>, the file's length. Docker Desktop's <code>Docker.raw</code> is 80 GB long by default and occupies only what Docker has written, often less than half. DevDoctor counts what it occupies, because that is what your disk gives up; Finder and <code>ls</code> show the length. <code>scan</code> prints a <code>Sparse:</code> note under the table for such an entry, and <code>--json</code> carries <code>apparent_bytes</code>. The difference was never on your disk, so it is described and never offered as reclaimable.</p>
 
 <h2>Why is an entry's size "unknown"?</h2>
 <p>Some things cannot be measured without doing the destructive thing first. DevDoctor offers the entry with unknown size rather than hiding it — the plan still shows the exact command, and you decide.</p>
