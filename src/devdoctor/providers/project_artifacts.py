@@ -18,6 +18,7 @@ from devdoctor.providers._walk import (
 from devdoctor.providers.base import Provider, _stat_kwargs
 from devdoctor.sizer import SizeResult, size_many
 from devdoctor.types import AdviceAction, DeletePathAction, DiskUsage, Entry, Risk
+from devdoctor.units import human_bytes
 
 _PROJECT_ROOTS = PROJECT_ROOTS
 
@@ -46,6 +47,9 @@ _PROJECT_QUERIES: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset({"tox.ini", "noxfile.py", "pyproject.toml"}),
         frozenset({".tox", ".nox"}),
     ),
+    # An initialised workspace always has the lock file (Terraform 0.14+); main.tf
+    # catches one that was never initialised but has a stale .terraform anyway.
+    "terraform": (frozenset({".terraform.lock.hcl", "main.tf"}), frozenset({".terraform"})),
 }
 _ALL_ARTIFACT_NAMES = frozenset(
     artifact for _markers, artifacts in _PROJECT_QUERIES.values() for artifact in artifacts
@@ -332,3 +336,80 @@ class ToxNoxProvider(CargoTargetsProvider):
 
     def discover(self) -> list[Entry]:
         return self._entries(self._index.candidates("tox-nox"))
+
+
+class TerraformProvider(CargoTargetsProvider):
+    name = "terraform-workspaces"
+    family = "infra"
+    description = "Per-workspace .terraform directories (provider plugins and modules)"
+    risk = Risk.RECLAIMABLE
+    details = (
+        "Finds .terraform next to .terraform.lock.hcl or main.tf under bounded project "
+        "roots; terraform init re-creates it. The plugin binaries under providers/ are "
+        "byte-identical across workspaces, so the lasting fix is a shared plugin cache: "
+        "set TF_PLUGIN_CACHE_DIR (or plugin_cache_dir in ~/.terraformrc) and Terraform "
+        "keeps one copy and links each workspace to it. The scan measures the duplicate "
+        "copies and says so."
+    )
+
+    def discover(self) -> list[Entry]:
+        candidates = tuple(self._index.candidates("terraform"))
+        entries = self._entries(candidates)
+        self._note_duplicate_plugins([artifact for _project, artifact in candidates])
+        return entries
+
+    def _note_duplicate_plugins(self, dot_terraform_dirs: list[Path]) -> None:
+        """Measure the provider plugin copies that a shared cache would collapse.
+
+        A plugin lives at providers/<host>/<namespace>/<name>/<version>/<platform>;
+        the same key in two workspaces is the same binary, so every copy after the
+        first is duplicate space. One diagnostic line carries the figures.
+        """
+        copies = _plugin_copies(dot_terraform_dirs)
+        if not copies:
+            return
+        by_key: dict[str, list[int]] = {}
+        sizings = size_many([path for _key, path in copies])
+        for (key, _path), sizing in zip(copies, sizings, strict=True):
+            self._note_skipped(list(sizing.skipped_paths))
+            by_key.setdefault(key, []).append(sizing.allocated_bytes)
+        total = sum(sum(sizes) for sizes in by_key.values())
+        duplicate = sum(sum(sizes) - max(sizes) for sizes in by_key.values())
+        if duplicate <= 0:
+            return
+        workspaces = len(dot_terraform_dirs)
+        self.diagnostics.append(
+            f"{self.name}: {human_bytes(total)} of provider plugins across {workspaces} "
+            f"workspaces, {human_bytes(duplicate)} of it duplicate copies of the same "
+            "binaries. Set TF_PLUGIN_CACHE_DIR (or plugin_cache_dir in ~/.terraformrc) "
+            "and Terraform keeps one copy and links each workspace to it."
+        )
+
+
+_PLUGIN_KEY_DEPTH = 5  # host / namespace / name / version / platform
+
+
+def _plugin_copies(dot_terraform_dirs: list[Path]) -> list[tuple[str, Path]]:
+    """Every installed plugin directory, keyed by its registry path."""
+    copies: list[tuple[str, Path]] = []
+    for dot_terraform in dot_terraform_dirs:
+        providers = dot_terraform / "providers"
+        for platform_dir in _dirs_at_depth(providers, _PLUGIN_KEY_DEPTH):
+            copies.append((str(platform_dir.relative_to(providers)), platform_dir))
+    return copies
+
+
+def _dirs_at_depth(root: Path, depth: int) -> list[Path]:
+    level = [root] if _is_real_dir(root) else []
+    for _ in range(depth):
+        level = [
+            child for parent in level for child in sorted(_children(parent)) if _is_real_dir(child)
+        ]
+    return level
+
+
+def _children(parent: Path) -> list[Path]:
+    try:
+        return list(parent.iterdir())
+    except OSError:
+        return []

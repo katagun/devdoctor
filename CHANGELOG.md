@@ -85,6 +85,15 @@ entries under a versioned heading as described in
 
 ### Added
 
+- **Terraform workspaces are covered, and the duplicate plugins are measured.**
+  `terraform-workspaces` finds `.terraform` next to `.terraform.lock.hcl` or
+  `main.tf` under the project roots and offers each as a reclaimable deletion
+  (`terraform init` re-creates it). The plugin binaries under `providers/` are
+  byte-identical across workspaces, so the scan adds up the copies of each
+  plugin beyond the first and says what a shared `TF_PLUGIN_CACHE_DIR` would
+  collapse: the lasting fix is configuration, not deletion. The scan's note
+  header now reads "note(s) from the scan (skipped paths, tool advice)", since
+  notes are no longer only about skipped paths. (#82)
 - **AI agent and editor caches are covered.** Safe deletions for VS Code and
   Cursor extension package downloads, Cursor's staged updates and both
   editors' session logs; reclaimable deletions for Codex CLI runtimes and exo

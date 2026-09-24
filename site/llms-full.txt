@@ -450,6 +450,7 @@ always wins.
 | `time-machine-local-snapshots` (macOS only) | Local snapshots; one all-but-newest bundle plus per-snapshot entries | reclaimable |
 | `node-project-dependencies` | `node_modules` under common code roots | reclaimable |
 | `cargo-targets` | Cargo workspace `target/` build dirs | reclaimable |
+| `terraform-workspaces` | Per-workspace `.terraform` directories (re-created by `terraform init`); the scan measures the plugin copies a shared `TF_PLUGIN_CACHE_DIR` would collapse | reclaimable |
 | `python-venvs` | Virtualenvs (rebuildable with `uv sync` / `pip install -r`) | reclaimable |
 | `tox-nox-environments` | Generated tox/nox test environments | safe |
 | `conda-environments` | Non-base Conda environments (may hold your work) | dangerous |
@@ -460,7 +461,7 @@ always wins.
 | `downloads` | `~/Downloads` | dangerous |
 
 Project discovery (`node-project-dependencies`, `cargo-targets`,
-`git-worktrees`, `android-project-builds`) is bounded to common code roots
+`terraform-workspaces`, `git-worktrees`, `android-project-builds`) is bounded to common code roots
 or the colon-separated paths in `DEVDOCTOR_PROJECT_ROOTS`.
 
 ## Platform notes

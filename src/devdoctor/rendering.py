@@ -175,8 +175,7 @@ def _render_diagnostics(console: Console, report: Report) -> None:
         return
     console.print(
         Text(
-            f"⚠ {len(report.diagnostics)} diagnostic(s) during scan "
-            "(some paths skipped, e.g. permission denied):",
+            f"⚠ {len(report.diagnostics)} note(s) from the scan (skipped paths, tool advice):",
             style="yellow",
         )
     )
