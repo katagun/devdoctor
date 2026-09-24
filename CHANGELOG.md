@@ -85,6 +85,14 @@ entries under a versioned heading as described in
 
 ### Added
 
+- **AI agent and editor caches are covered.** Safe deletions for VS Code and
+  Cursor extension package downloads, Cursor's staged updates and both
+  editors' session logs; reclaimable deletions for Codex CLI runtimes and exo
+  model weights; and one advice entry per editor for installed extensions
+  (VS Code, Cursor, Windsurf), naming the editor's own uninstall command. The
+  agent worktree homes were already covered by `git-worktrees`. Session and
+  transcript stores stay untouched until #84 gives them age-based retention.
+  (#83)
 - **Twelve more developer caches are covered.** Safe deletions for
   pre-commit hook environments, Puppeteer browsers, node-gyp headers,
   Electron binaries, opam's download cache and Google's updater cache;

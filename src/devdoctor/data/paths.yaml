@@ -558,3 +558,80 @@
     - ~/.steampipe/plugins
   recipe:
     - "echo 'Steampipe plugins are re-installed with steampipe plugin install. steampipe plugin list shows what is here; remove one with: steampipe plugin uninstall <name>.'"
+
+# --- AI agents and editors (#83) --------------------------------------------
+
+- name: vscode-extension-downloads
+  description: VS Code downloaded extension packages (VSIX cache)
+  risk: safe
+  platforms: [darwin]
+  family: desktop-apps
+  paths:
+    - ~/Library/Application Support/Code/CachedExtensionVSIXs
+  recipe: "rm -rf {path}"
+
+- name: cursor-extension-downloads
+  description: Cursor downloaded extension packages (VSIX cache)
+  risk: safe
+  platforms: [darwin]
+  family: desktop-apps
+  paths:
+    - ~/Library/Application Support/Cursor/CachedExtensionVSIXs
+  recipe: "rm -rf {path}"
+
+- name: cursor-updater-cache
+  description: Cursor downloaded updates (ShipIt staging)
+  risk: safe
+  platforms: [darwin]
+  family: desktop-apps
+  paths:
+    - ~/Library/Caches/com.todesktop.230313mzl4w4u92.ShipIt
+  recipe: "rm -rf {path}"
+
+- name: vscode-logs
+  description: VS Code session logs
+  risk: safe
+  platforms: [darwin]
+  family: desktop-apps
+  paths:
+    - ~/Library/Application Support/Code/logs
+  recipe: "rm -rf {path}"
+
+- name: cursor-logs
+  description: Cursor session logs
+  risk: safe
+  platforms: [darwin]
+  family: desktop-apps
+  paths:
+    - ~/Library/Application Support/Cursor/logs
+  recipe: "rm -rf {path}"
+
+- name: editor-extensions
+  description: Installed editor extensions (VS Code, Cursor, Windsurf)
+  risk: reclaimable
+  platforms: [darwin, linux]
+  family: desktop-apps
+  paths:
+    - ~/.vscode/extensions
+    - ~/.cursor/extensions
+    - ~/.windsurf/extensions
+  recipe:
+    - "echo 'Installed extensions are part of your editor setup. Uninstall the ones you no longer use from the Extensions view, or from a shell: code --uninstall-extension <publisher.name> (cursor and windsurf take the same flag). Deleting the directory removes every extension at once.'"
+
+- name: codex-runtimes-cache
+  description: Codex CLI downloaded runtimes
+  risk: reclaimable
+  platforms: [darwin, linux]
+  family: agents
+  paths:
+    - ~/.cache/codex-runtimes
+  recipe: "rm -rf {path}"
+
+- name: exo-models
+  description: exo downloaded model weights
+  risk: reclaimable
+  platforms: [darwin, linux]
+  family: local-ai
+  paths:
+    - ~/.exo/models
+  recipe: "rm -rf {path}"

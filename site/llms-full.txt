@@ -430,6 +430,7 @@ always wins.
 | `nuget-caches` | NuGet global packages, HTTP, temp, plugin caches | safe |
 | `conda-package-caches` | Conda package caches | reclaimable |
 | `homebrew-downloads` | Cached Homebrew bottles | safe |
+| `vscode-extension-downloads`, `cursor-extension-downloads`, `cursor-updater-cache`, `vscode-logs`, `cursor-logs` | Editor extension package downloads, Cursor's staged updates, session logs | safe |
 | `pre-commit-cache`, `puppeteer-browsers`, `node-gyp-cache`, `electron-cache`, `opam-download-cache`, `google-updater-cache` | Tool download caches: hook environments, browsers, Node headers, Electron binaries, opam sources, updater downloads | safe |
 | `gradle-caches` | JVM build caches | safe |
 | `maven-repo` | Local Maven repository (re-downloadable artifacts) | reclaimable |
@@ -443,6 +444,8 @@ always wins.
 | `colima-cache` | Colima's downloaded VM base images | safe |
 | `rustup-toolchains`, `nvm-node-versions`, `pyenv-versions` | Installed toolchains and language versions, one entry each; advice names the tool's own uninstall command, since one may be in use and a bare delete leaves the tool's index stale | reclaimable |
 | `vagrant-boxes`, `steampipe-plugins`, `docling-cache` | Downloaded boxes and plugins (advice: `vagrant box prune`, `steampipe plugin uninstall`) and Docling models | reclaimable |
+| `editor-extensions` | Installed VS Code, Cursor and Windsurf extensions; advice names the editor's uninstall command | reclaimable |
+| `codex-runtimes-cache`, `exo-models` | Codex CLI downloaded runtimes, exo model weights | reclaimable |
 | `git-worktrees` | Linked worktrees whose branches are fully integrated (anything else: advice) | reclaimable |
 | `time-machine-local-snapshots` (macOS only) | Local snapshots; one all-but-newest bundle plus per-snapshot entries | reclaimable |
 | `node-project-dependencies` | `node_modules` under common code roots | reclaimable |
