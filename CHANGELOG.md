@@ -85,6 +85,14 @@ entries under a versioned heading as described in
 
 ### Added
 
+- **Twelve more developer caches are covered.** Safe deletions for
+  pre-commit hook environments, Puppeteer browsers, node-gyp headers,
+  Electron binaries, opam's download cache and Google's updater cache;
+  Docling models as reclaimable; and one advice entry per installed rustup
+  toolchain, nvm Node version and pyenv Python version, plus Vagrant boxes and
+  Steampipe plugins, each naming its tool's own uninstall command, because one
+  may be in use and a bare delete leaves the tool's index stale. About 10 GB
+  on the machine that prompted this. (#88)
 - **Colima is covered.** `colima-vm-disk` finds the Lima disk images under
   `~/.colima/_lima` (the data disk and each profile's diffdisk), reports what
   they occupy against what they reserve like `Docker.raw`, and is advice only:
