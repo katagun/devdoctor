@@ -6,81 +6,73 @@ living backlog lives in [GitHub Issues](https://github.com/katagun/devdoctor/iss
 
 ## Recently shipped
 
-- **Git worktrees** — a `git-worktrees` provider finds the worktrees that agents
-  and `git worktree add` leave behind, proves which are integrated into the
-  default branch and clean (squash and rebase merges included on git 2.38+),
-  and offers only those for `git worktree remove`. Their contents are counted
-  once, under the worktree. ([#79](https://github.com/katagun/devdoctor/issues/79))
-- **Public launch** — renamed to `devdoctor`, MIT-licensed, a public
-  [landing page](https://sysaidmin.com/), and community docs
-  (CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, issue/PR templates).
-- **Security & architecture review** — fixed a snapshot path traversal,
-  command injection into the generated cleanup script, terminal-escape
-  injection via filenames, a stale-PID kill, and several data-loss mislabels;
-  hardened the cleanup and memory paths.
-- **CI & repo hardening** — GitHub Actions CI (Python + web), CodeQL,
-  Dependabot, web ESLint, CODEOWNERS, and SHA-pinned actions.
-- **Reliable CI** — the SSE lifecycle test is now deterministic (runs on a
-  pre-bound socket, no port race) and off the deprecated websockets stack.
-  ([#14](https://github.com/katagun/devdoctor/issues/14))
-- **Structured logging & diagnostics** — a `-v/--verbose` flag, no more
-  silently-swallowed errors, and scans surface skipped paths (e.g. permission
-  denied) instead of looking empty.
-  ([#10](https://github.com/katagun/devdoctor/issues/10))
-- **Faster scans** — provider discovery now runs concurrently in a bounded
-  thread pool, with identical, deterministic output.
-  ([#9](https://github.com/katagun/devdoctor/issues/9))
-- **Virtualized tables** — CacheTable windows its rows, so scans with thousands
-  of entries render only the visible slice.
-  ([#8](https://github.com/katagun/devdoctor/issues/8))
-- **SQLite migrations** — a real, versioned migration runner so the schema can
-  evolve without breaking existing databases.
-  ([#11](https://github.com/katagun/devdoctor/issues/11))
-- **Cross-provider id safety** — entry ids are namespaced per provider, so
-  cleanup selection can't mis-route between providers.
-  ([#12](https://github.com/katagun/devdoctor/issues/12))
-- **Modern web toolchain** — upgraded to Vite 8 and Vitest 4.
+- **Colima** — `colima-vm-disk` reports Lima disk images against what they
+  reserve and gives `colima stop` / `colima delete` guidance instead of a raw
+  delete; `colima-cache` offers the downloaded base images.
+  ([#85](https://github.com/katagun/devdoctor/issues/85))
+- **The web Disk page filters by age and states its coverage** — "untouched
+  for" chips are the web form of `scan --older-than`, and the totals row says
+  how much of the volume an unfiltered scan accounts for.
+- **`uv cache clean` no longer hangs under `uv run`** — the parent uv process
+  holds the cache lock; the provider detects it and forces past it.
+  ([#127](https://github.com/katagun/devdoctor/issues/127))
+- **Coverage** — every unfiltered scan says how much of the volume's used space
+  it accounts for, and `scan --coverage` lists the largest directories no
+  provider claims. ([#81](https://github.com/katagun/devdoctor/issues/81))
+- **Sparse images** — a VM disk such as `Docker.raw` is reported by what it
+  occupies, with a note on what it reserves; the gap is never offered as
+  reclaimable. ([#86](https://github.com/katagun/devdoctor/issues/86))
+- **Age** — `--older-than` on `scan` and `clean`, and `scan --sort age`; an
+  entry is as young as the youngest thing it would delete.
+  ([#89](https://github.com/katagun/devdoctor/issues/89))
+- **Faster scans** — sizing walks a few trees at a time on one shared pool,
+  `--provider` decides what runs, and a wedged Docker daemon cannot hang a
+  scan. Reference machine: 160 s to 51 s.
+  ([#92](https://github.com/katagun/devdoctor/issues/92))
+- **Time Machine local snapshots** — one all-but-newest bundle plus
+  per-snapshot entries, with a generic `covers` rule for bundles.
+  ([#124](https://github.com/katagun/devdoctor/issues/124))
+- **Docs and the agent contract** — a tutorial, CLI and web references, the
+  safety model, an FAQ, and `llms.txt` / `llms-full.txt` for agents.
+  ([#125](https://github.com/katagun/devdoctor/issues/125))
+- **`clean --execute` shows its plan** — itemised plan, per-entry results
+  with the failing command's error, a measured summary, and a `history` log
+  shared with the web UI. ([#126](https://github.com/katagun/devdoctor/issues/126))
+- **Git worktrees** — finds the worktrees agents leave behind, proves which
+  are integrated and clean, and offers only those for removal.
+  ([#79](https://github.com/katagun/devdoctor/issues/79))
+- **Provider architecture** — explicit footprint / reclaimable / shared bytes,
+  typed cleanup actions, stable provider IDs and families, deterministic
+  hard-link accounting; then JavaScript, Go and Rust, Xcode and Android, and
+  Conda / NuGet / tox providers on top of it.
+  ([#69](https://github.com/katagun/devdoctor/issues/69)–[#76](https://github.com/katagun/devdoctor/issues/76))
+- **Public launch, security review, CI hardening** — renamed to `devdoctor`,
+  MIT-licensed, a [landing page](https://sysaidmin.com/), fixes for a snapshot
+  path traversal and command injection into the recipe script, and SHA-pinned
+  Actions with CodeQL and Dependabot.
 
-## Now — provider architecture
+## Next — what a coverage scan still misses
 
-Provider growth needs a clearer contract for measurement, cleanup, identity,
-and shared storage before the catalog expands further. These changes are
-ordered so each remains backward-compatible with existing snapshots and
-stored databases.
+Every unfiltered scan now says what share of the disk it accounts for; the
+items below are the largest gaps a coverage scan reports, in the order the
+numbers suggest.
 
-1. **Explicit disk byte semantics** — distinguish filesystem footprint,
-   estimated reclaimable space, and shared allocations; stop presenting an
-   estimate as verified bytes freed.
-   ([#69](https://github.com/katagun/devdoctor/issues/69))
-2. **Typed cleanup actions** — replace shell-like recipe strings with structured
-   path deletion, argv command, and non-executable advice actions while keeping
-   generated recipe scripts and old snapshots compatible.
-   ([#70](https://github.com/katagun/devdoctor/issues/70))
-3. **Provider identity and families** — give atomic providers stable IDs and
-   group them into ecosystems without weakening per-provider filtering,
-   diagnostics, or failure isolation.
-   ([#71](https://github.com/katagun/devdoctor/issues/71))
-4. **Deterministic shared-file accounting** — reconcile hard-linked files
-   across concurrently scanned entries/providers and expose shared bytes
-   without assigning ownership based on thread completion order.
-   ([#72](https://github.com/katagun/devdoctor/issues/72))
-
-## Next — provider coverage
-
-- **JavaScript** — npm, pnpm, Yarn, and Bun caches/stores, followed by bounded
-  project dependency discovery once shared-file accounting lands.
-  ([#73](https://github.com/katagun/devdoctor/issues/73))
-- **Go and Rust** — tool-discovered Go caches plus Cargo dependency caches and
-  workspace build artifacts.
-  ([#74](https://github.com/katagun/devdoctor/issues/74))
-- **Xcode/iOS and Android** — derived/build artifacts and tool-managed
-  SDK/simulator/emulator storage, with archives and user data kept
-  dangerous/advice-only.
-  ([#75](https://github.com/katagun/devdoctor/issues/75))
-- **Secondary ecosystems** — Conda packages/environments, NuGet/.NET caches,
-  and tox/nox environments, with conservative treatment around installed
-  environments.
-  ([#76](https://github.com/katagun/devdoctor/issues/76))
+1. **AI agent and IDE footprint** — Cursor, Codex, OpenCode, Windsurf, exo,
+   editor extensions: tens of gigabytes with little coverage today.
+   ([#83](https://github.com/katagun/devdoctor/issues/83))
+2. **Agent session stores with age-based retention** — transcripts are the
+   user's history, not a cache, so the primitive is "sessions older than N
+   days", never a blanket delete.
+   ([#84](https://github.com/katagun/devdoctor/issues/84))
+3. **Remaining developer caches** — rustup toolchains, nvm versions, pyenv,
+   pre-commit, puppeteer, vagrant boxes, steampipe.
+   ([#88](https://github.com/katagun/devdoctor/issues/88))
+4. **Terraform** — `.terraform/providers` duplicated across workspaces; the
+   fix is `TF_PLUGIN_CACHE_DIR` advice, not deletion.
+   ([#82](https://github.com/katagun/devdoctor/issues/82))
+5. **Duplicate files** — advice only, and honestly small: hundreds of
+   megabytes, not gigabytes, on the machine that was measured.
+   ([#90](https://github.com/katagun/devdoctor/issues/90))
 
 ## Release work
 
