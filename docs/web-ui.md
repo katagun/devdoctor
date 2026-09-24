@@ -21,7 +21,11 @@ devdoctor serve --port 8731 --no-browser
 ## Pages
 
 - **Disk** — the scan as charts and tables, with live progress while a scan
-  runs (providers finished, bytes found so far, what is still running).
+  runs (providers finished, bytes found so far, what is still running). Risk
+  chips and "untouched for" chips (30d+, 90d+, 6mo+, 1y+; the web form of
+  `scan --older-than`, entries of unknown age left out) narrow the rows already
+  loaded without another scan, and the totals row states how much of the
+  volume's used space an unfiltered scan accounts for.
 - **Memory** — RAM pressure state plus top live consumers by real RSS, with
   safe fixes (quit the app, stop the container) instead of raw `kill`.
 - **Cleanup wizard** — the plan, per-entry prompts, and live output,

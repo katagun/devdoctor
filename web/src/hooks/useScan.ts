@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/api";
 import type { CacheTableRow } from "@/components/CacheTable";
+import type { ScanCoverage } from "@/lib/scanRows";
 
 interface ScanResponseEntry {
   id: string;
@@ -20,6 +21,12 @@ interface ScanResponseEntry {
   perms?: string | null;
 }
 
+interface ScanResponseCoverage {
+  used_bytes: number;
+  classified_bytes: number;
+  ratio: number | null;
+}
+
 interface ScanResponse {
   entries: ScanResponseEntry[];
   scanned_at: string;
@@ -27,6 +34,8 @@ interface ScanResponse {
   platform: string;
   skipped_paths: string[];
   total_reclaimable_bytes?: number;
+  // Present on an unfiltered scan only: a filtered one describes part of the disk.
+  coverage?: ScanResponseCoverage | null;
 }
 
 export interface UseScanOptions {
@@ -108,7 +117,17 @@ export function useScan(params: UseScanOptions = {}) {
             .filter((entry) => entry.risk !== "dangerous")
             .reduce((sum, entry) => sum + (entry.reclaimable_bytes ?? 0), 0),
         scannedAt: raw.scanned_at,
+        coverage: toCoverage(raw.coverage),
       };
     },
   });
+}
+
+function toCoverage(raw: ScanResponseCoverage | null | undefined): ScanCoverage | null {
+  if (!raw) return null;
+  return {
+    usedBytes: raw.used_bytes,
+    classifiedBytes: raw.classified_bytes,
+    ratio: raw.ratio,
+  };
 }

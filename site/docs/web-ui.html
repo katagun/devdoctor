@@ -20,7 +20,7 @@ devdoctor serve --port 8731 --no-browser</code></pre>
 
 <h2>Pages</h2>
 <ul>
-<li><b>Disk</b> — the scan as charts and tables, with live progress while a scan runs.</li>
+<li><b>Disk</b> — the scan as charts and tables, with live progress while a scan runs. Risk chips and "untouched for" chips (30d+, 90d+, 6mo+, 1y+; the web form of <code>scan --older-than</code>) narrow the rows already loaded without another scan, and the totals row states how much of the volume's used space an unfiltered scan accounts for.</li>
 <li><b>Memory</b> — RAM pressure plus top live consumers by real RSS, with safe fixes instead of raw <code>kill</code>.</li>
 <li><b>Cleanup wizard</b> — the plan, per-entry prompts, and live output, step by step: the GUI form of <code>clean --execute</code>.</li>
 <li><b>History</b> — past cleanup runs, shared with the CLI's <code>history</code> log.</li>

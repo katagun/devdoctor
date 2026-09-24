@@ -85,6 +85,13 @@ entries under a versioned heading as described in
 
 ### Added
 
+- **The web Disk page filters by age and states its coverage.** An "untouched
+  for" chip row (30d+, 90d+, 6mo+, 1y+) is the web form of `scan --older-than`:
+  it narrows the rows already loaded, leaves entries of unknown age out, and
+  runs no scan, like the risk chips. The totals row states how much of the
+  volume's used space an unfiltered scan accounts for, the coverage line the
+  CLI already printed. On the machine that prompted this, one click isolated
+  24 GB of `node_modules` untouched for 90 days.
 - **A scan says how much of the disk it accounts for.** DevDoctor reported 90 GB
   on a machine with 396 GB used and gave no hint that it was a quarter of the
   picture. Every unfiltered scan now ends with a coverage line, classified

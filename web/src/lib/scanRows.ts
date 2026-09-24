@@ -1,4 +1,5 @@
 import type { CacheTableRow } from "@/components/CacheTable";
+import { humanBytes } from "@/lib/format";
 
 export interface MinSizePartition {
   visibleRows: CacheTableRow[];
@@ -38,4 +39,35 @@ export function filterByRisk(
 ): CacheTableRow[] {
   if (risks.length === 0) return rows;
   return rows.filter((row) => risks.includes(row.risk));
+}
+
+const SECONDS_PER_DAY = 86_400;
+
+/**
+ * Keep rows untouched for at least `minAgeDays`, the web form of the CLI's
+ * `--older-than`. A row of unknown age never qualifies: "old enough" has to be
+ * shown, not assumed. No minimum returns the same array, for memo identity.
+ */
+export function filterByAge(
+  rows: CacheTableRow[],
+  minAgeDays: number,
+  nowSecs: number = Date.now() / 1000,
+): CacheTableRow[] {
+  if (minAgeDays <= 0) return rows;
+  const cutoff = nowSecs - minAgeDays * SECONDS_PER_DAY;
+  return rows.filter((row) => row.mtime !== null && row.mtime <= cutoff);
+}
+
+/** What an unfiltered scan accounts for against the volume's used space (#81). */
+export interface ScanCoverage {
+  usedBytes: number;
+  classifiedBytes: number;
+  ratio: number | null;
+}
+
+/** "accounts for 128.0G of 400.0G used · 32%", or null when the scan cannot say. */
+export function formatCoverage(coverage: ScanCoverage | null | undefined): string | null {
+  if (!coverage || coverage.ratio === null) return null;
+  const pct = Math.round(coverage.ratio * 100);
+  return `accounts for ${humanBytes(coverage.classifiedBytes)} of ${humanBytes(coverage.usedBytes)} used · ${pct}%`;
 }
