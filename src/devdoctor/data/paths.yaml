@@ -635,3 +635,12 @@
   paths:
     - ~/.exo/models
   recipe: "rm -rf {path}"
+
+- name: coresimulator-caches
+  description: iOS Simulator dyld shared caches (rebuilt on the next simulator boot)
+  risk: reclaimable
+  platforms: [darwin]
+  family: xcode
+  paths:
+    - ~/Library/Developer/CoreSimulator/Caches
+  recipe: "rm -rf {path}"
