@@ -14,7 +14,7 @@ always wins.
 
 | Provider | Covers | Risk |
 |---|---|---|
-| `uv-cache`, `pip-cache`, `poetry-cache` | Python package download caches | safe |
+| `uv-cache`, `pip-cache`, `poetry-cache` | Python package download caches (`uv-cache` asks `uv cache dir` where the cache is, and forces past the lock a parent `uv run` holds) | safe |
 | `npm-cache`, `pnpm-store`, `bun-cache` | JS package-manager stores | safe |
 | `yarn-cache` | Yarn cache (project-local Zero-Install caches are dangerous advice instead) | safe / dangerous |
 | `cargo-dependency-cache` | Cargo registry archives, sources, git checkouts | reclaimable |

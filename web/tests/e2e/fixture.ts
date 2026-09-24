@@ -27,6 +27,7 @@ export interface FixtureEnv {
   HOME: string;
   XDG_DATA_HOME: string;
   XDG_CONFIG_HOME: string;
+  XDG_CACHE_HOME: string;
   DEVDOCTOR_PROJECT_ROOTS: string;
   DEVDOCTOR_PATHS_YAML: string;
   DEVDOCTOR_E2E_ROOT: string;
@@ -75,6 +76,7 @@ export function buildFixture(): FixtureEnv {
     HOME: home,
     XDG_DATA_HOME: path.join(home, ".local", "share"),
     XDG_CONFIG_HOME: path.join(home, ".config"),
+    XDG_CACHE_HOME: path.join(home, ".cache"),
     DEVDOCTOR_PROJECT_ROOTS: projects,
     DEVDOCTOR_PATHS_YAML: yaml,
     DEVDOCTOR_E2E_ROOT: root,

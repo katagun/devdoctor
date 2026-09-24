@@ -61,6 +61,74 @@ def _path_entry(
     )
 
 
+def running_under_uv() -> bool:
+    """Whether this process is a child of ``uv run`` or ``uvx``.
+
+    Both export ``UV`` (the path of the uv binary) to the process they start, and
+    both keep the uv cache locked until it exits. A tool installed with ``uv tool
+    install`` runs on its own and sees neither.
+    """
+    return bool(os.environ.get("UV"))
+
+
+def _default_uv_cache_dir() -> Path:
+    """Where uv keeps its cache when ``uv cache dir`` cannot say (uv's own defaults)."""
+    configured = os.environ.get("UV_CACHE_DIR")
+    if configured:
+        return Path(os.path.expanduser(configured))
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    base = Path(os.path.expanduser(xdg)) if xdg else Path.home() / ".cache"
+    return base / "uv"
+
+
+class UvCacheProvider(Provider):
+    name = "uv-cache"
+    family = "python"
+    description = "uv package cache"
+    platforms = ("darwin", "linux")
+    risk = Risk.SAFE
+    details = (
+        "Asks uv cache dir for the active cache and clears it with uv cache clean. When "
+        "devdoctor itself runs under uv run or uvx, that parent process holds the cache "
+        "lock until devdoctor exits and a plain uv cache clean would wait for it forever, "
+        "so the cleanup passes --force; the running environment keeps its own copies of "
+        "its packages, so this is safe. Without uv on PATH the directory is deleted."
+    )
+
+    def discover(self) -> list[Entry]:
+        uv_available = self._shell.which("uv") is not None
+        path = self._cache_dir(uv_available)
+        if uv_available:
+            argv = ["uv", "cache", "clean"]
+            if running_under_uv():
+                argv.append("--force")
+                self.diagnostics.append(
+                    "uv-cache: devdoctor is running under uv run or uvx, which holds the uv "
+                    "cache lock until it exits; cleanup passes --force to get past it (#127)"
+                )
+            actions: tuple[CleanupAction, ...] = (CommandAction(tuple(argv)),)
+        else:
+            actions = (DeletePathAction(path),)
+        entry = _path_entry(
+            self,
+            path,
+            id_=str(path),
+            label=str(path),
+            risk=self.risk,
+            actions=actions,
+            reclaimable=True,
+        )
+        return [entry] if entry is not None else []
+
+    def _cache_dir(self, uv_available: bool) -> Path:
+        if uv_available:
+            result = self._shell.run(["uv", "cache", "dir"], check=False)
+            path = _path_from_output(result.stdout) if result.returncode == 0 else None
+            if path is not None:
+                return path
+        return _default_uv_cache_dir()
+
+
 class PnpmStoreProvider(Provider):
     name = "pnpm-store"
     family = "javascript"

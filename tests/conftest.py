@@ -23,6 +23,12 @@ def _isolate_home_and_xdg_dirs(tmp_path: Path, monkeypatch):
     """
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    # The uv cache provider honours UV_CACHE_DIR (CI runners export one that
+    # exists) and forces past the lock when UV says a parent uv started us; the
+    # suite runs under `uv run` and must behave as it does from a plain shell.
+    monkeypatch.delenv("UV_CACHE_DIR", raising=False)
+    monkeypatch.delenv("UV", raising=False)
     # Keep project-artifact scans hermetic. Provider-specific tests override
     # this with an explicit fixture tree.
     monkeypatch.setenv("DEVDOCTOR_PROJECT_ROOTS", str(tmp_path / "projects"))

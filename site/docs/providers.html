@@ -14,7 +14,7 @@
 
 <h2>Safe — regenerable caches</h2>
 <table><tr><th>Provider</th><th>Covers</th></tr>
-<tr><td><code>uv-cache</code>, <code>pip-cache</code>, <code>poetry-cache</code></td><td>Python package download caches</td></tr>
+<tr><td><code>uv-cache</code>, <code>pip-cache</code>, <code>poetry-cache</code></td><td>Python package download caches (<code>uv-cache</code> asks <code>uv cache dir</code> where the cache is, and forces past the lock a parent <code>uv run</code> holds)</td></tr>
 <tr><td><code>npm-cache</code>, <code>pnpm-store</code>, <code>bun-cache</code></td><td>JS package-manager stores</td></tr>
 <tr><td><code>go-caches</code></td><td>Go build, test, fuzz, and module caches</td></tr>
 <tr><td><code>nuget-caches</code></td><td>NuGet global packages, HTTP, temp, plugin caches</td></tr>

@@ -93,7 +93,8 @@ def test_env_override_replaces_default_yaml(tmp_path: Path, monkeypatch):
     providers = load_providers(FakeShell())
     names = {p.name for p in providers}
     assert "custom" in names
-    assert "uv-cache" not in names  # env override replaced the default
+    assert "pip-cache" not in names  # env override replaced the default
+    assert "uv-cache" in names  # class providers are not part of the YAML catalogue
 
 
 def test_malformed_yaml_raises_with_clear_message(tmp_path: Path, monkeypatch):

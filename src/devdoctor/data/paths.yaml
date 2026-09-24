@@ -1,11 +1,3 @@
-- name: uv-cache
-  description: uv package cache
-  risk: safe
-  platforms: [darwin, linux]
-  paths:
-    - ~/.cache/uv
-  recipe: "uv cache clean"
-
 - name: pip-cache
   description: pip download cache
   risk: safe
