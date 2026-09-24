@@ -20,6 +20,7 @@ from devdoctor.providers.project_artifacts import (
     CargoTargetsProvider,
     NodeModulesProvider,
     ProjectArtifactIndex,
+    TerraformProvider,
     ToxNoxProvider,
 )
 from devdoctor.providers.time_machine import TimeMachineSnapshotsProvider
@@ -61,6 +62,7 @@ _CLASS_PROVIDERS: list[type[Provider]] = [
     NodeModulesProvider,
     NuGetCacheProvider,
     PnpmStoreProvider,
+    TerraformProvider,
     TimeMachineSnapshotsProvider,
     ToxNoxProvider,
     UvCacheProvider,

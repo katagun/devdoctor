@@ -147,10 +147,10 @@ def _report_with(diagnostics: list[str]) -> Report:
 
 def test_render_shows_diagnostic_note_when_present() -> None:
     out = _render(_report_with(["test-cache: skipped 2 path(s) while sizing"]))
-    assert "diagnostic" in out
+    assert "note(s) from the scan" in out
     assert "skipped" in out
 
 
 def test_render_omits_diagnostics_when_empty() -> None:
     out = _render(_report_with([]))
-    assert "diagnostic" not in out
+    assert "note(s) from the scan" not in out

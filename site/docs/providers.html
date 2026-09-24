@@ -40,6 +40,7 @@
 <tr><td><code>time-machine-local-snapshots</code> (macOS)</td><td>Local snapshots; all-but-newest bundle plus per-snapshot entries</td></tr>
 <tr><td><code>node-project-dependencies</code></td><td><code>node_modules</code> under common code roots</td></tr>
 <tr><td><code>cargo-targets</code>, <code>cargo-dependency-cache</code></td><td>Cargo build dirs; registry archives and git checkouts</td></tr>
+<tr><td><code>terraform-workspaces</code></td><td>Per-workspace <code>.terraform</code> directories (re-created by <code>terraform init</code>); the scan measures the plugin copies a shared <code>TF_PLUGIN_CACHE_DIR</code> would collapse</td></tr>
 <tr><td><code>python-venvs</code></td><td>Virtualenvs (rebuildable)</td></tr>
 <tr><td><code>conda-package-caches</code></td><td>Conda package caches</td></tr>
 <tr><td><code>xcode-development-data</code> (macOS)</td><td>Derived data, device support, archives, unavailable simulators</td></tr>
