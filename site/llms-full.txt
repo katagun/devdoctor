@@ -438,6 +438,8 @@ always wins.
 | `nltk-data`, `spacy-cache`, `wandb-cache`, `sentence-transformers-cache`, `torch-hub-cache`, `flair-cache`, `llama-cpp-cache`, `modelscope-cache`, `helix-cache` | ML/NLP datasets and model caches | reclaimable |
 | `docker` | Images, containers, and unused volumes (named volumes: dangerous; anonymous: reclaimable) | reclaimable / dangerous |
 | `docker-vm-disk` | The Docker Desktop VM disk file itself | reclaimable |
+| `colima-vm-disk` | Colima (Lima) VM disk images; advice only, since deleting one destroys the VM's containers and volumes | reclaimable |
+| `colima-cache` | Colima's downloaded VM base images | safe |
 | `git-worktrees` | Linked worktrees whose branches are fully integrated (anything else: advice) | reclaimable |
 | `time-machine-local-snapshots` (macOS only) | Local snapshots; one all-but-newest bundle plus per-snapshot entries | reclaimable |
 | `node-project-dependencies` | `node_modules` under common code roots | reclaimable |

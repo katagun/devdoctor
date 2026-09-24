@@ -315,6 +315,6 @@ def _infer_provider_family(name: str) -> str:
     }
     if family := exact.get(name):
         return family
-    if name.startswith("docker-"):
+    if name.startswith(("docker-", "colima-")):
         return "containers"
     return "local-ai"
