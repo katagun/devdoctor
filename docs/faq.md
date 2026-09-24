@@ -63,6 +63,16 @@ approved already handles them), entries that changed after the scan (git
 worktrees are re-checked before removal), and entries whose provider
 reported them unavailable.
 
+## Why does `uv cache clean` hang or fail when I run DevDoctor with `uv run`?
+
+`uv run` and `uvx` hold the uv cache lock for as long as the program they
+started is running, so a `uv cache clean` started from inside waits for that
+lock forever. DevDoctor notices when it is running under uv (both export
+`UV=<path to uv>` to their child) and passes `--force`; the plan shows the
+exact command, and a scan says so in its diagnostics. It is safe: the
+running environment keeps its own copies of its packages. A `devdoctor`
+installed with `uv tool install` runs on its own and needs no override.
+
 ## Do I need Full Disk Access / sudo?
 
 Only for seeing everything. Unreadable paths land in the report's

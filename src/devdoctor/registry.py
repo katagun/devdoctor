@@ -31,6 +31,7 @@ from devdoctor.providers.tool_caches import (
     GoCachesProvider,
     NuGetCacheProvider,
     PnpmStoreProvider,
+    UvCacheProvider,
     YarnCacheProvider,
 )
 from devdoctor.providers.venv import VenvProvider
@@ -62,6 +63,7 @@ _CLASS_PROVIDERS: list[type[Provider]] = [
     PnpmStoreProvider,
     TimeMachineSnapshotsProvider,
     ToxNoxProvider,
+    UvCacheProvider,
     VenvProvider,
     XcodeProvider,
     YarnCacheProvider,

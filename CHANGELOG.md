@@ -221,6 +221,13 @@ entries under a versioned heading as described in
 
 ### Fixed
 
+- **Cleaning the uv cache no longer hangs when DevDoctor runs under `uv run`.**
+  `uv run` and `uvx` hold the uv cache lock until the program they started
+  exits, so the `uv cache clean` they spawned waited for that lock forever and
+  the 5.9 GB cache stayed. The `uv-cache` provider now asks `uv cache dir`
+  where the cache is (so `UV_CACHE_DIR` is honoured), passes `--force` when it
+  detects a parent uv process, and says so in the scan's diagnostics; without
+  uv on PATH it deletes the directory. (#127)
 - **A file that occupies nothing is counted as nothing.** Zero allocated blocks
   was read as "this filesystem hides block counts" and the file was counted at
   its full length, so a VM disk image that had never been written to read as

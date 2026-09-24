@@ -37,6 +37,9 @@ The end-of-run summary says so explicitly when it detects the measured change la
 <h2>Why is something skipped?</h2>
 <p>Every skip carries a reason: <code>dangerous</code> without <code>--allow-dangerous</code>, advice-only entries, covered entries, entries that changed after the scan, and unavailable providers.</p>
 
+<h2>Why does <code>uv cache clean</code> hang or fail when I run DevDoctor with <code>uv run</code>?</h2>
+<p><code>uv run</code> and <code>uvx</code> hold the uv cache lock while the program they started is running, so a <code>uv cache clean</code> started from inside waits for that lock forever. DevDoctor notices when it is running under uv (both export <code>UV=&lt;path to uv&gt;</code> to their child) and passes <code>--force</code>; the plan shows the exact command, and a scan says so in its diagnostics. It is safe: the running environment keeps its own copies of its packages. A <code>devdoctor</code> installed with <code>uv tool install</code> runs on its own and needs no override.</p>
+
 <h2>Do I need Full Disk Access / sudo?</h2>
 <p>Only for seeing everything. Unreadable paths land in the report's <code>diagnostics</code> and are excluded from totals. On macOS, grant Full Disk Access (System Settings › Privacy &amp; Security) if the total looks too small.</p>
 
