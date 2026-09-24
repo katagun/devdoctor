@@ -85,6 +85,10 @@ entries under a versioned heading as described in
 
 ### Added
 
+- **The iOS Simulator's dyld caches are covered.** `~/Library/Developer/
+  CoreSimulator/Caches` held 1.3 GB on the machine that prompted #88 while the
+  Xcode provider attributed only the unavailable simulators; `coresimulator-caches`
+  offers it as a reclaimable deletion, rebuilt on the next simulator boot.
 - **Terraform workspaces are covered, and the duplicate plugins are measured.**
   `terraform-workspaces` finds `.terraform` next to `.terraform.lock.hcl` or
   `main.tf` under the project roots and offers each as a reclaimable deletion

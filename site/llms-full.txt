@@ -455,6 +455,7 @@ always wins.
 | `tox-nox-environments` | Generated tox/nox test environments | safe |
 | `conda-environments` | Non-base Conda environments (may hold your work) | dangerous |
 | `xcode-development-data` (macOS only) | Derived data, device support, archives, unavailable simulators | reclaimable |
+| `coresimulator-caches` (macOS only) | The iOS Simulator's dyld shared caches, rebuilt on the next simulator boot | reclaimable |
 | `android-sdk-storage`, `android-project-builds` | SDK system images, emulator storage, Gradle build dirs | reclaimable |
 | `ollama`, `huggingface-hub`, `lm-studio-models`, `gpt4all-models`, `jan-models`, `msty-models`, and other `*-models` / `*-cache` AI providers | Local model weights and inference caches | reclaimable |
 | `large-files` | Unusually large files anywhere scanned — user data until you say otherwise | dangerous |

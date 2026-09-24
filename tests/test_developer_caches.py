@@ -35,6 +35,7 @@ def _payload(path: Path) -> None:
         ("pyenv-versions", "python", Risk.RECLAIMABLE),
         ("vagrant-boxes", "containers", Risk.RECLAIMABLE),
         ("steampipe-plugins", "infra", Risk.RECLAIMABLE),
+        ("coresimulator-caches", "xcode", Risk.RECLAIMABLE),
     ],
 )
 def test_catalogue_names_family_and_risk(name: str, family: str, risk: Risk) -> None:
@@ -47,11 +48,13 @@ def test_caches_are_plain_deletions(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("HOME", str(home))
     for rel in ("cache/pre-commit", "cache/puppeteer", "cache/docling"):
         _payload(home / ("." + rel))
+    _payload(home / "Library" / "Developer" / "CoreSimulator" / "Caches" / "dyld")
 
     for name, rel in (
         ("pre-commit-cache", ".cache/pre-commit"),
         ("puppeteer-browsers", ".cache/puppeteer"),
         ("docling-cache", ".cache/docling"),
+        ("coresimulator-caches", "Library/Developer/CoreSimulator/Caches"),
     ):
         [entry] = _provider(name).discover()
         assert entry.path == home / rel
