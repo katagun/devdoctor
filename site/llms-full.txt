@@ -430,6 +430,7 @@ always wins.
 | `nuget-caches` | NuGet global packages, HTTP, temp, plugin caches | safe |
 | `conda-package-caches` | Conda package caches | reclaimable |
 | `homebrew-downloads` | Cached Homebrew bottles | safe |
+| `pre-commit-cache`, `puppeteer-browsers`, `node-gyp-cache`, `electron-cache`, `opam-download-cache`, `google-updater-cache` | Tool download caches: hook environments, browsers, Node headers, Electron binaries, opam sources, updater downloads | safe |
 | `gradle-caches` | JVM build caches | safe |
 | `maven-repo` | Local Maven repository (re-downloadable artifacts) | reclaimable |
 | `chrome-cache`, `firefox-cache`, `arc-browser-cache`, `vscode-cache`, `cursor-cache` | Browser and editor caches | safe |
@@ -440,6 +441,8 @@ always wins.
 | `docker-vm-disk` | The Docker Desktop VM disk file itself | reclaimable |
 | `colima-vm-disk` | Colima (Lima) VM disk images; advice only, since deleting one destroys the VM's containers and volumes | reclaimable |
 | `colima-cache` | Colima's downloaded VM base images | safe |
+| `rustup-toolchains`, `nvm-node-versions`, `pyenv-versions` | Installed toolchains and language versions, one entry each; advice names the tool's own uninstall command, since one may be in use and a bare delete leaves the tool's index stale | reclaimable |
+| `vagrant-boxes`, `steampipe-plugins`, `docling-cache` | Downloaded boxes and plugins (advice: `vagrant box prune`, `steampipe plugin uninstall`) and Docling models | reclaimable |
 | `git-worktrees` | Linked worktrees whose branches are fully integrated (anything else: advice) | reclaimable |
 | `time-machine-local-snapshots` (macOS only) | Local snapshots; one all-but-newest bundle plus per-snapshot entries | reclaimable |
 | `node-project-dependencies` | `node_modules` under common code roots | reclaimable |

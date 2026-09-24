@@ -441,3 +441,120 @@
   paths:
     - ~/.local/share/ramalama
   recipe: "rm -rf {path}"
+
+# --- The tail of developer caches (#88) -------------------------------------
+
+- name: pre-commit-cache
+  description: pre-commit hook environments
+  risk: safe
+  platforms: [darwin, linux]
+  family: python
+  paths:
+    - ~/.cache/pre-commit
+  recipe: "rm -rf {path}"
+
+- name: puppeteer-browsers
+  description: Puppeteer downloaded browsers
+  risk: safe
+  platforms: [darwin, linux]
+  family: javascript
+  paths:
+    - ~/.cache/puppeteer
+  recipe: "rm -rf {path}"
+
+- name: node-gyp-cache
+  description: node-gyp downloaded Node headers
+  risk: safe
+  platforms: [darwin, linux]
+  family: javascript
+  paths:
+    - ~/Library/Caches/node-gyp
+    - ~/.cache/node-gyp
+  recipe: "rm -rf {path}"
+
+- name: electron-cache
+  description: Electron downloaded binaries
+  risk: safe
+  platforms: [darwin, linux]
+  family: javascript
+  paths:
+    - ~/Library/Caches/electron
+    - ~/.cache/electron
+  recipe: "rm -rf {path}"
+
+- name: opam-download-cache
+  description: opam source download cache
+  risk: safe
+  platforms: [darwin, linux]
+  family: ocaml
+  paths:
+    - ~/.opam/download-cache
+  recipe: "rm -rf {path}"
+
+- name: google-updater-cache
+  description: Google updater downloaded extension cache
+  risk: safe
+  platforms: [darwin]
+  family: desktop-apps
+  paths:
+    - ~/Library/Application Support/Google/GoogleUpdater/crx_cache
+  recipe: "rm -rf {path}"
+
+- name: docling-cache
+  description: Docling downloaded models
+  risk: reclaimable
+  platforms: [darwin, linux]
+  family: local-ai
+  paths:
+    - ~/.cache/docling
+  recipe: "rm -rf {path}"
+
+- name: rustup-toolchains
+  description: Installed Rust toolchains (one entry each)
+  risk: reclaimable
+  platforms: [darwin, linux]
+  family: rust
+  paths:
+    - ~/.rustup/toolchains/*
+  recipe:
+    - "echo 'A rustup toolchain; rustup toolchain list marks the default. Remove an old one with: rustup toolchain uninstall <name>. Deleting the directory by hand leaves rustup with a stale index.'"
+
+- name: nvm-node-versions
+  description: Node versions installed by nvm (one entry each)
+  risk: reclaimable
+  platforms: [darwin, linux]
+  family: javascript
+  paths:
+    - ~/.nvm/versions/node/*
+  recipe:
+    - "echo 'A Node version installed by nvm; nvm ls marks the current and default ones. Remove an old one with: nvm uninstall <version>.'"
+
+- name: pyenv-versions
+  description: Python versions installed by pyenv (one entry each)
+  risk: reclaimable
+  platforms: [darwin, linux]
+  family: python
+  paths:
+    - ~/.pyenv/versions/*
+  recipe:
+    - "echo 'A Python version installed by pyenv; pyenv versions marks the one in use, and virtualenvs made from it stop working without it. Remove an old one with: pyenv uninstall <version>.'"
+
+- name: vagrant-boxes
+  description: Vagrant downloaded box images
+  risk: reclaimable
+  platforms: [darwin, linux]
+  family: containers
+  paths:
+    - ~/.vagrant.d/boxes
+  recipe:
+    - "echo 'Vagrant boxes are re-downloaded on the next vagrant up. vagrant box prune --force removes every version but the newest of each box; vagrant box remove <name> removes one; vagrant box list shows what is here.'"
+
+- name: steampipe-plugins
+  description: Steampipe installed plugins
+  risk: reclaimable
+  platforms: [darwin, linux]
+  family: infra
+  paths:
+    - ~/.steampipe/plugins
+  recipe:
+    - "echo 'Steampipe plugins are re-installed with steampipe plugin install. steampipe plugin list shows what is here; remove one with: steampipe plugin uninstall <name>.'"
