@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CacheTableRow } from "@/components/CacheTable";
-import { filterByRisk, partitionByMinSize } from "@/lib/scanRows";
+import { filterByAge, filterByRisk, formatCoverage, partitionByMinSize } from "@/lib/scanRows";
 
 function row(
   id: string,
@@ -61,5 +61,45 @@ describe("filterByRisk", () => {
   it("keeps only rows whose risk is selected", () => {
     expect(filterByRisk(rows, ["dangerous"]).map((r) => r.id)).toEqual(["d"]);
     expect(filterByRisk(rows, ["safe", "reclaimable"]).map((r) => r.id)).toEqual(["s", "r"]);
+  });
+});
+
+describe("filterByAge", () => {
+  const DAY = 86_400;
+  const now = 1_800_000_000;
+  const aged = (id: string, days: number | null) => ({
+    ...row(id, 1),
+    mtime: days === null ? null : now - days * DAY,
+  });
+  const rows = [aged("fresh", 3), aged("stale", 120), aged("ancient", 400), aged("unknown", null)];
+
+  it("returns the same array when no minimum age is set", () => {
+    expect(filterByAge(rows, 0, now)).toBe(rows);
+  });
+
+  it("keeps rows untouched for at least the minimum, oldest included", () => {
+    expect(filterByAge(rows, 90, now).map((r) => r.id)).toEqual(["stale", "ancient"]);
+    expect(filterByAge(rows, 365, now).map((r) => r.id)).toEqual(["ancient"]);
+  });
+
+  it("leaves rows of unknown age out, as the CLI's --older-than does", () => {
+    expect(filterByAge(rows, 1, now).map((r) => r.id)).not.toContain("unknown");
+  });
+
+  it("treats exactly the minimum as old enough", () => {
+    expect(filterByAge([aged("edge", 30)], 30, now).map((r) => r.id)).toEqual(["edge"]);
+  });
+});
+
+describe("formatCoverage", () => {
+  it("states what the scan accounts for against the volume's used space", () => {
+    expect(
+      formatCoverage({ usedBytes: 400 * 2 ** 30, classifiedBytes: 128 * 2 ** 30, ratio: 0.32 }),
+    ).toBe("accounts for 128.0G of 400.0G used · 32%");
+  });
+
+  it("is empty without a ratio", () => {
+    expect(formatCoverage(null)).toBeNull();
+    expect(formatCoverage({ usedBytes: 0, classifiedBytes: 0, ratio: null })).toBeNull();
   });
 });

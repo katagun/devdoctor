@@ -19,7 +19,7 @@ import { useCountdown } from "@/hooks/useCountdown";
 import { useScanETA } from "@/hooks/useScanETA";
 import { countNoun, humanBytes, RiskValue, timeAgo } from "@/lib/format";
 import { diskProviderParam } from "@/lib/providerFilters";
-import { filterByRisk, partitionByMinSize } from "@/lib/scanRows";
+import { filterByAge, filterByRisk, formatCoverage, partitionByMinSize } from "@/lib/scanRows";
 
 const NO_ROWS: CacheTableRow[] = [];
 
@@ -30,6 +30,24 @@ const RISK_CHIPS: Array<{ key: string; label: string; risks: RiskValue[] }> = [
   { key: "danger", label: "danger", risks: ["dangerous"] },
 ];
 
+// The web form of `scan --older-than`: an entry is as young as the youngest
+// thing it deletes, and one of unknown age is left out while a chip is active.
+const AGE_CHIPS: Array<{ key: string; label: string; minDays: number }> = [
+  { key: "any", label: "any age", minDays: 0 },
+  { key: "30d", label: "30d+", minDays: 30 },
+  { key: "90d", label: "90d+", minDays: 90 },
+  { key: "6mo", label: "6mo+", minDays: 182 },
+  { key: "1y", label: "1y+", minDays: 365 },
+];
+
+function chipClass(active: boolean): string {
+  return `px-2.5 py-[3px] rounded text-[10px] font-mono border ${
+    active
+      ? "border-btn-primary-bd bg-bg-safe-tint text-risk-safe"
+      : "border-border bg-bg-elev-1 text-text-dim hover:text-text"
+  }`;
+}
+
 export default function Scan() {
   const [searchParams] = useSearchParams();
   const providerQuery = searchParams.get("provider")?.trim() || undefined;
@@ -39,6 +57,8 @@ export default function Scan() {
     () => RISK_CHIPS.find((c) => c.key === activeChip)?.risks ?? [],
     [activeChip],
   );
+  const [activeAge, setActiveAge] = useState<string>("any");
+  const minAgeDays = AGE_CHIPS.find((c) => c.key === activeAge)?.minDays ?? 0;
 
   const { data: providers } = useProviders();
   const { disabled } = useSelectedProviders();
@@ -69,7 +89,11 @@ export default function Scan() {
   const [showHiddenRows, setShowHiddenRows] = useState(false);
 
   const allRows = data?.rows ?? NO_ROWS;
-  const riskRows = useMemo(() => filterByRisk(allRows, chipRisks), [allRows, chipRisks]);
+  const riskRows = useMemo(
+    () => filterByAge(filterByRisk(allRows, chipRisks), minAgeDays),
+    [allRows, chipRisks, minAgeDays],
+  );
+  const coverageLine = formatCoverage(data?.coverage);
   const { visibleRows, hiddenRows, hiddenBytes, visibleBytes } = useMemo(
     () => partitionByMinSize(riskRows, settings.minSizeBytes),
     [riskRows, settings.minSizeBytes],
@@ -121,19 +145,34 @@ export default function Scan() {
       </DiskPageHeader>
       <DomainToolTabs domain="disk" />
       <div className="px-4 py-2.5 border-b border-border flex gap-2 items-center flex-wrap">
-        {RISK_CHIPS.map((chip) => (
-          <button
-            key={chip.key}
-            onClick={() => setActiveChip(chip.key)}
-            className={`px-2.5 py-[3px] rounded text-[10px] font-mono border ${
-              activeChip === chip.key
-                ? "border-btn-primary-bd bg-bg-safe-tint text-risk-safe"
-                : "border-border bg-bg-elev-1 text-text-dim hover:text-text"
-            }`}
-          >
-            {chip.label}
-          </button>
-        ))}
+        <div role="group" aria-label="risk" className="flex gap-2 items-center">
+          {RISK_CHIPS.map((chip) => (
+            <button
+              key={chip.key}
+              onClick={() => setActiveChip(chip.key)}
+              aria-pressed={activeChip === chip.key}
+              className={chipClass(activeChip === chip.key)}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+        <span className="text-text-muted font-mono text-[10px]" aria-hidden="true">
+          ·
+        </span>
+        <div role="group" aria-label="untouched for" className="flex gap-2 items-center">
+          <span className="font-mono text-[10px] text-text-muted">untouched</span>
+          {AGE_CHIPS.map((chip) => (
+            <button
+              key={chip.key}
+              onClick={() => setActiveAge(chip.key)}
+              aria-pressed={activeAge === chip.key}
+              className={chipClass(activeAge === chip.key)}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
 
         <div className="ml-auto flex items-center gap-3 font-mono text-[10px] text-text-dim">
           <ColumnsPicker />
@@ -186,12 +225,22 @@ export default function Scan() {
             selected={selected}
             onToggle={toggle}
             density={settings.density}
+            emptyLabel={
+              activeChip !== "all" || activeAge !== "any"
+                ? "(no entries match the chips above)"
+                : undefined
+            }
           />
         )}
       </div>
 
       {/* Pinned totals row — always visible above the action bar, independent of scroll. */}
       <div className="px-4 py-2 border-t border-border bg-bg-elev-1 font-mono text-[11px] flex items-center justify-between gap-4 shrink-0">
+        {coverageLine && (
+          <span className="text-text-muted order-last" title="footprint of every entry against the volume's used space">
+            {coverageLine}
+          </span>
+        )}
         <span className="text-text-dim">
           <b className="text-text">
             {showHiddenRows ? riskRows.length : visibleRows.length}

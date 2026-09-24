@@ -99,6 +99,34 @@ describe("useScan", () => {
     expect(result.current.data?.totalBytes).toBe(0);
   });
 
+  it("carries the scan's coverage summary, and null when the server sent none", async () => {
+    const base = {
+      entries: [],
+      scanned_at: "2026-04-25T10:00:00Z",
+      hostname: "h",
+      platform: "darwin",
+      skipped_paths: [],
+    };
+    mockApiFetch.mockResolvedValueOnce({
+      ...base,
+      coverage: { used_bytes: 4000, classified_bytes: 1000, ratio: 0.25, skipped: 0, unclassified: null },
+    });
+    const { useScan } = await import("@/hooks/useScan");
+    const first = renderHook(() => useScan(), { wrapper });
+    await waitFor(() => expect(first.result.current.data).toBeTruthy());
+    expect(first.result.current.data?.coverage).toEqual({
+      usedBytes: 4000,
+      classifiedBytes: 1000,
+      ratio: 0.25,
+    });
+
+    // A filtered scan describes part of the disk, so the server sends no coverage.
+    mockApiFetch.mockResolvedValueOnce({ ...base, coverage: null });
+    const second = renderHook(() => useScan({ provider: "uv-cache" }), { wrapper });
+    await waitFor(() => expect(second.result.current.data).toBeTruthy());
+    expect(second.result.current.data?.coverage).toBeNull();
+  });
+
   it("passes provider filters through to the scan API", async () => {
     mockApiFetch.mockResolvedValue({
       entries: [],

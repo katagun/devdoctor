@@ -93,11 +93,14 @@ export function CacheTable({
   selected,
   onToggle,
   density = "sparse",
+  emptyLabel = "(no entries)",
 }: {
   rows: CacheTableRow[];
   selected: Set<string>;
   onToggle: (id: string, next: boolean) => void;
   density?: CacheTableDensity;
+  /** What to say when there are no rows; a page narrowing the rows names its filter. */
+  emptyLabel?: string;
 }) {
   const { isVisible } = useHiddenColumns();
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({
@@ -140,7 +143,7 @@ export function CacheTable({
   if (rows.length === 0) {
     return (
       <div className="p-8 text-center text-text-dim font-mono text-sm">
-        (no entries)
+        {emptyLabel}
       </div>
     );
   }

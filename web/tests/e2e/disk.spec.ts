@@ -49,3 +49,26 @@ test("selecting one row reads 'clean up 1 item' and the review step runs nothing
   expect(fs.existsSync(cachePath())).toBe(true);
   expect(fs.existsSync(nodeModulesPath())).toBe(true);
 });
+
+test("the age chips hide fresh rows without another scan, and the scan states its coverage", async ({
+  page,
+}) => {
+  await page.goto("/disk");
+  await expect(page.getByText(`${PROJECT_NAME}/node_modules`)).toBeVisible();
+  const scans: string[] = [];
+  page.on("request", (request) => {
+    if (/\/api\/(disk\/)?scan(\?|$)/.test(request.url())) scans.push(request.url());
+  });
+  // The fixture was written moments ago, so nothing is 30 days untouched.
+  await page.getByRole("button", { name: "30d+", exact: true }).click();
+  await expect(page.getByText(`${PROJECT_NAME}/node_modules`)).toHaveCount(0);
+  await expect(page.getByText(CACHE_LABEL).first()).toHaveCount(0);
+  await expect(page.getByText(/^0 shown/)).toBeVisible();
+  await expect(page.getByText("(no entries match the chips above)")).toBeVisible();
+  await page.getByRole("button", { name: "any age", exact: true }).click();
+  await expect(page.getByText(`${PROJECT_NAME}/node_modules`)).toBeVisible();
+  expect(scans).toEqual([]);
+
+  // An unfiltered scan says how much of the volume's used space it accounts for.
+  await expect(page.getByText(/accounts for .+ of .+ used · \d+%/)).toBeVisible();
+});
