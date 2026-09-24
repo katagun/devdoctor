@@ -85,6 +85,14 @@ entries under a versioned heading as described in
 
 ### Added
 
+- **Colima is covered.** `colima-vm-disk` finds the Lima disk images under
+  `~/.colima/_lima` (the data disk and each profile's diffdisk), reports what
+  they occupy against what they reserve like `Docker.raw`, and is advice only:
+  deleting a Lima disk destroys the VM's containers and volumes, so the guidance
+  is to free space inside the VM or `colima stop` and `colima delete`.
+  `colima-cache` offers the downloaded base images as a safe deletion. On the
+  machine that prompted this: 7.1 GB of disks and 673 MB of cache that no
+  provider saw. (#85)
 - **The web Disk page filters by age and states its coverage.** An "untouched
   for" chip row (30d+, 90d+, 6mo+, 1y+) is the web form of `scan --older-than`:
   it narrows the rows already loaded, leaves entries of unknown age out, and

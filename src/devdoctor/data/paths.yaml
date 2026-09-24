@@ -95,6 +95,29 @@
     - "echo 'Deleting files inside a running container frees nothing on the host; only removing images, containers, volumes or build cache does.'"
     - "echo 'Lowering the limit under Settings > Resources > Disk image size deletes every container, image and volume, and so does Troubleshoot > Clean / Purge data. Never delete this path while Docker is running.'"
 
+- name: colima-vm-disk
+  description: Colima (Lima) VM disk images (sparse; they occupy less than their size limit)
+  risk: reclaimable
+  platforms: [darwin, linux]
+  family: containers
+  paths:
+    - ~/.colima/_lima/_disks/*
+    - ~/.colima/_lima/*/diffdisk
+  recipe:
+    - "echo 'A Lima disk is a sparse image. The figure shown is what it occupies on disk; Finder and ls show its size limit instead.'"
+    - "echo 'To shrink it, free space inside the VM first (docker system prune against the colima context, or the docker entries in this report). Space freed inside the VM does not always come back to the host; recreating the VM does.'"
+    - "echo 'Deleting this path destroys every container, image and volume in the VM. To do that deliberately, stop the VM and remove it with its own tool: colima stop, then colima delete. Never delete this path while Colima is running.'"
+
+- name: colima-cache
+  description: Colima downloaded VM base images
+  risk: safe
+  platforms: [darwin, linux]
+  family: containers
+  paths:
+    - ~/Library/Caches/colima
+    - ~/.cache/colima
+  recipe: "rm -rf {path}"
+
 - name: claude-vm-bundles
   description: Claude Code VM bundles
   risk: reclaimable
