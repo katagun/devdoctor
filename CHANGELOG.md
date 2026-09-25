@@ -278,6 +278,12 @@ entries under a versioned heading as described in
 
 ### Fixed
 
+- **The e2e harness no longer reaches Docker Desktop's bundled CLI.** Its server
+  runs with no `docker` on PATH, so the Docker provider fell back to Docker
+  Desktop's CLI and, with Docker running, would have put the machine's real
+  images, volumes and build cache into the fixture scan.
+  `DEVDOCTOR_DOCKER_BUNDLED_CLI` now points that fallback at another path, or
+  turns it off when empty, as the harness and the Python tests do.
 - **Cleaning the uv cache no longer hangs when DevDoctor runs under `uv run`.**
   `uv run` and `uvx` hold the uv cache lock until the program they started
   exits, so the `uv cache clean` they spawned waited for that lock forever and

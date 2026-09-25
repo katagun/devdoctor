@@ -216,7 +216,8 @@ def test_discover_handles_unparseable_output(monkeypatch):
 
 
 # Docker Desktop always ships a bundled CLI at this path (and usually symlinks
-# it into /usr/local/bin, which may be missing). See issue #123.
+# it into /usr/local/bin, which may be missing). See issue #123. tests/conftest.py
+# turns the fallback off, so the tests of its default behaviour opt back in.
 _BUNDLED_DOCKER = "/Applications/Docker.app/Contents/Resources/bin/docker"
 
 
@@ -241,22 +242,26 @@ def _shell_with_bundled_cli() -> FakeShell:
 
 def test_available_falls_back_to_bundled_cli_on_darwin(monkeypatch):
     monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.delenv("DEVDOCTOR_DOCKER_BUNDLED_CLI")
     assert DockerProvider(_shell_with_bundled_cli()).available() is True
 
 
 def test_available_false_when_no_docker_anywhere(monkeypatch):
     monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.delenv("DEVDOCTOR_DOCKER_BUNDLED_CLI")
     sh = FakeShell(which_table={"docker": None})
     assert DockerProvider(sh).available() is False
 
 
 def test_available_ignores_bundled_cli_on_linux(monkeypatch):
     monkeypatch.setattr("sys.platform", "linux")
+    monkeypatch.delenv("DEVDOCTOR_DOCKER_BUNDLED_CLI")
     assert DockerProvider(_shell_with_bundled_cli()).available() is False
 
 
 def test_discover_runs_bundled_cli_and_uses_absolute_path_in_recipes(monkeypatch):
     monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.delenv("DEVDOCTOR_DOCKER_BUNDLED_CLI")
     provider = DockerProvider(_shell_with_bundled_cli())
     entries = {e.id: e for e in provider.discover()}
     assert entries["images"].recipe == [f"{_BUNDLED_DOCKER} image prune -a -f"]
@@ -268,6 +273,7 @@ def test_discover_runs_bundled_cli_and_uses_absolute_path_in_recipes(monkeypatch
 
 def test_discover_prefers_path_docker_over_bundled_cli(monkeypatch):
     monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.delenv("DEVDOCTOR_DOCKER_BUNDLED_CLI")
     sh = FakeShell(
         which_table={"docker": "/usr/local/bin/docker", _BUNDLED_DOCKER: _BUNDLED_DOCKER},
         responses={
@@ -280,6 +286,37 @@ def test_discover_prefers_path_docker_over_bundled_cli(monkeypatch):
     assert entries["images"].recipe == ["docker image prune -a -f"]
     assert all(call[0] == "docker" for call in sh.calls)
     assert all(_BUNDLED_DOCKER not in note for note in provider.diagnostics)
+
+
+def test_an_empty_bundled_cli_setting_means_no_docker_and_runs_nothing(monkeypatch):
+    """The e2e harness sets it empty so the developer's Docker Desktop stays out of its scan."""
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setenv("DEVDOCTOR_DOCKER_BUNDLED_CLI", "")
+    sh = _shell_with_bundled_cli()
+    provider = DockerProvider(sh)
+    assert provider.available() is False
+    assert provider.discover() == []
+    assert sh.calls == []
+    assert provider.diagnostics == []
+
+
+def test_the_bundled_cli_setting_replaces_the_default_path(monkeypatch):
+    monkeypatch.setattr("sys.platform", "darwin")
+    custom = "/Users/dev/Applications/Docker.app/Contents/Resources/bin/docker"
+    monkeypatch.setenv("DEVDOCTOR_DOCKER_BUNDLED_CLI", custom)
+    sh = FakeShell(
+        # The default install exists too; the configured path must win over it.
+        which_table={"docker": None, _BUNDLED_DOCKER: _BUNDLED_DOCKER, custom: custom},
+        responses={
+            (custom, "system", "df", "--format", "json"): ShellResult(0, _DOCKER_DF_JSON, ""),
+            (custom, *_VOLUME_DETAILS_COMMAND[1:]): ShellResult(0, _VOLUME_DETAILS, ""),
+        },
+    )
+    provider = DockerProvider(sh)
+    entries = {e.id: e for e in provider.discover()}
+    assert entries["images"].actions[0].argv == (custom, "image", "prune", "-a", "-f")
+    assert {call[0] for call in sh.calls} == {custom}
+    assert any(custom in note for note in provider.diagnostics)
 
 
 class _HangingDocker(FakeShell):
