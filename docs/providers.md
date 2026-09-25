@@ -50,6 +50,8 @@ always wins.
 | `coresimulator-caches` (macOS only) | The iOS Simulator's dyld shared caches, rebuilt on the next simulator boot | reclaimable |
 | `android-sdk-storage`, `android-project-builds` | SDK system images, emulator storage, Gradle build dirs | reclaimable |
 | `ollama`, `huggingface-hub`, `lm-studio-models`, `gpt4all-models`, `jan-models`, `msty-models`, and other `*-models` / `*-cache` AI providers | Local model weights and inference caches | reclaimable |
+| `codex-sessions`, `claude-code-sessions` | Agent transcripts grouped into age buckets (under 30 days, 30 to 90, 90 to 180, 180 to 365, over a year); a bucket untouched for the retention floor (90 days, `DEVDOCTOR_SESSION_RETENTION_DAYS`, never under 30) is offered one session at a time, younger buckets are shown and never offered | reclaimable / dangerous |
+| `opencode-sessions` | OpenCode's session database, sessions counted by age read-only; never edited | dangerous |
 | `large-files` | Unusually large files anywhere scanned — user data until you say otherwise | dangerous |
 | `downloads` | `~/Downloads` | dangerous |
 

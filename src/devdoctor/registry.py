@@ -7,6 +7,11 @@ from pathlib import Path
 import yaml
 
 from devdoctor.ports import Shell
+from devdoctor.providers.agent_sessions import (
+    ClaudeCodeSessionsProvider,
+    CodexSessionsProvider,
+    OpenCodeSessionsProvider,
+)
 from devdoctor.providers.base import PathProvider, Provider
 from devdoctor.providers.docker import DockerProvider
 from devdoctor.providers.git_worktrees import GitWorktreeProvider
@@ -51,6 +56,8 @@ _CLASS_PROVIDERS: list[type[Provider]] = [
     BunCacheProvider,
     CargoCacheProvider,
     CargoTargetsProvider,
+    ClaudeCodeSessionsProvider,
+    CodexSessionsProvider,
     CondaCacheProvider,
     CondaEnvironmentsProvider,
     GitWorktreeProvider,
@@ -59,6 +66,7 @@ _CLASS_PROVIDERS: list[type[Provider]] = [
     LargeFilesProvider,
     LMStudioProvider,
     OllamaProvider,
+    OpenCodeSessionsProvider,
     NodeModulesProvider,
     NuGetCacheProvider,
     PnpmStoreProvider,

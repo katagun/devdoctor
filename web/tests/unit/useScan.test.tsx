@@ -127,6 +127,25 @@ describe("useScan", () => {
     expect(second.result.current.data?.coverage).toBeNull();
   });
 
+  it("counts an entry's further commands in its recipe hint, but not advice", async () => {
+    mockApiFetch.mockResolvedValue({
+      entries: [
+        { ...entry("bucket", 10, "reclaimable"), recipe: ["rm -f -- /a", "rm -f -- /b", "rm -f -- /c"] },
+        { ...entry("advice", 10, "dangerous"), recipe: ["echo 'one'", "echo 'two'"] },
+      ],
+      scanned_at: "2026-04-25T10:00:00Z",
+      hostname: "h",
+      platform: "darwin",
+      skipped_paths: [],
+    });
+    const { useScan } = await import("@/hooks/useScan");
+    const { result } = renderHook(() => useScan(), { wrapper });
+    await waitFor(() => expect(result.current.data).toBeTruthy());
+    const byId = Object.fromEntries(result.current.data!.rows.map((r) => [r.id, r]));
+    expect(byId.bucket.recipeHint).toBe("rm -f -- /a (+2 more)");
+    expect(byId.advice.recipeHint).toBe("echo 'one'");
+  });
+
   it("passes provider filters through to the scan API", async () => {
     mockApiFetch.mockResolvedValue({
       entries: [],

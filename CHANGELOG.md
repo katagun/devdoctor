@@ -85,6 +85,19 @@ entries under a versioned heading as described in
 
 ### Added
 
+- **Agent session stores, offered by age.** Codex and Claude Code transcripts
+  are the user's history, so the new `agent-sessions` family never offers them
+  wholesale. `codex-sessions` and `claude-code-sessions` group sessions into
+  fixed age buckets (under 30 days, 30 to 90, 90 to 180, 180 to 365, over a year), one
+  entry each, as young as the bucket's newest member, so `--older-than 90d`
+  selects whole buckets exactly. Buckets untouched for the retention floor
+  (90 days; `DEVDOCTOR_SESSION_RETENTION_DAYS`, never under 30) are
+  reclaimable with one delete per session; younger buckets are dangerous and
+  advice only, even under `--allow-dangerous`. A Claude Code session is its
+  transcript plus the directory beside it (subagents, tool results); `memory/`
+  is never touched. `opencode-sessions` sizes OpenCode's SQLite database and
+  counts its sessions by age read-only; no database is ever edited. The web
+  recipe hint now counts an entry's further commands. (#84)
 - **The iOS Simulator's dyld caches are covered.** `~/Library/Developer/
   CoreSimulator/Caches` held 1.3 GB on the machine that prompted #88 while the
   Xcode provider attributed only the unavailable simulators; `coresimulator-caches`

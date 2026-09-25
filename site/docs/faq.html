@@ -46,6 +46,9 @@ The end-of-run summary says so explicitly when it detects the measured change la
 <h2>Is my data sent anywhere?</h2>
 <p>No. Scanning, cleanup, and the web UI are all local; the landing page ships no cookies or analytics.</p>
 
+<h2>Why is my agent history shown but not offered?</h2>
+<p>Codex and Claude Code transcripts are your history, not a cache, so the <code>agent-sessions</code> providers never offer them wholesale. Sessions are grouped into age buckets (under 30 days, 30 to 90, 90 to 180, 180 to 365, over a year). A bucket untouched for the retention floor, 90 days by default, is offered one session at a time; anything younger is sized and shown and cannot be selected, even with <code>--allow-dangerous</code>. <code>devdoctor clean --provider codex-sessions --older-than 90d</code> is the whole operation. <code>DEVDOCTOR_SESSION_RETENTION_DAYS</code> raises or lowers the floor, never below 30. OpenCode keeps everything in one SQLite database: DevDoctor counts its sessions by age read-only and never edits it; delete old sessions in the app, then <code>VACUUM</code>.</p>
+
 <h2>Where do snapshots and history live?</h2>
 <p>Snapshots (<code>snapshot</code> / <code>diff</code>) and the cleanup history log (<code>history</code>) share one local store used by both the CLI and the web UI.</p>
 

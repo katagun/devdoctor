@@ -103,7 +103,7 @@ export function useScan(params: UseScanOptions = {}) {
           shared_bytes: e.shared_bytes ?? 0,
           risk: e.risk,
           mtime: e.mtime,
-          recipeHint: e.recipe[0] ?? "",
+          recipeHint: recipeHint(e.recipe),
           owner: e.owner ?? null,
           group: e.group ?? null,
           perms: e.perms ?? null,
@@ -130,4 +130,14 @@ function toCoverage(raw: ScanResponseCoverage | null | undefined): ScanCoverage 
     classifiedBytes: raw.classified_bytes,
     ratio: raw.ratio,
   };
+}
+
+/** The first recipe line, with a count when a command has siblings (an age
+ * bucket deletes one session per line); advice keeps its text as is. */
+function recipeHint(recipe: string[]): string {
+  const first = recipe[0] ?? "";
+  if (recipe.length > 1 && !first.startsWith("echo ")) {
+    return `${first} (+${recipe.length - 1} more)`;
+  }
+  return first;
 }

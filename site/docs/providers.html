@@ -52,6 +52,8 @@
 
 <h2>Dangerous — may hold user data</h2>
 <table><tr><th>Provider</th><th>Covers</th></tr>
+<tr><td><code>codex-sessions</code>, <code>claude-code-sessions</code></td><td>Agent transcripts in age buckets; only buckets past the 90-day retention floor are offered, one session at a time</td></tr>
+<tr><td><code>opencode-sessions</code></td><td>OpenCode's session database, counted by age read-only; never edited</td></tr>
 <tr><td><code>large-files</code></td><td>Unusually large files — user data until you say otherwise</td></tr>
 <tr><td><code>downloads</code></td><td><code>~/Downloads</code></td></tr>
 <tr><td><code>conda-environments</code></td><td>Non-base Conda environments (may hold your work)</td></tr>
