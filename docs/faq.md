@@ -86,6 +86,19 @@ No. Scanning, cleanup, and the web UI are all local; the landing page ships
 no cookies or analytics. The only network calls DevDoctor itself makes are
 the ones your package tools would make anyway when re-downloading.
 
+## Why is my agent history shown but not offered?
+
+Codex and Claude Code transcripts are your history, not a cache, so the
+`agent-sessions` providers never offer them wholesale. Sessions are grouped
+into age buckets (under 30 days, 30 to 90, 90 to 180, 180 to 365, over a year). A
+bucket untouched for the retention floor, 90 days by default, is offered one
+session at a time; anything younger is sized and shown and cannot be selected,
+even with `--allow-dangerous`. `devdoctor clean --provider codex-sessions
+--older-than 90d` is the whole operation. `DEVDOCTOR_SESSION_RETENTION_DAYS`
+raises or lowers the floor, never below 30. OpenCode keeps everything in one
+SQLite database: DevDoctor counts its sessions by age read-only and never
+edits it; delete old sessions in the app, then `VACUUM`.
+
 ## Where do snapshots and history live?
 
 Snapshots (`devdoctor snapshot` / `diff`) and the cleanup history log
