@@ -24,6 +24,11 @@ export interface WizardState {
   step: Step;
   entries: CacheTableRow[];
   enabled: Set<string>; // the user can toggle each off in Review
+  // The start request is in flight: the server re-scans the selection before the
+  // job exists, which takes minutes for node_modules on a large disk.
+  starting: boolean;
+  // Why the last start failed, for the review step to show.
+  startError: string | null;
   jobId: string | null;
   awaitingConfirm: { summary: string } | null;
   pendingPrompts: { entry_id: string; recipe: string[] }[];

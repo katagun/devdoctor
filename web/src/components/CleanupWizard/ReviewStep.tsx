@@ -1,4 +1,4 @@
-import { AlertTriangle, Play } from "lucide-react";
+import { AlertTriangle, LoaderCircle, Play } from "lucide-react";
 import { NavIcon } from "@/components/NavIcon";
 import { RiskBadge } from "@/components/RiskBadge";
 import { ProviderIcon } from "@/components/ProviderIcon";
@@ -45,7 +45,8 @@ export function ReviewStep() {
                   </span>
                   <button
                     onClick={() => toggleEnabled(e.id, !on)}
-                    className={`w-[30px] h-[16px] rounded-full relative ${
+                    disabled={state.starting}
+                    className={`w-[30px] h-[16px] rounded-full relative disabled:opacity-50 ${
                       on ? "bg-btn-primary-to" : "bg-bg-control-off"
                     }`}
                   >
@@ -99,24 +100,48 @@ export function ReviewStep() {
           );
         })}
       </div>
-      <div className="px-4 py-3 bg-bg-elev-2 border-t border-border flex items-center justify-between">
-        <span className="text-text-dim">
-          <b className="text-text">
-            {state.enabled.size} of {state.entries.length}
-          </b>{" "}
-          enabled · <b className="text-risk-safe">~{humanBytes(enabledTotal)}</b>{" "}
-          estimated reclaimable
-          {unknownEstimates > 0 ? ` + ${unknownEstimates} unknown` : ""}
-        </span>
+      {state.startError && (
+        <div
+          role="alert"
+          className="px-4 py-2 border-t border-border text-risk-danger inline-flex items-center gap-1.5"
+        >
+          <NavIcon icon={AlertTriangle} size={12} />
+          <span>{state.startError}</span>
+        </div>
+      )}
+      <div className="px-4 py-3 bg-bg-elev-2 border-t border-border flex items-center justify-between gap-3">
+        {state.starting ? (
+          <span className="text-text-dim">
+            Checking the selection on disk before anything is deleted. Large folders
+            such as node_modules can take a few minutes.
+          </span>
+        ) : (
+          <span className="text-text-dim">
+            <b className="text-text">
+              {state.enabled.size} of {state.entries.length}
+            </b>{" "}
+            enabled · <b className="text-risk-safe">~{humanBytes(enabledTotal)}</b>{" "}
+            estimated reclaimable
+            {unknownEstimates > 0 ? ` + ${unknownEstimates} unknown` : ""}
+          </span>
+        )}
         <button
           onClick={startJob}
-          disabled={state.enabled.size === 0}
-          className="bg-gradient-to-b from-btn-primary-from to-btn-primary-to text-btn-primary-fg px-4 py-1.5 rounded border border-btn-primary-bd font-medium text-[11px] disabled:opacity-50"
+          disabled={state.enabled.size === 0 || state.starting}
+          aria-busy={state.starting}
+          className="shrink-0 bg-gradient-to-b from-btn-primary-from to-btn-primary-to text-btn-primary-fg px-4 py-1.5 rounded border border-btn-primary-bd font-medium text-[11px] disabled:opacity-50"
         >
-          <span className="inline-flex items-center gap-1.5">
-            <NavIcon icon={Play} size={12} />
-            execute
-          </span>
+          {state.starting ? (
+            <span className="inline-flex items-center gap-1.5">
+              <LoaderCircle aria-hidden="true" size={12} strokeWidth={1.75} className="animate-spin" />
+              checking…
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5">
+              <NavIcon icon={Play} size={12} />
+              execute
+            </span>
+          )}
         </button>
       </div>
     </div>

@@ -278,6 +278,17 @@ entries under a versioned heading as described in
 
 ### Fixed
 
+- **Starting a cleanup in the web UI no longer freezes the app.** Pressing
+  *execute* re-scans the providers that own the selection before the job
+  exists: about 40 s for `node_modules` on a large disk, and up to 3.7 minutes
+  while a full scan runs alongside it. That re-scan ran on the server's event
+  loop, so every other request waited for it. The review step looked
+  unchanged, other pages stopped loading, and each further click queued another
+  full re-scan before it was refused. The re-scan now runs on a worker thread,
+  and a second start is refused at once. The review step says it is checking
+  the selection, a refused start says why, and closing the wizard during the
+  check cancels the job it would have started, which would otherwise have held
+  the only job slot until the app restarted.
 - **Cleaning the uv cache no longer hangs when DevDoctor runs under `uv run`.**
   `uv run` and `uvx` hold the uv cache lock until the program they started
   exits, so the `uv cache clean` they spawned waited for that lock forever and
