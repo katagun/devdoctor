@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shlex
 import subprocess
@@ -39,6 +40,7 @@ _VOLUME_DETAILS_COMMAND = [
 # /usr/local/bin, which is sometimes missing — leaving `docker` off PATH
 # while the daemon runs fine (issue #123).
 _DARWIN_BUNDLED_DOCKER = "/Applications/Docker.app/Contents/Resources/bin/docker"
+_BUNDLED_DOCKER_ENV = "DEVDOCTOR_DOCKER_BUNDLED_CLI"
 
 
 # Canonical non-volume category id -> prune recipe, in display order. Volumes
@@ -94,10 +96,18 @@ class DockerProvider(Provider):
         return self._bundled_docker()
 
     def _bundled_docker(self) -> str | None:
+        """Docker Desktop's CLI on macOS, or ``None`` when it is absent or turned off.
+
+        ``DEVDOCTOR_DOCKER_BUNDLED_CLI`` names another path to try instead of the
+        default one, and an empty value turns the fallback off, as the e2e harness
+        does so a developer's Docker Desktop stays out of its scan. It is read on
+        every call rather than at import, so tests can change it.
+        """
         if sys.platform != "darwin":
             return None
-        if self._shell.which(_DARWIN_BUNDLED_DOCKER) is not None:
-            return _DARWIN_BUNDLED_DOCKER
+        bundled = os.environ.get(_BUNDLED_DOCKER_ENV, _DARWIN_BUNDLED_DOCKER)
+        if bundled and self._shell.which(bundled) is not None:
+            return bundled
         return None
 
     def _ask(self, argv: list[str]) -> ShellResult | None:

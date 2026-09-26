@@ -21,7 +21,14 @@ for (const tool of ["ps", "sysctl", "vm_stat"]) {
   const found = Bun.which(tool);
   if (found !== null) fs.symlinkSync(found, path.join(bin, tool));
 }
-const serverEnv: NodeJS.ProcessEnv = { ...process.env, ...env, PATH: bin };
+// With no `docker` on PATH the docker provider falls back to Docker Desktop's CLI
+// at a fixed path, which reaches a real daemon; the empty value turns that off.
+const serverEnv: NodeJS.ProcessEnv = {
+  ...process.env,
+  ...env,
+  PATH: bin,
+  DEVDOCTOR_DOCKER_BUNDLED_CLI: "",
+};
 // UV_CACHE_DIR names a real cache on CI runners and UV marks a parent uv process;
 // both would let the uv-cache provider see past the fixture home.
 for (const name of [

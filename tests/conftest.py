@@ -29,6 +29,10 @@ def _isolate_home_and_xdg_dirs(tmp_path: Path, monkeypatch):
     # suite runs under `uv run` and must behave as it does from a plain shell.
     monkeypatch.delenv("UV_CACHE_DIR", raising=False)
     monkeypatch.delenv("UV", raising=False)
+    # Without `docker` on PATH the docker provider falls back to Docker Desktop's
+    # CLI at a fixed path, which on a developer's Mac reaches a real daemon. Empty
+    # turns the fallback off; the docker tests that cover it opt back in.
+    monkeypatch.setenv("DEVDOCTOR_DOCKER_BUNDLED_CLI", "")
     # Keep project-artifact scans hermetic. Provider-specific tests override
     # this with an explicit fixture tree.
     monkeypatch.setenv("DEVDOCTOR_PROJECT_ROOTS", str(tmp_path / "projects"))
