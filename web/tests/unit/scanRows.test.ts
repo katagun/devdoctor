@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { CacheTableRow } from "@/components/CacheTable";
-import { filterByAge, filterByRisk, formatCoverage, partitionByMinSize } from "@/lib/scanRows";
+import {
+  applyRemovals,
+  filterByAge,
+  filterByRisk,
+  formatCoverage,
+  partitionByMinSize,
+  type ScanResult,
+} from "@/lib/scanRows";
 
 function row(
   id: string,
@@ -101,5 +108,46 @@ describe("formatCoverage", () => {
   it("is empty without a ratio", () => {
     expect(formatCoverage(null)).toBeNull();
     expect(formatCoverage({ usedBytes: 0, classifiedBytes: 0, ratio: null })).toBeNull();
+  });
+});
+
+function result(rows: CacheTableRow[]): ScanResult {
+  return {
+    rows,
+    totalBytes: rows.reduce((sum, r) => sum + (r.risk === "dangerous" ? 0 : (r.reclaimable_bytes ?? 0)), 0),
+    scannedAt: "2026-09-25T10:00:00+00:00",
+    startedAt: "2026-09-25T09:58:00+00:00",
+    coverage: { usedBytes: 10_000, classifiedBytes: 4_000, ratio: 0.4 },
+  };
+}
+
+describe("applyRemovals", () => {
+  it("drops the removed rows and what they held from the totals", () => {
+    const before = result([row("a", 1_000), row("b", 500)]);
+    const after = applyRemovals(before, [{ ids: ["a"], paths: [], at: 1 }]);
+    expect(after.rows.map((r) => r.id)).toEqual(["b"]);
+    expect(after.totalBytes).toBe(500);
+    expect(after.coverage).toEqual({ usedBytes: 9_000, classifiedBytes: 3_000, ratio: 3_000 / 9_000 });
+  });
+
+  it("drops rows at or under a removed path, but not a sibling that shares a prefix", () => {
+    const worktree = { ...row("wt", 800), path: "/code/app/.worktrees/feat" };
+    const inside = { ...row("nm", 300), path: "/code/app/.worktrees/feat/node_modules" };
+    const sibling = { ...row("other", 200), path: "/code/app/.worktrees/feature-two" };
+    const after = applyRemovals(result([worktree, inside, sibling]), [
+      { ids: [], paths: ["/code/app/.worktrees/feat"], at: 1 },
+    ]);
+    expect(after.rows.map((r) => r.id)).toEqual(["other"]);
+  });
+
+  it("never counts a dangerous row toward the reclaimable total it takes back", () => {
+    const risky = row("d", 700, 700, "dangerous");
+    const before = result([risky, row("s", 100)]);
+    expect(applyRemovals(before, [{ ids: ["d"], paths: [], at: 1 }]).totalBytes).toBe(100);
+  });
+
+  it("returns the scan unchanged when nothing matches", () => {
+    const before = result([row("a", 1)]);
+    expect(applyRemovals(before, [{ ids: ["zzz"], paths: ["/nowhere"], at: 1 }])).toBe(before);
   });
 });
