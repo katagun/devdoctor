@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { CacheTableRow } from "@/components/CacheTable";
-import { apiFetch } from "@/api";
+import { apiFetch, ApiError } from "@/api";
 import type {
   CleanupResult,
   ExecuteProgressEntry,
@@ -9,7 +9,9 @@ import type {
 } from "@/components/CleanupWizard/CleanupWizardState";
 
 type Action =
+  | { type: "START_REQUESTED" }
   | { type: "START"; jobId: string }
+  | { type: "START_FAILED"; message: string }
   | { type: "PROMPT"; entry_id: string; recipe: string[] }
   | { type: "PROMPT_ANSWERED"; entry_id: string }
   | { type: "CONFIRM_REQUIRED"; summary: string }
@@ -40,8 +42,12 @@ const MAX_CONSOLE_LINES = 200;
 
 export function reducer(state: WizardState, action: Action): WizardState {
   switch (action.type) {
+    case "START_REQUESTED":
+      return { ...state, starting: true, startError: null };
     case "START":
-      return { ...state, jobId: action.jobId, step: "execute" };
+      return { ...state, starting: false, jobId: action.jobId, step: "execute" };
+    case "START_FAILED":
+      return { ...state, starting: false, startError: action.message };
     case "PROMPT":
       return {
         ...state,
@@ -124,6 +130,8 @@ export function reducer(state: WizardState, action: Action): WizardState {
       return {
         ...state,
         step: "review",
+        starting: false,
+        startError: null,
         jobId: null,
         results: null,
         estimatedReclaimedBytes: null,
@@ -143,6 +151,8 @@ export function initial(entries: CacheTableRow[]): WizardState {
     enabled: new Set(
       entries.filter((e) => e.risk !== "dangerous").map((e) => e.id),
     ),
+    starting: false,
+    startError: null,
     jobId: null,
     awaitingConfirm: null,
     pendingPrompts: [],
@@ -160,6 +170,16 @@ function parseEvent(e: MessageEvent): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function startErrorMessage(err: unknown): string {
+  if (err instanceof ApiError && err.code === "job_in_progress") {
+    return "Another cleanup is still running. Try again when it has finished.";
+  }
+  if (err instanceof ApiError && err.code === "unknown_entry") {
+    return "Some of these entries are no longer on disk. Close this and rescan.";
+  }
+  return `Could not start the cleanup: ${err instanceof Error ? err.message : String(err)}`;
 }
 
 export function useCleanupWizard({
@@ -184,9 +204,15 @@ export function useCleanupWizard({
   // latest caller-supplied handler at dispatch time.
   const onSuccessRef = useRef(onSuccess);
   onSuccessRef.current = onSuccess;
+  // Set synchronously, unlike state.starting, so a second click in the same frame
+  // cannot send a second start.
+  const startingRef = useRef(false);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       esRef.current?.close();
       esRef.current = null;
     };
@@ -274,6 +300,11 @@ export function useCleanupWizard({
   }, [queryClient]);
 
   const startJob = useCallback(async () => {
+    // One start at a time: the server re-scans the selection before it answers,
+    // and a second start would only be refused once that re-scan was done.
+    if (startingRef.current) return;
+    startingRef.current = true;
+    dispatch({ type: "START_REQUESTED" });
     const ids = Array.from(enabledRef.current);
     // Dangerous entries start disabled. If the user explicitly enables one in
     // the review step, carry that consent to the backend instead of silently
@@ -289,10 +320,18 @@ export function useCleanupWizard({
           allow_dangerous: allowDangerous,
         }),
       });
+      if (!mountedRef.current) {
+        // The wizard closed during the re-scan. Nobody would answer this job's
+        // prompts, and it would hold the only job slot until the app restarted.
+        await apiFetch(`/clean/jobs/${res.job_id}/cancel`, { method: "POST" });
+        return;
+      }
       dispatch({ type: "START", jobId: res.job_id });
       openStream(res.job_id);
     } catch (err) {
-      console.error("Failed to start cleanup job:", err);
+      dispatch({ type: "START_FAILED", message: startErrorMessage(err) });
+    } finally {
+      startingRef.current = false;
     }
   }, [openStream]);
 

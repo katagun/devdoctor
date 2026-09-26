@@ -3,15 +3,23 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createElement, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-const { postJson } = vi.hoisted(() => ({ postJson: vi.fn() }));
-vi.mock("@/api", () => ({
-  apiFetch: (url: string, init?: RequestInit) => {
-    postJson(url, init?.body);
-    if (url === "/clean/jobs") return Promise.resolve({ job_id: "job-1" });
-    return Promise.resolve({});
-  },
-  ApiError: class ApiError extends Error {},
+const { postJson, startResponse } = vi.hoisted(() => ({
+  postJson: vi.fn(),
+  // What POST /clean/jobs answers; a test can hold it pending to stand in for the
+  // server's re-scan of the selection, or reject it.
+  startResponse: vi.fn(),
 }));
+vi.mock("@/api", async (importOriginal) => {
+  const { ApiError } = await importOriginal<typeof import("@/api")>();
+  return {
+    apiFetch: (url: string, init?: RequestInit) => {
+      postJson(url, init?.body);
+      if (url === "/clean/jobs") return startResponse();
+      return Promise.resolve({});
+    },
+    ApiError,
+  };
+});
 
 // Fake EventSource (same shape as the useSSE test).
 class FakeEventSource {
@@ -34,10 +42,41 @@ class FakeEventSource {
   }
 }
 
+import { ApiError } from "@/api";
 import { useCleanupWizard, reducer, initial } from "@/hooks/useCleanupWizard";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+const ENTRY = {
+  id: "p:/x",
+  provider: "p",
+  label: "l",
+  path: "/x",
+  size_bytes: 100,
+  risk: "safe" as const,
+  mtime: null,
+  recipeHint: "",
+};
+
+function renderWizard() {
+  const qc = new QueryClient();
+  const wrapper = ({ children }: { children: ReactNode }) =>
+    createElement(QueryClientProvider, { client: qc }, children);
+  return renderHook(() => useCleanupWizard({ entries: [ENTRY] }), { wrapper });
+}
+
+const startRequests = () => postJson.mock.calls.filter(([url]) => url === "/clean/jobs");
 
 beforeEach(() => {
   postJson.mockReset();
+  startResponse.mockReset();
+  startResponse.mockResolvedValue({ job_id: "job-1" });
   FakeEventSource.instances = [];
   (globalThis as unknown as { EventSource: typeof FakeEventSource }).EventSource =
     FakeEventSource;
@@ -165,5 +204,103 @@ describe("useCleanupWizard", () => {
       entry_ids: ["docker:volume:pgdata"],
       allow_dangerous: true,
     });
+  });
+
+  // The server re-scans the selection before a job exists, which takes minutes for
+  // node_modules on a large disk; nothing on the review step used to say so.
+  it("stays on review, marked as starting, until the server has checked the selection", async () => {
+    const reply = deferred<{ job_id: string }>();
+    startResponse.mockReturnValueOnce(reply.promise);
+    const { result } = renderWizard();
+
+    let started!: Promise<void>;
+    act(() => {
+      started = result.current.startJob();
+    });
+    expect(result.current.state.step).toBe("review");
+    expect(result.current.state.starting).toBe(true);
+
+    await act(async () => {
+      reply.resolve({ job_id: "job-1" });
+      await started;
+    });
+    expect(result.current.state.starting).toBe(false);
+    expect(result.current.state.step).toBe("execute");
+  });
+
+  it("sends one start however often execute is pressed while it is pending", async () => {
+    const reply = deferred<{ job_id: string }>();
+    startResponse.mockReturnValueOnce(reply.promise);
+    const { result } = renderWizard();
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.startJob();
+    });
+    act(() => {
+      second = result.current.startJob();
+    });
+    await act(async () => {
+      reply.resolve({ job_id: "job-1" });
+      await Promise.all([first, second]);
+    });
+
+    expect(startRequests()).toHaveLength(1);
+    expect(FakeEventSource.instances).toHaveLength(1);
+  });
+
+  it("says why a start was refused, stays on review, and can start again", async () => {
+    startResponse.mockRejectedValueOnce(
+      new ApiError("job_in_progress", "a cleanup is already active", 409, null),
+    );
+    const { result } = renderWizard();
+
+    await act(async () => {
+      await result.current.startJob();
+    });
+    expect(result.current.state.step).toBe("review");
+    expect(result.current.state.starting).toBe(false);
+    expect(result.current.state.startError).toMatch(/running/i);
+
+    await act(async () => {
+      await result.current.startJob();
+    });
+    expect(startRequests()).toHaveLength(2);
+    expect(result.current.state.step).toBe("execute");
+    expect(result.current.state.startError).toBeNull();
+  });
+
+  it("tells the user to rescan when entries vanished since the scan", async () => {
+    startResponse.mockRejectedValueOnce(
+      new ApiError("unknown_entry", "Bad Request", 400, { error: { code: "unknown_entry" } }),
+    );
+    const { result } = renderWizard();
+
+    await act(async () => {
+      await result.current.startJob();
+    });
+    expect(result.current.state.startError).toMatch(/rescan/i);
+  });
+
+  // Nobody would answer the orphan's prompts, and it would hold the only job slot:
+  // every later cleanup would be refused until the app restarted.
+  it("cancels the job it started when the wizard closed during the check", async () => {
+    const reply = deferred<{ job_id: string }>();
+    startResponse.mockReturnValueOnce(reply.promise);
+    const { result, unmount } = renderWizard();
+
+    let started!: Promise<void>;
+    act(() => {
+      started = result.current.startJob();
+    });
+    unmount();
+    await act(async () => {
+      reply.resolve({ job_id: "job-1" });
+      await started;
+    });
+
+    expect(postJson).toHaveBeenCalledWith("/clean/jobs/job-1/cancel", undefined);
+    expect(FakeEventSource.instances).toHaveLength(0);
   });
 });

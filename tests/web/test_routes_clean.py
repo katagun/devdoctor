@@ -1,5 +1,7 @@
+import asyncio
 import json
 import socket
+import threading
 from pathlib import Path
 
 import pytest
@@ -36,6 +38,44 @@ def _build(tmp_path: Path, monkeypatch, *, extra_hosts: set[str] | None = None):
 
 def _build_for_port(tmp_path: Path, monkeypatch, port: int):
     return _build(tmp_path, monkeypatch, extra_hosts={f"127.0.0.1:{port}"})
+
+
+def _loopback_socket() -> socket.socket:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("127.0.0.1", 0))
+    return sock
+
+
+class _GatedScan:
+    """A scan that takes as long as the test wants: it blocks until released.
+
+    It blocks its thread the way a real walk of a large disk does, for a minute or
+    more. The timeout only stops a broken test from hanging the suite.
+    """
+
+    def __init__(self, real_scan):
+        self._real_scan = real_scan
+        self.calls: list[object] = []
+        self._entered = threading.Event()
+        self._released = threading.Event()
+
+    def __call__(self, providers, filters, now, **kwargs):
+        self.calls.append(filters.providers)
+        self._entered.set()
+        self._released.wait(timeout=10)
+        return self._real_scan(providers, filters, now, **kwargs)
+
+    async def entered(self) -> None:
+        assert await asyncio.to_thread(self._entered.wait, 10), "the job never began its re-scan"
+
+    def release(self) -> None:
+        self._released.set()
+
+
+async def _cancel_job(client: AsyncClient, started) -> None:
+    if started.status_code == 200:
+        await client.post(f"/api/clean/jobs/{started.json()['job_id']}/cancel")
 
 
 @pytest.mark.asyncio
@@ -278,3 +318,89 @@ async def test_an_id_no_provider_owns_falls_back_to_a_full_rescan(tmp_path, monk
     assert r.status_code == 400
     assert r.json()["error"]["ids"] == ["bare-legacy-id"]
     assert seen == [None]
+
+
+@pytest.mark.asyncio
+async def test_the_server_answers_other_requests_while_a_job_rescans(tmp_path, monkeypatch):
+    """A job's re-scan can take minutes on a large disk. It used to run on the event
+    loop, so every other request waited for it: pages, scan progress, even the job's
+    own event stream."""
+    from devdoctor.web import routes_clean
+
+    sock = _loopback_socket()
+    port = sock.getsockname()[1]
+    app = _build_for_port(tmp_path, monkeypatch, port)
+    scan = _GatedScan(routes_clean.discovery.scan)
+    monkeypatch.setattr(routes_clean.discovery, "scan", scan)
+    body = {"entry_ids": [f"t:{tmp_path}/cache"]}
+
+    with run_server(app, sock):
+        async with AsyncClient(base_url=f"http://127.0.0.1:{port}") as client:
+            start = asyncio.create_task(client.post("/api/clean/jobs", json=body, timeout=15))
+            try:
+                await scan.entered()
+                health = await client.get("/api/health", timeout=2)
+            finally:
+                scan.release()
+                started = await start
+                await _cancel_job(client, started)
+
+    assert health.status_code == 200
+    assert started.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_a_second_start_is_refused_at_once_while_the_first_rescans(tmp_path, monkeypatch):
+    """A second click on execute used to wait out the first re-scan, run a re-scan of
+    its own and only then find the slot taken: each click cost another full re-scan."""
+    from devdoctor.web import routes_clean
+
+    sock = _loopback_socket()
+    port = sock.getsockname()[1]
+    app = _build_for_port(tmp_path, monkeypatch, port)
+    scan = _GatedScan(routes_clean.discovery.scan)
+    monkeypatch.setattr(routes_clean.discovery, "scan", scan)
+    body = {"entry_ids": [f"t:{tmp_path}/cache"]}
+
+    with run_server(app, sock):
+        async with AsyncClient(base_url=f"http://127.0.0.1:{port}") as client:
+            first = asyncio.create_task(client.post("/api/clean/jobs", json=body, timeout=15))
+            try:
+                await scan.entered()
+                second = await client.post("/api/clean/jobs", json=body, timeout=2)
+            finally:
+                scan.release()
+                started = await first
+                await _cancel_job(client, started)
+
+    assert second.status_code == 409
+    assert second.json()["error"]["code"] == "job_in_progress"
+    assert started.status_code == 200
+    assert scan.calls == [frozenset({"t"})]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_rescan_leaves_the_slot_free(tmp_path, monkeypatch):
+    """The slot is held while the job is prepared; a start that fails must give it
+    back, or every later cleanup would be refused until the app restarts."""
+    from devdoctor.web import routes_clean
+
+    app = _build(tmp_path, monkeypatch)
+    real_scan = routes_clean.discovery.scan
+
+    def failing_scan(*args, **kwargs):
+        raise OSError("the volume went away")
+
+    body = {"entry_ids": [f"t:{tmp_path}/cache"]}
+    monkeypatch.setattr(routes_clean.discovery, "scan", failing_scan)
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://testserver",
+    ) as client:
+        failed = await client.post("/api/clean/jobs", json=body)
+        monkeypatch.setattr(routes_clean.discovery, "scan", real_scan)
+        retried = await client.post("/api/clean/jobs", json=body)
+        await _cancel_job(client, retried)
+
+    assert failed.status_code == 500
+    assert retried.status_code == 200, retried.text
