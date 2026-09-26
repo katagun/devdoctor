@@ -222,16 +222,16 @@ describe("useCleanupWizard", () => {
     const { startJob, answerPrompt, confirm, cancel } = result.current;
 
     act(() => result.current.toggleEnabled(second.id, false));
-    rerender({ onSuccess: latestOnSuccess });
-    expect(result.current.startJob).toBe(startJob);
-    expect(result.current.answerPrompt).toBe(answerPrompt);
-    expect(result.current.confirm).toBe(confirm);
-    expect(result.current.cancel).toBe(cancel);
 
     await act(async () => {
       await startJob();
     });
     expect(JSON.parse(String(startRequests()[0][1])).entry_ids).toEqual([ENTRY.id]);
+    rerender({ onSuccess: latestOnSuccess });
+    expect(result.current.startJob).toBe(startJob);
+    expect(result.current.answerPrompt).toBe(answerPrompt);
+    expect(result.current.confirm).toBe(confirm);
+    expect(result.current.cancel).toBe(cancel);
 
     await act(async () => {
       await answerPrompt(ENTRY.id, "y");

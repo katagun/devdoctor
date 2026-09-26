@@ -71,4 +71,16 @@ describe("useCountdown", () => {
     rerender({ total: 5000 });
     expect(result.current).toBe(3000);
   });
+
+  it("stops ticking once past zero when the total arrives mid-run", () => {
+    const { result, rerender } = renderHook(
+      ({ total }) => useCountdown(total, true),
+      { initialProps: { total: null as number | null } },
+    );
+    act(() => void vi.advanceTimersByTime(1000));
+    rerender({ total: 2000 });
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(result.current).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
