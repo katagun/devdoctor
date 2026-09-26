@@ -28,7 +28,7 @@ major version is `0`, breaking changes are allowed in minor bumps.
 ## Prerequisites
 
 - [`uv`](https://docs.astral.sh/uv/) for the Python build.
-- Bun and Node 20 (only if you are also producing the desktop app).
+- Bun and Node 24 (only if you are also producing the desktop app).
 - Push access to `main` and permission to create tags and releases.
 - A clean working tree on an up-to-date `main`.
 
