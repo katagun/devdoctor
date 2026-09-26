@@ -87,6 +87,17 @@ class Provider(ABC):
     @abstractmethod
     def discover(self) -> list[Entry]: ...
 
+    def discover_selected(self, ids: frozenset[str]) -> list[Entry]:
+        """The entries ``discover()`` would report now whose (provider-local) id is in ``ids``.
+
+        A web cleanup re-checks only what it will act on. This default is correct for
+        every provider and no faster; a provider that finds its candidates cheaply
+        overrides it and measures only the selected ones.
+        """
+        if not ids:
+            return []
+        return [entry for entry in self.discover() if entry.id in ids]
+
 
 def _normalize_platform(raw: str) -> str:
     if raw.startswith("linux"):

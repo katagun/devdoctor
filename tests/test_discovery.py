@@ -699,3 +699,59 @@ def test_a_provider_filter_still_discounts_bytes_shared_with_a_provider_that_did
     )
     (entry,) = report.entries
     assert (entry.shared_bytes, entry.reclaimable_bytes) == (400, 600)
+
+
+class _Selective(_Stub):
+    """A stub that records what the scan asked it for."""
+
+    def __init__(self, shell, name, entries):
+        super().__init__(shell, name, entries)
+        self.discover_calls = 0
+        self.selected: list[frozenset[str]] = []
+
+    def discover(self) -> list[Entry]:
+        self.discover_calls += 1
+        return super().discover()
+
+    def discover_selected(self, ids: frozenset[str]) -> list[Entry]:
+        self.selected.append(ids)
+        return [e for e in self._entries if e.id in ids]
+
+
+def test_a_selection_asks_each_provider_only_for_its_own_ids():
+    a = _Selective(FakeShell(), "a", [_e("a", "1", 10), _e("a", "2", 20), _e("a", "3", 30)])
+    b = _Selective(FakeShell(), "b", [_e("b", "1", 10)])
+    report = discovery.scan(
+        [a, b],
+        ScanFilters(),
+        datetime.now(UTC),
+        contain=False,
+        selection=frozenset({"a:1", "a:3", "b:1"}),
+    )
+    assert a.selected == [frozenset({"1", "3"})]
+    assert b.selected == [frozenset({"1"})]
+    assert a.discover_calls == b.discover_calls == 0
+    assert sorted(e.id for e in report.entries) == ["a:1", "a:3", "b:1"]
+
+
+def test_a_provider_with_nothing_selected_is_not_run():
+    a = _Selective(FakeShell(), "a", [_e("a", "1", 10)])
+    idle = _Selective(FakeShell(), "idle", [_e("idle", "1", 10)])
+    discovery.scan(
+        [a, idle], ScanFilters(), datetime.now(UTC), contain=False, selection=frozenset({"a:1"})
+    )
+    assert idle.selected == []
+    assert idle.discover_calls == 0
+
+
+def test_the_default_discover_selected_is_discover_narrowed_to_the_ids():
+    stub = _Stub(FakeShell(), "s", [_e("s", "x", 1), _e("s", "y", 2), _e("s", "z", 3)])
+    assert [e.id for e in stub.discover_selected(frozenset({"x", "z", "nope"}))] == ["x", "z"]
+
+
+def test_an_empty_selection_never_discovers():
+    class _Exploding(_Stub):
+        def discover(self) -> list[Entry]:
+            raise AssertionError("an empty selection must not run discover()")
+
+    assert _Exploding(FakeShell(), "s", []).discover_selected(frozenset()) == []

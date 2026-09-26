@@ -9,7 +9,6 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from functools import partial
 from pathlib import Path
 
 from devdoctor import coverage
@@ -74,6 +73,12 @@ def _notify(on_progress: ScanProgressCallback | None, event: ScanProgressEvent) 
         on_progress(event)
     except Exception:
         logger.warning("scan progress callback failed on %s", type(event).__name__, exc_info=True)
+
+
+def _share(selection: frozenset[str], provider: str) -> frozenset[str]:
+    """The provider-local ids among the namespaced ``"{provider}:{id}"`` ones."""
+    prefix = f"{provider}:"
+    return frozenset(eid[len(prefix) :] for eid in selection if eid.startswith(prefix))
 
 
 def _globally_unique(entry: Entry) -> Entry:
@@ -168,8 +173,13 @@ def _reconcile_shared_usage(entries: list[Entry]) -> list[Entry]:
     return reconciled
 
 
-def _discover_one(p: Provider, on_progress: ScanProgressCallback | None = None) -> _ProviderResult:
-    """Run a single provider's discover() and package its result.
+def _discover_one(
+    p: Provider,
+    on_progress: ScanProgressCallback | None = None,
+    *,
+    selection: frozenset[str] | None = None,
+) -> _ProviderResult:
+    """Run a single provider's discover() (or discover_selected()) and package its result.
 
     Runs on a worker thread. Times the call with time.monotonic() (immune to
     NTP adjustments) and, crucially, never propagates an exception: a provider
@@ -186,7 +196,8 @@ def _discover_one(p: Provider, on_progress: ScanProgressCallback | None = None) 
         # can't act on. Entries a provider deliberately left unmeasured
         # (`DiskUsage(None, None)`, such as advice-only git worktrees) are kept:
         # their size is unknown, not zero.
-        provider_entries = [e for e in p.discover() if e.display_bytes > 0 or e.is_unmeasured]
+        found = p.discover() if selection is None else p.discover_selected(selection)
+        provider_entries = [e for e in found if e.display_bytes > 0 or e.is_unmeasured]
     except Exception as exc:  # isolate one provider's failure from the scan
         dt_ms = int((time.monotonic() - t0) * 1000)
         msg = f"{p.name}: discovery failed: {exc}"
@@ -228,6 +239,7 @@ def scan(
     *,
     contain: bool = True,
     on_progress: ScanProgressCallback | None = None,
+    selection: frozenset[str] | None = None,
 ) -> Report:
     """Run every available provider the filters name, collect entries, filter, sort.
 
@@ -254,6 +266,10 @@ def scan(
     ``on_progress`` receives ``ScanStarted`` once, then ``ProviderStarted``/
     ``ProviderFinished`` per available provider from the worker threads; a raising
     callback is logged and ignored (spec §3).
+
+    ``selection`` holds the namespaced ids a web cleanup selected: each provider
+    builds only its share of them (``discover_selected``), and a provider with
+    none is not run.
     """
     started_at = datetime.now(UTC)
     # Freeze the set (and order) of available providers up front; availability
@@ -266,6 +282,10 @@ def scan(
     # so their totals only ever describe the providers that ran. Risk and size
     # filters cannot be decided without the entries and still apply afterwards.
     wanted = [p for p in providers if filters.providers is None or p.name in filters.providers]
+    shares: dict[str, frozenset[str]] | None = None
+    if selection is not None:
+        shares = {p.name: _share(selection, p.name) for p in wanted}
+        wanted = [p for p in wanted if shares[p.name]]
     available = [p for p in wanted if p.available()]
 
     _notify(on_progress, ScanStarted(providers=tuple(p.name for p in available)))
@@ -275,12 +295,15 @@ def scan(
     diagnostics: list[str] = []
 
     if available:
+        jobs = [(p, None if shares is None else shares[p.name]) for p in available]
         with ThreadPoolExecutor(max_workers=min(len(available), _MAX_WORKERS)) as executor:
             # executor.map preserves input order, so iterating the results
             # yields them in provider order no matter which thread finished
             # first. _discover_one swallows provider exceptions, so .result()
             # (inside map) never raises here.
-            results = list(executor.map(partial(_discover_one, on_progress=on_progress), available))
+            results = list(
+                executor.map(lambda job: _discover_one(job[0], on_progress, selection=job[1]), jobs)
+            )
         for result in results:
             # Namespace each entry's provider-local id into a globally-unique
             # one so web selection and prompt/confirm routing can never cross
