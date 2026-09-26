@@ -53,7 +53,13 @@ def _scan_selection(shell: Shell, entry_ids: list[str]) -> Report:
     # only ever looks at selected entries, so nothing outside those providers can
     # affect the job.
     filters = ScanFilters(providers=_owning_providers(entry_ids, providers_list))
-    return discovery.scan(providers_list, filters, datetime.now(UTC), contain=False)
+    return discovery.scan(
+        providers_list,
+        filters,
+        datetime.now(UTC),
+        contain=False,
+        selection=frozenset(entry_ids),
+    )
 
 
 @router.post("/jobs")

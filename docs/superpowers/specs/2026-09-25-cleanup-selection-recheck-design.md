@@ -1,6 +1,6 @@
 # Re-check only the selection before a web cleanup
 
-**Status:** proposed, awaiting review · **Date:** 2026-09-25 ·
+**Status:** accepted 2026-09-26 · **Date:** 2026-09-25 ·
 **Related:** PR #153 (moved this re-scan off the event loop),
 [git worktree provider spec §6.4](2026-09-12-git-worktree-provider-design.md) (why the
 cleanup re-scans at all).

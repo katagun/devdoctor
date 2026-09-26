@@ -14,6 +14,11 @@ entries under a versioned heading as described in
 
 ### Changed
 
+- **Starting a web cleanup re-checks only what you selected.** Before a job
+  starts, the server confirms each selected entry against the disk. It used to
+  re-run the entry's whole provider, so one `node_modules` folder re-sized all
+  267 on the reference machine (about 58 s). Providers still find their
+  candidates on disk as before, but measure only the selected ones.
 - **Scans are about 2.4x faster with byte-identical results.** Directory sizing
   was 83% of a scan and ran one tree at a time inside each provider. Trees are
   now walked with one `stat` per entry and no per-file path objects, a few at a

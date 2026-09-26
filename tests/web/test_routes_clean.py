@@ -240,7 +240,7 @@ async def test_cleanup_job_keeps_every_selected_entry_from_an_uncontained_scan(
     )
     contain_args: list[bool] = []
 
-    def fake_scan(providers, filters, now, *, contain=True):
+    def fake_scan(providers, filters, now, *, contain=True, selection=None):
         contain_args.append(contain)
         return Report(
             entries=[worktree, inside, outside], scanned_at=now, hostname="h", platform="darwin"
@@ -404,3 +404,28 @@ async def test_a_failed_rescan_leaves_the_slot_free(tmp_path, monkeypatch):
 
     assert failed.status_code == 500
     assert retried.status_code == 200, retried.text
+
+
+@pytest.mark.asyncio
+async def test_the_job_rescan_builds_only_the_selected_entries(tmp_path, monkeypatch):
+    from devdoctor.web import routes_clean
+
+    app = _build(tmp_path, monkeypatch)
+    real_scan = routes_clean.discovery.scan
+    selections: list[object] = []
+
+    def spy(providers, filters, now, **kwargs):
+        selections.append(kwargs.get("selection"))
+        return real_scan(providers, filters, now, **kwargs)
+
+    monkeypatch.setattr(routes_clean.discovery, "scan", spy)
+    entry_id = f"t:{tmp_path}/cache"
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        r = await client.post(
+            "/api/clean/jobs", json={"entry_ids": [entry_id]}, headers={"Host": "testserver"}
+        )
+        assert r.status_code == 200, r.text
+        await app.state.runner_registry.active().cancel()
+    assert selections == [frozenset({entry_id})]
