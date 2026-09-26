@@ -44,6 +44,7 @@ class FakeEventSource {
 
 import { ApiError } from "@/api";
 import { useCleanupWizard, reducer, initial } from "@/hooks/useCleanupWizard";
+import type { ScanResult } from "@/lib/scanRows";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -302,5 +303,39 @@ describe("useCleanupWizard", () => {
 
     expect(postJson).toHaveBeenCalledWith("/clean/jobs/job-1/cancel", undefined);
     expect(FakeEventSource.instances).toHaveLength(0);
+  });
+
+  // A full rescan after every cleanup was how two identical scans ended up running at once.
+  it("drops what a cleanup removed from the cached scans instead of rescanning", async () => {
+    const qc = new QueryClient();
+    const cleaned = { ...ENTRY, footprint_bytes: 100, reclaimable_bytes: 100, shared_bytes: 0, owner: null, group: null, perms: null };
+    const other = { ...cleaned, id: "p:/y", path: "/y", label: "other" };
+    const scan: ScanResult = {
+      rows: [cleaned, other],
+      totalBytes: 200,
+      scannedAt: "2026-09-25T10:00:00+00:00",
+      startedAt: "2026-09-25T09:59:00+00:00",
+      coverage: null,
+    };
+    qc.setQueryData(["scan", {}], scan);
+    qc.setQueryData(["history"], []);
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children);
+    const { result } = renderHook(() => useCleanupWizard({ entries: [cleaned] }), { wrapper });
+
+    await act(async () => {
+      await result.current.startJob();
+    });
+    act(() =>
+      FakeEventSource.instances[0].emit("done", {
+        results: [{ entry_id: cleaned.id, status: "ok", freed_bytes: 100 }],
+      }),
+    );
+
+    const after = qc.getQueryData<ScanResult>(["scan", {}])!;
+    expect(after.rows.map((r) => r.id)).toEqual(["p:/y"]);
+    expect(after.totalBytes).toBe(100);
+    expect(qc.getQueryState(["scan", {}])!.isInvalidated).toBe(false);
+    expect(qc.getQueryState(["history"])!.isInvalidated).toBe(true);
   });
 });
