@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from devdoctor.providers import project_artifacts
 from devdoctor.providers.project_artifacts import (
     AndroidBuildProvider,
     CargoTargetsProvider,
@@ -125,6 +128,63 @@ def test_project_index_finds_projects_nested_under_dot_directories(
         worktree / "node_modules",
         agent_worktree / "node_modules",
     }
+
+
+def _two_of_each(root: Path) -> None:
+    for name in ("web", "api"):
+        _payload(root / name / "package.json")
+        _payload(root / name / "node_modules" / "pkg" / "index.js")
+    _payload(root / "web" / "pnpm-lock.yaml")  # api has none: dangerous advice
+    for name in ("cli", "lib"):
+        _payload(root / name / "Cargo.toml")
+        _payload(root / name / "target" / "debug" / "app")
+        _payload(root / f"{name}-android" / "build.gradle")
+        _payload(root / f"{name}-android" / "build" / "out.apk")
+        _payload(root / f"{name}-py" / "tox.ini")
+        _payload(root / f"{name}-py" / ".tox" / "py312" / "marker")
+
+
+@pytest.mark.parametrize(
+    "provider_cls",
+    [NodeModulesProvider, CargoTargetsProvider, AndroidBuildProvider, ToxNoxProvider],
+)
+def test_discover_selected_is_discover_narrowed_to_the_selection(
+    tmp_path: Path, monkeypatch, provider_cls
+) -> None:
+    root = tmp_path / "projects"
+    monkeypatch.setenv("DEVDOCTOR_PROJECT_ROOTS", str(root))
+    _two_of_each(root)
+    provider = provider_cls(FakeShell(), index=ProjectArtifactIndex())
+    everything = provider.discover()
+    assert len(everything) == 2
+    first = everything[0].id
+    for ids in (
+        frozenset(),
+        frozenset({first}),
+        frozenset(e.id for e in everything),
+        frozenset({"/nope"}),
+        frozenset({first, "/nope"}),
+    ):
+        assert provider.discover_selected(ids) == [e for e in everything if e.id in ids]
+
+
+def test_only_the_selected_node_modules_are_sized(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "projects"
+    monkeypatch.setenv("DEVDOCTOR_PROJECT_ROOTS", str(root))
+    _two_of_each(root)
+    sized: list[Path] = []
+    real = project_artifacts.size_many
+
+    def spy(paths, **kwargs):
+        sized.extend(paths)
+        return real(paths, **kwargs)
+
+    monkeypatch.setattr(project_artifacts, "size_many", spy)
+    target = root / "web" / "node_modules"
+    NodeModulesProvider(FakeShell(), index=ProjectArtifactIndex()).discover_selected(
+        frozenset({str(target)})
+    )
+    assert sized == [target]
 
 
 def test_project_index_never_walks_into_vcs_metadata(

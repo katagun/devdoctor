@@ -85,6 +85,28 @@ def test_a_single_workspace_gets_no_cache_advice(tmp_path: Path, monkeypatch) ->
     assert provider.diagnostics == []
 
 
+def test_a_selection_measures_its_workspace_and_skips_the_plugin_note(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = tmp_path / "projects"
+    monkeypatch.setenv("DEVDOCTOR_PROJECT_ROOTS", str(root))
+    dev = _workspace(root / "infra", "dev")
+    prod = _workspace(root / "infra", "prod")
+    _plugin(dev, 40_000)
+    _plugin(prod, 40_000)
+
+    full = TerraformProvider(FakeShell(), index=ProjectArtifactIndex())
+    everything = full.discover()
+    assert any("duplicate copies" in note for note in full.diagnostics)
+
+    selective = TerraformProvider(FakeShell(), index=ProjectArtifactIndex())
+    assert selective.discover_selected(frozenset({str(dev)})) == [
+        e for e in everything if e.id == str(dev)
+    ]
+    # The note measures every workspace's plugins; a cleanup's re-check never shows it.
+    assert selective.diagnostics == []
+
+
 def _figures(note: str) -> tuple[int, int]:
     """The two byte figures in the note, parsed back from human units."""
     import re
