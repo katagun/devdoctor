@@ -1212,3 +1212,39 @@ def test_removal_target_requires_absolute_paths(repository, action_path, entry_p
     entry = _removal_entry(repository, action_path, entry_path)
 
     assert git_worktrees._removal_target(entry) == expected
+
+
+# --- discover_selected (selection-scoped re-scan) ------------------------------------
+
+
+def _one_integrated_one_not(app, projects):
+    done = app.add_worktree(projects / "app" / ".worktrees" / "done", "done")
+    _merge(app, done, branch="done")
+    wip = app.add_worktree(projects / "wt" / "wip", "wip")
+    wip.commit("Unmerged work", {"work.txt": "work\n"})
+    app.publish()
+    return done, wip
+
+
+def test_discover_selected_is_discover_narrowed_to_the_selection(app, projects):
+    done, wip = _one_integrated_one_not(app, projects)
+    everything, _ = _discover()
+    ids = [e.id for e in everything]
+    assert str(done.path) in ids and str(wip.path) in ids
+    for pick in (
+        frozenset(),
+        frozenset({str(done.path)}),
+        frozenset({str(wip.path)}),
+        frozenset(ids),
+        frozenset({"/nope"}),
+    ):
+        provider = GitWorktreeProvider(RealShell())
+        assert provider.discover_selected(pick) == [e for e in everything if e.id in pick]
+
+
+def test_an_unselected_worktree_is_never_inspected(app, projects):
+    done, wip = _one_integrated_one_not(app, projects)
+    shell = RecordingShell()
+    GitWorktreeProvider(shell).discover_selected(frozenset({str(done.path)}))
+    touched = [argv for argv, _env in shell.calls if str(wip.path) in " ".join(argv)]
+    assert touched == []
