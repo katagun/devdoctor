@@ -244,8 +244,16 @@ class PathProvider(Provider):
         return out
 
     def discover(self) -> list[Entry]:
+        return self._entries(self.resolve_paths())
+
+    def discover_selected(self, ids: frozenset[str]) -> list[Entry]:
+        if not ids:
+            return []
+        # Globs are cheap and decide what exists; only the selected paths are sized.
+        return self._entries([p for p in self.resolve_paths() if str(p) in ids])
+
+    def _entries(self, paths: list[Path]) -> list[Entry]:
         entries: list[Entry] = []
-        paths = self.resolve_paths()
         for p, sizing in zip(paths, size_many(paths), strict=True):
             size = sizing.allocated_bytes
             self._note_skipped(list(sizing.skipped_paths))
