@@ -2,11 +2,31 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from devdoctor.providers.base import Provider
 from devdoctor.providers.tool_caches import _path_entry
-from devdoctor.types import AdviceAction, CommandAction, DeletePathAction, Entry, Risk
+from devdoctor.types import (
+    AdviceAction,
+    CleanupAction,
+    CommandAction,
+    DeletePathAction,
+    Entry,
+    Risk,
+)
+
+
+@dataclass(frozen=True)
+class _XcodeCandidate:
+    """One Xcode path to measure, and how it will be offered."""
+
+    path: Path
+    id_: str
+    label: str
+    risk: Risk
+    actions: tuple[CleanupAction, ...]
+    reclaimable: bool | None
 
 
 class XcodeProvider(Provider):
@@ -21,7 +41,31 @@ class XcodeProvider(Provider):
     )
 
     def discover(self) -> list[Entry]:
+        return self._entries(self._candidates())
+
+    def discover_selected(self, ids: frozenset[str]) -> list[Entry]:
+        if not ids:
+            return []
+        return self._entries([c for c in self._candidates() if c.id_ in ids])
+
+    def _entries(self, candidates: list[_XcodeCandidate]) -> list[Entry]:
         entries: list[Entry] = []
+        for c in candidates:
+            entry = _path_entry(
+                self,
+                c.path,
+                id_=c.id_,
+                label=c.label,
+                risk=c.risk,
+                actions=c.actions,
+                reclaimable=c.reclaimable,
+            )
+            if entry is not None:
+                entries.append(entry)
+        return entries
+
+    def _candidates(self) -> list[_XcodeCandidate]:
+        candidates: list[_XcodeCandidate] = []
         developer = Path("~/Library/Developer/Xcode").expanduser()
         for root_name, label_prefix in (
             ("DerivedData", "Xcode DerivedData"),
@@ -33,42 +77,40 @@ class XcodeProvider(Provider):
             for child in sorted(root.iterdir()):
                 if not child.is_dir():
                     continue
-                entry = _path_entry(
-                    self,
-                    child,
-                    id_=str(child),
-                    label=f"{label_prefix}: {child.name}",
-                    risk=Risk.RECLAIMABLE,
-                    actions=(DeletePathAction(child),),
-                    reclaimable=True,
+                candidates.append(
+                    _XcodeCandidate(
+                        child,
+                        str(child),
+                        f"{label_prefix}: {child.name}",
+                        Risk.RECLAIMABLE,
+                        (DeletePathAction(child),),
+                        True,
+                    )
                 )
-                if entry is not None:
-                    entries.append(entry)
 
         archives = developer / "Archives"
         if archives.is_dir():
             for archive in sorted(archives.glob("*/*.xcarchive")):
-                entry = _path_entry(
-                    self,
-                    archive,
-                    id_=str(archive),
-                    label=f"Xcode archive: {archive.stem}",
-                    risk=Risk.DANGEROUS,
-                    actions=(
-                        AdviceAction(
-                            f"{archive} may be the only retained signed build. Export or "
-                            "verify it in Xcode Organizer before deleting it."
+                candidates.append(
+                    _XcodeCandidate(
+                        archive,
+                        str(archive),
+                        f"Xcode archive: {archive.stem}",
+                        Risk.DANGEROUS,
+                        (
+                            AdviceAction(
+                                f"{archive} may be the only retained signed build. Export or "
+                                "verify it in Xcode Organizer before deleting it."
+                            ),
                         ),
-                    ),
-                    reclaimable=None,
+                        None,
+                    )
                 )
-                if entry is not None:
-                    entries.append(entry)
 
-        entries.extend(self._unavailable_simulators())
-        return entries
+        candidates.extend(self._unavailable_simulators())
+        return candidates
 
-    def _unavailable_simulators(self) -> list[Entry]:
+    def _unavailable_simulators(self) -> list[_XcodeCandidate]:
         if self._shell.which("xcrun") is None:
             return []
         result = self._shell.run(
@@ -86,7 +128,7 @@ class XcodeProvider(Provider):
         devices = payload.get("devices") if isinstance(payload, dict) else None
         if not isinstance(devices, dict):
             return []
-        entries: list[Entry] = []
+        candidates: list[_XcodeCandidate] = []
         for rows in devices.values():
             if not isinstance(rows, list):
                 continue
@@ -103,18 +145,17 @@ class XcodeProvider(Provider):
                     else Path("~/Library/Developer/CoreSimulator/Devices").expanduser() / udid
                 )
                 name = row.get("name")
-                entry = _path_entry(
-                    self,
-                    path,
-                    id_=f"simulator:{udid}",
-                    label=f"Unavailable simulator: {name or udid}",
-                    risk=Risk.RECLAIMABLE,
-                    actions=(CommandAction(("xcrun", "simctl", "delete", udid)),),
-                    reclaimable=True,
+                candidates.append(
+                    _XcodeCandidate(
+                        path,
+                        f"simulator:{udid}",
+                        f"Unavailable simulator: {name or udid}",
+                        Risk.RECLAIMABLE,
+                        (CommandAction(("xcrun", "simctl", "delete", udid)),),
+                        True,
+                    )
                 )
-                if entry is not None:
-                    entries.append(entry)
-        return entries
+        return candidates
 
 
 class AndroidSdkProvider(Provider):
