@@ -70,6 +70,15 @@ class VenvProvider(Provider):
     )
 
     def discover(self) -> list[Entry]:
+        return self._entries(self._found())
+
+    def discover_selected(self, ids: frozenset[str]) -> list[Entry]:
+        if not ids:
+            return []
+        # The walk and its inode dedup run in full; only the selected venvs are sized.
+        return self._entries([found for found in self._found() if str(found[1]) in ids])
+
+    def _found(self) -> list[tuple[Path, Path, os.stat_result]]:
         found: list[tuple[Path, Path, os.stat_result]] = []
         # Dedup by (dev, ino) instead of resolved string path: this is robust
         # on case-insensitive filesystems (APFS default) where two differently-
@@ -97,7 +106,9 @@ class VenvProvider(Provider):
                 seen_inodes.add(key)
 
                 found.append((venv_dir, real, rst))
+        return found
 
+    def _entries(self, found: list[tuple[Path, Path, os.stat_result]]) -> list[Entry]:
         # Sized together: the walks are independent and are most of the scan (#92).
         sizings = size_many([real for _venv_dir, real, _rst in found])
         entries: list[Entry] = []
