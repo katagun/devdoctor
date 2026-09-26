@@ -20,3 +20,15 @@ export function memoryProviderIds(
     .filter((provider) => !disabled.has(provider.id))
     .map((provider) => provider.id);
 }
+
+/**
+ * Whether the disk scan's provider filter is final. It only depends on the
+ * provider list when some are disabled; until that list loads, a scan would go
+ * out unfiltered and then again filtered.
+ */
+export function diskScanReady(
+  providers: Array<{ name: string }> | undefined,
+  disabled: Set<string>,
+): boolean {
+  return disabled.size === 0 || providers !== undefined;
+}

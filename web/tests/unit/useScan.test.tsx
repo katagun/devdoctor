@@ -2,6 +2,8 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
+import { useScan } from "@/hooks/useScan";
+import { recordRemoval } from "@/lib/cleanupRemovals";
 
 const mockApiFetch = vi.fn();
 
@@ -14,6 +16,16 @@ function wrapper({ children }: { children: ReactNode }) {
     defaultOptions: { queries: { retry: false, staleTime: 0 } },
   });
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+
+function clientWrapper(client: QueryClient) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  };
+}
+
+function freshClient() {
+  return new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 0 } } });
 }
 
 function entry(
@@ -206,5 +218,49 @@ describe("useScan", () => {
     expect(mockApiFetch).toHaveBeenCalledWith(
       "/scan?snapshot=true&snapshot_min_interval_ms=300000",
     );
+  });
+});
+
+describe("useScan and cleanups", () => {
+  const started = "2026-09-25T10:00:00+00:00";
+
+  it("drops rows a cleanup removed after this scan began", async () => {
+    const client = freshClient();
+    recordRemoval(client, { ids: ["gone"], paths: [], at: Date.parse(started) + 60_000 });
+    mockApiFetch.mockResolvedValue({
+      entries: [entry("gone", 100, "safe"), entry("kept", 50, "safe")],
+      scanned_at: "2026-09-25T10:02:00+00:00",
+      started_at: started,
+      hostname: "h",
+      platform: "darwin",
+      skipped_paths: [],
+    });
+    const { result } = renderHook(() => useScan(), { wrapper: clientWrapper(client) });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(result.current.data!.rows.map((r) => r.id)).toEqual(["kept"]);
+    expect(result.current.data!.startedAt).toBe(started);
+  });
+
+  it("keeps rows removed before this scan began: it saw the disk without them", async () => {
+    const client = freshClient();
+    recordRemoval(client, { ids: ["back"], paths: [], at: Date.parse(started) - 60_000 });
+    mockApiFetch.mockResolvedValue({
+      entries: [entry("back", 100, "safe")],
+      scanned_at: "2026-09-25T10:02:00+00:00",
+      started_at: started,
+      hostname: "h",
+      platform: "darwin",
+      skipped_paths: [],
+    });
+    const { result } = renderHook(() => useScan(), { wrapper: clientWrapper(client) });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(result.current.data!.rows.map((r) => r.id)).toEqual(["back"]);
+  });
+
+  it("sends nothing while it is not enabled", async () => {
+    const client = freshClient();
+    renderHook(() => useScan({ enabled: false }), { wrapper: clientWrapper(client) });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mockApiFetch).not.toHaveBeenCalled();
   });
 });

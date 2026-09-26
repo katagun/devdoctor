@@ -18,7 +18,7 @@ import { cadenceMs, useSettings } from "@/hooks/useSettings";
 import { useCountdown } from "@/hooks/useCountdown";
 import { useScanETA } from "@/hooks/useScanETA";
 import { countNoun, humanBytes, RiskValue, timeAgo } from "@/lib/format";
-import { diskProviderParam } from "@/lib/providerFilters";
+import { diskProviderParam, diskScanReady } from "@/lib/providerFilters";
 import { filterByAge, filterByRisk, formatCoverage, partitionByMinSize } from "@/lib/scanRows";
 
 const NO_ROWS: CacheTableRow[] = [];
@@ -67,6 +67,7 @@ export default function Scan() {
     [providers, disabled],
   );
   const effectiveProviderParam = providerQuery ?? providerParam;
+  const scanReady = providerQuery !== undefined || diskScanReady(providers, disabled);
 
   const { settings } = useSettings();
   const staleTime = cadenceMs(settings.cadence);
@@ -77,6 +78,7 @@ export default function Scan() {
     staleTime,
     refetchOnMount: !manualOnly,
     snapshotMinIntervalMs: staleTime,
+    enabled: scanReady,
   });
 
   const eta = useScanETA();
@@ -213,13 +215,13 @@ export default function Scan() {
 
       <div className="flex-1 overflow-auto">
         {error && <div className="p-8 text-risk-danger font-mono text-sm">Error loading scan: {String(error)}</div>}
-        {isLoading && (
+        {(isLoading || !scanReady) && (
           <div className="p-8 text-text-muted font-mono text-sm animate-pulse">
             scanning…
             <ScanProgressLine progress={progress} remainingMs={remainingMs} bar />
           </div>
         )}
-        {!isLoading && !error && (
+        {!isLoading && scanReady && !error && (
           <CacheTable
             rows={showHiddenRows ? riskRows : visibleRows}
             selected={selected}
