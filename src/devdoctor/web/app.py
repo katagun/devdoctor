@@ -26,6 +26,7 @@ from devdoctor.web.routes_memory import router as memory_router
 from devdoctor.web.routes_scan import router as scan_router
 from devdoctor.web.routes_settings import router as settings_router
 from devdoctor.web.runner_registry import RunnerRegistry
+from devdoctor.web.scan_coalescer import ScanCoalescer
 from devdoctor.web.scan_progress import ScanProgressHub
 
 API_PREFIX = "/api"
@@ -101,6 +102,10 @@ def build_app(
 
     # Progress of the scan running in this process, for /api/scan/progress.
     app.state.scan_progress = ScanProgressHub()
+
+    # One scan per filter set at a time: a request for filters already being scanned
+    # shares that scan, since two at once slow each other about 5x.
+    app.state.scan_coalescer = ScanCoalescer()
 
     # /api routers — subsequent tasks attach additional routers the same way.
     app.include_router(scan_router)
