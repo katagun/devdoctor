@@ -278,12 +278,6 @@ entries under a versioned heading as described in
 
 ### Fixed
 
-- **The e2e harness no longer reaches Docker Desktop's bundled CLI.** Its server
-  runs with no `docker` on PATH, so the Docker provider fell back to Docker
-  Desktop's CLI and, with Docker running, would have put the machine's real
-  images, volumes and build cache into the fixture scan.
-  `DEVDOCTOR_DOCKER_BUNDLED_CLI` now points that fallback at another path, or
-  turns it off when empty, as the harness and the Python tests do.
 - **Cleaning the uv cache no longer hangs when DevDoctor runs under `uv run`.**
   `uv run` and `uvx` hold the uv cache lock until the program they started
   exits, so the `uv cache clean` they spawned waited for that lock forever and
@@ -291,6 +285,12 @@ entries under a versioned heading as described in
   where the cache is (so `UV_CACHE_DIR` is honoured), passes `--force` when it
   detects a parent uv process, and says so in the scan's diagnostics; without
   uv on PATH it deletes the directory. (#127)
+- **The e2e harness no longer reaches Docker Desktop's bundled CLI.** Its server
+  runs with no `docker` on PATH, so the Docker provider fell back to Docker
+  Desktop's CLI and, with Docker running, would have put the machine's real
+  images, volumes and build cache into the fixture scan.
+  `DEVDOCTOR_DOCKER_BUNDLED_CLI` now points that fallback at another path, or
+  turns it off when empty, as the harness and the Python tests do.
 - **A file that occupies nothing is counted as nothing.** Zero allocated blocks
   was read as "this filesystem hides block counts" and the file was counted at
   its full length, so a VM disk image that had never been written to read as
