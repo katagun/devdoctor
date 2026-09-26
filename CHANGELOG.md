@@ -14,6 +14,15 @@ entries under a versioned heading as described in
 
 ### Changed
 
+- **The web UI's lint and test tooling is current: ESLint 10, the React Hooks
+  rules 7, jsdom 30.** ESLint 10.9 (with `@eslint/js` 10),
+  `eslint-plugin-react-hooks` 7.1, `eslint-plugin-react-refresh` 0.5, jsdom 30.0
+  and `@testing-library/jest-dom` 7.0 replace five stale Dependabot updates
+  (#60-#64); what the new React Compiler rules found in five hooks and the
+  Settings page (refs written during render, state set synchronously in effects)
+  is fixed. jsdom 30 needs Node 22.22.2+ or 24.15+, so the web CI job and the
+  macOS packaging job now run on Node 24; the web job used to take whatever Node
+  the runner shipped, and packaging used Node 20.
 - **Scans are about 2.4x faster with byte-identical results.** Directory sizing
   was 83% of a scan and ran one tree at a time inside each provider. Trees are
   now walked with one `stat` per entry and no per-file path objects, a few at a

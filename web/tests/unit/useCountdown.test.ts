@@ -45,6 +45,21 @@ describe("useCountdown", () => {
     expect(result.current).toBe(3000);
   });
 
+  it("shows the whole total from the first render of a run, with no blank render first", () => {
+    const rendered: Array<number | null> = [];
+    const { rerender } = renderHook(
+      ({ running }) => {
+        const remaining = useCountdown(4000, running);
+        rendered.push(remaining);
+        return remaining;
+      },
+      { initialProps: { running: false } },
+    );
+    rendered.length = 0;
+    rerender({ running: true });
+    expect(rendered).toEqual([4000]);
+  });
+
   it("keeps the start anchored when the total arrives mid-run", () => {
     // On a cold load the scan starts before the estimate query resolves.
     const { result, rerender } = renderHook(

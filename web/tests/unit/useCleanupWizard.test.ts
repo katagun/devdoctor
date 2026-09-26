@@ -206,6 +206,45 @@ describe("useCleanupWizard", () => {
     });
   });
 
+  // The callbacks read the selection, the job and onSuccess through refs synced
+  // after each render, so a caller holding an old copy still acts on the latest.
+  it("keeps its callbacks stable and has them act on the latest state and onSuccess", async () => {
+    const second = { ...ENTRY, id: "p:/y", path: "/y" };
+    const firstOnSuccess = vi.fn();
+    const latestOnSuccess = vi.fn();
+    const qc = new QueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children);
+    const { result, rerender } = renderHook(
+      ({ onSuccess }) => useCleanupWizard({ entries: [ENTRY, second], onSuccess }),
+      { wrapper, initialProps: { onSuccess: firstOnSuccess } },
+    );
+    const { startJob, answerPrompt, confirm, cancel } = result.current;
+
+    act(() => result.current.toggleEnabled(second.id, false));
+    rerender({ onSuccess: latestOnSuccess });
+    expect(result.current.startJob).toBe(startJob);
+    expect(result.current.answerPrompt).toBe(answerPrompt);
+    expect(result.current.confirm).toBe(confirm);
+    expect(result.current.cancel).toBe(cancel);
+
+    await act(async () => {
+      await startJob();
+    });
+    expect(JSON.parse(String(startRequests()[0][1])).entry_ids).toEqual([ENTRY.id]);
+
+    await act(async () => {
+      await answerPrompt(ENTRY.id, "y");
+      await confirm();
+    });
+    expect(postJson).toHaveBeenCalledWith("/clean/jobs/job-1/answer", expect.any(String));
+    expect(postJson).toHaveBeenCalledWith("/clean/jobs/job-1/confirm", expect.any(String));
+
+    act(() => FakeEventSource.instances[0].emit("done", { results: [] }));
+    expect(latestOnSuccess).toHaveBeenCalledWith([]);
+    expect(firstOnSuccess).not.toHaveBeenCalled();
+  });
+
   // The server re-scans the selection before a job exists, which takes minutes for
   // node_modules on a large disk; nothing on the review step used to say so.
   it("stays on review, marked as starting, until the server has checked the selection", async () => {

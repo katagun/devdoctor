@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import {
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_MIN_WIDTH,
@@ -9,11 +9,26 @@ import {
 
 const QUERY = "(max-width: 767px)";
 
-function getInitialMatch(): boolean {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-    return false;
-  }
-  return window.matchMedia(QUERY).matches;
+/**
+ * A store over one MediaQueryList for QUERY, whose `matches` is live. Reading
+ * and subscribing through the same list keeps the two in step.
+ */
+function narrowViewportStore() {
+  const mql =
+    typeof window === "undefined" || typeof window.matchMedia !== "function"
+      ? null
+      : window.matchMedia(QUERY);
+  return {
+    subscribe: (onChange: () => void): (() => void) => {
+      mql?.addEventListener("change", onChange);
+      return () => mql?.removeEventListener("change", onChange);
+    },
+    matches: (): boolean => mql?.matches ?? false,
+  };
+}
+
+function notNarrowOnServer(): boolean {
+  return false;
 }
 
 function currentViewportWidth(): number {
@@ -32,22 +47,15 @@ export interface UseSidebarWidthResult {
 
 export function useSidebarWidth(): UseSidebarWidthResult {
   const { settings, update } = useSettings();
-  const [forceCollapsedByViewport, setForced] = useState<boolean>(getInitialMatch);
+  // useSyncExternalStore reads the query while rendering and again once it has
+  // subscribed, so a change in between is not missed.
+  const [narrowViewport] = useState(narrowViewportStore);
+  const forceCollapsedByViewport = useSyncExternalStore(
+    narrowViewport.subscribe,
+    narrowViewport.matches,
+    notNarrowOnServer,
+  );
   const [viewportWidth, setViewportWidth] = useState<number>(currentViewportWidth);
-
-
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-      return;
-    }
-    const mql = window.matchMedia(QUERY);
-    setForced(mql.matches);
-    const onChange = (e: MediaQueryListEvent | { matches: boolean }) => {
-      setForced(e.matches);
-    };
-    mql.addEventListener("change", onChange);
-    return () => mql.removeEventListener("change", onChange);
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { CacheTableRow } from "@/components/CacheTable";
 import { apiFetch, ApiError } from "@/api";
@@ -195,15 +195,20 @@ export function useCleanupWizard({
   // Refs so startJob/answerPrompt/confirm keep stable identities across state
   // changes — switching to useCallback deps would reintroduce stale-closure bugs.
   const enabledRef = useRef(state.enabled);
-  enabledRef.current = state.enabled;
   const entriesRef = useRef(state.entries);
-  entriesRef.current = state.entries;
   const jobIdRef = useRef<string | null>(state.jobId);
-  jobIdRef.current = state.jobId;
   // Ref the callback so openStream's deps stay empty and the listener reads the
   // latest caller-supplied handler at dispatch time.
   const onSuccessRef = useRef(onSuccess);
-  onSuccessRef.current = onSuccess;
+  // Synced once a render commits, not while rendering (React may throw a render
+  // away). A layout effect runs before the browser delivers the next event, so a
+  // click or a stream message never reads older values than the ones on screen.
+  useLayoutEffect(() => {
+    enabledRef.current = state.enabled;
+    entriesRef.current = state.entries;
+    jobIdRef.current = state.jobId;
+    onSuccessRef.current = onSuccess;
+  }, [state.enabled, state.entries, state.jobId, onSuccess]);
   // Set synchronously, unlike state.starting, so a second click in the same frame
   // cannot send a second start.
   const startingRef = useRef(false);

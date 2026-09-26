@@ -6,21 +6,22 @@ export interface SSEEvent {
   ts: number;
 }
 
+export type SSEStatus = "idle" | "open" | "error";
+
 /**
  * Subscribe to an SSE endpoint. Listens for each of `eventNames` plus the
- * default unnamed `message`. Returns the list of events received, newest last.
+ * default unnamed `message`. Returns the list of events received, newest last,
+ * and the stream's status: idle without a url, open while subscribed, error once
+ * the stream has reported one.
  */
 export function useSSE(url: string | null, eventNames: string[]) {
   const [events, setEvents] = useState<SSEEvent[]>([]);
-  const [status, setStatus] = useState<"idle" | "open" | "closed" | "error">("idle");
+  // Set by the stream's error callback and cleared when the stream is torn down.
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    if (!url) {
-      setStatus("idle");
-      return;
-    }
+    if (!url) return;
     const es = new EventSource(url);
-    setStatus("open");
 
     const handlers: Array<() => void> = [];
 
@@ -41,14 +42,15 @@ export function useSSE(url: string | null, eventNames: string[]) {
     register("message");
     for (const n of eventNames) register(n);
 
-    es.onerror = () => setStatus("error");
+    es.onerror = () => setFailed(true);
 
     return () => {
       for (const off of handlers) off();
       es.close();
-      setStatus("closed");
+      setFailed(false);
     };
   }, [url, eventNames.join(",")]);
 
+  const status: SSEStatus = !url ? "idle" : failed ? "error" : "open";
   return { events, status };
 }
