@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from devdoctor.providers import venv
 from devdoctor.providers.venv import VenvProvider
 from devdoctor.types import Risk
 from tests.conftest import FakeShell
@@ -154,3 +155,43 @@ def test_discovers_venvs_nested_below_a_project_marker(tmp_path, monkeypatch):
     labels = {e.label for e in VenvProvider(FakeShell()).discover()}
 
     assert "api/.venv" in labels
+
+
+def _three_venvs(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr("sys.platform", "darwin")
+    _mk_venv(home / "projects" / "a" / ".venv", payload_bytes=1024)
+    _mk_venv(home / "projects" / "b" / ".venv", payload_bytes=2048)
+    _mk_venv(home / "Code" / "c" / "venv", payload_bytes=4096)
+    return VenvProvider(FakeShell())
+
+
+def test_discover_selected_is_discover_narrowed_to_the_selection(tmp_path, monkeypatch):
+    provider = _three_venvs(tmp_path, monkeypatch)
+    everything = provider.discover()
+    assert len(everything) == 3
+    first = everything[0].id
+    for ids in (
+        frozenset(),
+        frozenset({first}),
+        frozenset(e.id for e in everything),
+        frozenset({"/nope"}),
+    ):
+        assert provider.discover_selected(ids) == [e for e in everything if e.id in ids]
+
+
+def test_only_the_selected_venv_is_sized(tmp_path, monkeypatch):
+    provider = _three_venvs(tmp_path, monkeypatch)
+    target = provider.discover()[0].path
+    sized = []
+    real = venv.size_many
+
+    def spy(paths, **kwargs):
+        sized.extend(paths)
+        return real(paths, **kwargs)
+
+    monkeypatch.setattr(venv, "size_many", spy)
+    provider.discover_selected(frozenset({str(target)}))
+    assert sized == [target]

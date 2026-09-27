@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from devdoctor.providers import tool_caches
 from devdoctor.providers.mobile import AndroidSdkProvider, XcodeProvider
 from devdoctor.providers.tool_caches import (
     BunCacheProvider,
@@ -168,6 +169,49 @@ def test_xcode_provider_keeps_archives_advice_only(
     assert by_path[archive].risk == Risk.DANGEROUS
     assert by_path[archive].reclaimable_bytes is None
     assert isinstance(by_path[archive].actions[0], AdviceAction)
+
+
+def _xcode_home(tmp_path: Path, monkeypatch) -> list[Path]:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    developer = tmp_path / "Library" / "Developer" / "Xcode"
+    paths = [
+        developer / "DerivedData" / "App-1",
+        developer / "DerivedData" / "App-2",
+        developer / "Archives" / "2026-09-05" / "App.xcarchive",
+    ]
+    for path in paths:
+        _payload(path / "payload")
+    return paths
+
+
+def test_xcode_discover_selected_is_discover_narrowed_to_the_selection(
+    tmp_path: Path, monkeypatch
+) -> None:
+    paths = _xcode_home(tmp_path, monkeypatch)
+    provider = XcodeProvider(FakeShell())
+    everything = provider.discover()
+    assert len(everything) == 3
+    for ids in (
+        frozenset(),
+        frozenset({str(paths[0])}),
+        frozenset(str(p) for p in paths),
+        frozenset({"/nope"}),
+    ):
+        assert provider.discover_selected(ids) == [e for e in everything if e.id in ids]
+
+
+def test_xcode_sizes_only_the_selected_entry(tmp_path: Path, monkeypatch) -> None:
+    paths = _xcode_home(tmp_path, monkeypatch)
+    sized: list[Path] = []
+    real = tool_caches.size_path_detailed
+
+    def spy(path):
+        sized.append(path)
+        return real(path)
+
+    monkeypatch.setattr(tool_caches, "size_path_detailed", spy)
+    XcodeProvider(FakeShell()).discover_selected(frozenset({str(paths[1])}))
+    assert sized == [paths[1]]
 
 
 def test_android_sdk_images_use_sdkmanager_but_avds_are_advice_only(

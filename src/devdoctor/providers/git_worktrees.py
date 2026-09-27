@@ -92,6 +92,14 @@ class GitWorktreeProvider(Provider):
         self._git = GitRunner(shell)
 
     def discover(self) -> list[Entry]:
+        return self._run(None)
+
+    def discover_selected(self, ids: frozenset[str]) -> list[Entry]:
+        if not ids:
+            return []
+        return self._run(ids)
+
+    def _run(self, wanted: frozenset[str] | None) -> list[Entry]:
         version = self._git.version()
         if version is None:
             self.diagnostics.append(
@@ -109,12 +117,17 @@ class GitWorktreeProvider(Provider):
             self._create_objects_dir() if supports_merge_tree_write_tree(version) else None
         )
         try:
-            return self._discover(self._index.git_candidates(), objects_dir)
+            return self._discover(self._index.git_candidates(), objects_dir, wanted)
         finally:
             if objects_dir is not None:
                 self._remove_objects_dir(objects_dir)
 
-    def _discover(self, candidates: GitCandidates, objects_dir: Path | None) -> list[Entry]:
+    def _discover(
+        self,
+        candidates: GitCandidates,
+        objects_dir: Path | None,
+        wanted: frozenset[str] | None = None,
+    ) -> list[Entry]:
         listed: set[str] = set()
         failed: set[str] = set()
         work: list[tuple[_Repository, WorktreeRecord]] = []
@@ -129,16 +142,22 @@ class GitWorktreeProvider(Provider):
                 continue
             listed.update(_real(record.path) for record in records)
             linked = self._linked_worktrees(repository, records)
-            if linked:
+            # Every repository is still listed above: whether a worktree may be
+            # removed depends on what all of them register.
+            chosen = linked if wanted is None else [r for r in linked if str(r.path) in wanted]
+            if chosen:
                 facts = self._repository_facts(repository, linked, objects_dir)
-                work.extend((facts, record) for record in linked)
+                work.extend((facts, record) for record in chosen)
         # Every repository has been listed: a worktree holding any of them is not removable.
         registered = frozenset(listed)
         with ThreadPoolExecutor(max_workers=WORKER_THREADS) as pool:
             entries = list(
                 pool.map(lambda item: self._worktree_entry(item[0], item[1], registered), work)
             )
-        entries.extend(self._unverifiable_entries(candidates, listed, failed))
+        unverifiable = self._unverifiable_entries(candidates, listed, failed)
+        if wanted is not None:
+            unverifiable = [entry for entry in unverifiable if entry.id in wanted]
+        entries.extend(unverifiable)
         return entries
 
     def _linked_worktrees(

@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from devdoctor.providers import base
 from devdoctor.providers.base import PathProvider
 from devdoctor.types import Risk
 from tests.conftest import FakeShell
@@ -296,3 +297,38 @@ def test_an_entry_is_as_young_as_the_newest_file_inside_it(tmp_path):
     )
     (entry,) = provider.discover()
     assert entry.mtime == recent
+
+
+def _three_caches(tmp_path: Path) -> PathProvider:
+    for name, size in (("a", 100), ("b", 200), ("c", 300)):
+        _mkfile(tmp_path / "caches" / name / "blob", size)
+    spec = {
+        "name": "caches",
+        "description": "",
+        "risk": "safe",
+        "platforms": ["darwin", "linux"],
+        "paths": [f"{tmp_path}/caches/*"],
+        "recipe": "rm -rf {path}",
+    }
+    return PathProvider.from_yaml(spec, FakeShell())
+
+
+@pytest.mark.parametrize("pick", [(), ("a",), ("a", "b", "c"), ("nope",), ("b", "nope")])
+def test_discover_selected_is_discover_narrowed_to_the_selection(tmp_path: Path, pick) -> None:
+    provider = _three_caches(tmp_path)
+    ids = frozenset(str(tmp_path / "caches" / name) for name in pick)
+    assert provider.discover_selected(ids) == [e for e in provider.discover() if e.id in ids]
+
+
+def test_only_the_selected_paths_are_sized(tmp_path: Path, monkeypatch) -> None:
+    provider = _three_caches(tmp_path)
+    sized: list[Path] = []
+    real = base.size_many
+
+    def spy(paths, **kwargs):
+        sized.extend(paths)
+        return real(paths, **kwargs)
+
+    monkeypatch.setattr(base, "size_many", spy)
+    provider.discover_selected(frozenset({str(tmp_path / "caches" / "b")}))
+    assert sized == [tmp_path / "caches" / "b"]

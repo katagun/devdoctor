@@ -25,8 +25,10 @@ router = APIRouter(prefix="/api/clean")
 def _owning_providers(entry_ids: list[str], providers: list[Provider]) -> frozenset[str] | None:
     """The providers named by the ``"{provider}:{id}"`` prefix of every selected id.
 
-    ``None`` (scan everything) when any id has no such prefix, so an id this build
-    cannot attribute is still looked for everywhere before it is called unknown.
+    ``None`` when any id has no such prefix. That only affects whether
+    ``coverage.summarise`` runs on the scan (a filtered scan skips it); every provider
+    still gets only its share of ``entry_ids``, and an unattributable id has no share
+    anywhere, so it is reported unknown without any provider running.
     """
     names = {provider.name for provider in providers}
     owners: set[str] = set()
@@ -39,10 +41,11 @@ def _owning_providers(entry_ids: list[str], providers: list[Provider]) -> frozen
 
 
 def _scan_selection(shell: Shell, entry_ids: list[str]) -> Report:
-    """The current state of the providers that own ``entry_ids``.
+    """The current state of the selected entries.
 
-    Blocking: it walks the disk, which takes minutes for a provider such as
-    node_modules on a large machine, so the route runs it on a worker thread.
+    Each owning provider finds its candidates fresh and measures only the selected
+    ones (``discover_selected``). Still blocking, so the route runs it on a worker
+    thread.
     """
     providers_list = registry.load_providers(shell)
     # Uncontained: this scan establishes current state for the selection, so every id
@@ -53,7 +56,13 @@ def _scan_selection(shell: Shell, entry_ids: list[str]) -> Report:
     # only ever looks at selected entries, so nothing outside those providers can
     # affect the job.
     filters = ScanFilters(providers=_owning_providers(entry_ids, providers_list))
-    return discovery.scan(providers_list, filters, datetime.now(UTC), contain=False)
+    return discovery.scan(
+        providers_list,
+        filters,
+        datetime.now(UTC),
+        contain=False,
+        selection=frozenset(entry_ids),
+    )
 
 
 @router.post("/jobs")

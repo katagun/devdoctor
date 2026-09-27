@@ -6,6 +6,7 @@ import threading
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import ClassVar
 
 from devdoctor.ports import Shell
 from devdoctor.providers._git import WorktreePointer, read_worktree_pointer
@@ -275,6 +276,15 @@ class NodeModulesProvider(Provider):
         self._index = index or ProjectArtifactIndex()
 
     def discover(self) -> list[Entry]:
+        return _sized_entries(self, self._candidates())
+
+    def discover_selected(self, ids: frozenset[str]) -> list[Entry]:
+        if not ids:
+            return []
+        # Candidates come from the same fresh walk; only the selected ones are sized.
+        return _sized_entries(self, [c for c in self._candidates() if str(c.artifact) in ids])
+
+    def _candidates(self) -> list[_Candidate]:
         candidates: list[_Candidate] = []
         for project, artifact in self._index.candidates("node"):
             has_lockfile = any((project / name).is_file() for name in _LOCKFILES)
@@ -290,7 +300,7 @@ class NodeModulesProvider(Provider):
                 )
                 risk = Risk.DANGEROUS
             candidates.append(_Candidate(project, artifact, risk, action))
-        return _sized_entries(self, candidates)
+        return candidates
 
 
 class CargoTargetsProvider(NodeModulesProvider):
@@ -300,18 +310,13 @@ class CargoTargetsProvider(NodeModulesProvider):
     platforms = ("darwin", "linux")
     risk = Risk.RECLAIMABLE
     details = "Finds target directories next to Cargo.toml under bounded project roots."
+    _query: ClassVar[str] = "cargo"
 
-    def discover(self) -> list[Entry]:
-        return self._entries(self._index.candidates("cargo"))
-
-    def _entries(self, candidates: Iterable[tuple[Path, Path]]) -> list[Entry]:
-        return _sized_entries(
-            self,
-            [
-                _Candidate(project, artifact, self.risk, DeletePathAction(artifact))
-                for project, artifact in candidates
-            ],
-        )
+    def _candidates(self) -> list[_Candidate]:
+        return [
+            _Candidate(project, artifact, self.risk, DeletePathAction(artifact))
+            for project, artifact in self._index.candidates(self._query)
+        ]
 
 
 class AndroidBuildProvider(CargoTargetsProvider):
@@ -322,9 +327,7 @@ class AndroidBuildProvider(CargoTargetsProvider):
         "Finds build directories next to build.gradle or build.gradle.kts under "
         "bounded project roots."
     )
-
-    def discover(self) -> list[Entry]:
-        return self._entries(self._index.candidates("android"))
+    _query = "android"
 
 
 class ToxNoxProvider(CargoTargetsProvider):
@@ -333,9 +336,7 @@ class ToxNoxProvider(CargoTargetsProvider):
     description = "Generated tox and nox test environments"
     risk = Risk.SAFE
     details = "Finds .tox and .nox directories in configured/common project roots."
-
-    def discover(self) -> list[Entry]:
-        return self._entries(self._index.candidates("tox-nox"))
+    _query = "tox-nox"
 
 
 class TerraformProvider(CargoTargetsProvider):
@@ -351,12 +352,16 @@ class TerraformProvider(CargoTargetsProvider):
         "keeps one copy and links each workspace to it. The scan measures the duplicate "
         "copies and says so."
     )
+    _query = "terraform"
 
     def discover(self) -> list[Entry]:
-        candidates = tuple(self._index.candidates("terraform"))
-        entries = self._entries(candidates)
-        self._note_duplicate_plugins([artifact for _project, artifact in candidates])
+        candidates = self._candidates()
+        entries = _sized_entries(self, candidates)
+        self._note_duplicate_plugins([candidate.artifact for candidate in candidates])
         return entries
+
+    # discover_selected is inherited: a cleanup's re-check skips the duplicate-plugin
+    # note, a report diagnostic that measures every workspace's plugins.
 
     def _note_duplicate_plugins(self, dot_terraform_dirs: list[Path]) -> None:
         """Measure the provider plugin copies that a shared cache would collapse.

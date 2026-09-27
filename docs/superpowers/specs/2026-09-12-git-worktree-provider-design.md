@@ -403,6 +403,9 @@ containment rules.
   current state, not what to display, so every id any filtered view could have
   shown still exists, and the existing `unknown_entry` (HTTP 400) check cannot
   fire for a legitimate selection. That scan's totals are never shown.
+  The scan builds only the selected entries: each provider finds its candidates from
+  disk as `discover()` would, and measures only those selected (`discover_selected`,
+  spec 2026-09-25).
 - That report is narrowed to the selected ids, and every selected entry stays in
   the job, so each one gets a `CleanResult`.
 - **The shared cleanup executor** (`cleanup._iter_execute`, used by CLI and web)

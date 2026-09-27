@@ -32,6 +32,11 @@ entries under a versioned heading as described in
   disk between runs. `scripts/bench_sizer.py` reproduces the comparison, and
   `DEVDOCTOR_SIZER_WORKERS` overrides the pool size. Sizes are still never
   cached between scans: no cheap key proves a cached size is current. (#92)
+- **Starting a web cleanup re-checks only what you selected.** Before a job
+  starts, the server confirms each selected entry against the disk. It used to
+  re-run the entry's whole provider, so one `node_modules` folder re-sized all
+  267 on the reference machine (about 58 s). Providers still find their
+  candidates on disk as before, but measure only the selected ones.
 - **A wedged Docker daemon no longer hangs the scan.** `docker system df` blocks
   for as long as the daemon does; each Docker query is now bounded at 60 s and
   reports a diagnostic instead. (#92)

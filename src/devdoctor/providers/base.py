@@ -87,6 +87,17 @@ class Provider(ABC):
     @abstractmethod
     def discover(self) -> list[Entry]: ...
 
+    def discover_selected(self, ids: frozenset[str]) -> list[Entry]:
+        """The entries ``discover()`` would report now whose (provider-local) id is in ``ids``.
+
+        A web cleanup re-checks only what it will act on. This default is correct for
+        every provider and no faster; a provider that finds its candidates cheaply
+        overrides it and measures only the selected ones.
+        """
+        if not ids:
+            return []
+        return [entry for entry in self.discover() if entry.id in ids]
+
 
 def _normalize_platform(raw: str) -> str:
     if raw.startswith("linux"):
@@ -233,8 +244,16 @@ class PathProvider(Provider):
         return out
 
     def discover(self) -> list[Entry]:
+        return self._entries(self.resolve_paths())
+
+    def discover_selected(self, ids: frozenset[str]) -> list[Entry]:
+        if not ids:
+            return []
+        # Globs are cheap and decide what exists; only the selected paths are sized.
+        return self._entries([p for p in self.resolve_paths() if str(p) in ids])
+
+    def _entries(self, paths: list[Path]) -> list[Entry]:
         entries: list[Entry] = []
-        paths = self.resolve_paths()
         for p, sizing in zip(paths, size_many(paths), strict=True):
             size = sizing.allocated_bytes
             self._note_skipped(list(sizing.skipped_paths))

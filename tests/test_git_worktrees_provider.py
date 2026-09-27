@@ -1212,3 +1212,62 @@ def test_removal_target_requires_absolute_paths(repository, action_path, entry_p
     entry = _removal_entry(repository, action_path, entry_path)
 
     assert git_worktrees._removal_target(entry) == expected
+
+
+# --- discover_selected (selection-scoped re-scan) ------------------------------------
+
+
+def _one_integrated_one_not(app, projects):
+    done = app.add_worktree(projects / "app" / ".worktrees" / "done", "done")
+    _merge(app, done, branch="done")
+    wip = app.add_worktree(projects / "wt" / "wip", "wip")
+    wip.commit("Unmerged work", {"work.txt": "work\n"})
+    app.publish()
+    return done, wip
+
+
+def test_discover_selected_is_discover_narrowed_to_the_selection(app, projects):
+    done, wip = _one_integrated_one_not(app, projects)
+    everything, _ = _discover()
+    ids = [e.id for e in everything]
+    assert str(done.path) in ids and str(wip.path) in ids
+    for pick in (
+        frozenset(),
+        frozenset({str(done.path)}),
+        frozenset({str(wip.path)}),
+        frozenset(ids),
+        frozenset({"/nope"}),
+    ):
+        provider = GitWorktreeProvider(RealShell())
+        assert provider.discover_selected(pick) == [e for e in everything if e.id in pick]
+
+
+def test_an_unselected_worktree_is_never_inspected(app, projects):
+    done, wip = _one_integrated_one_not(app, projects)
+    shell = RecordingShell()
+    GitWorktreeProvider(shell).discover_selected(frozenset({str(done.path)}))
+    touched = [argv for argv, _env in shell.calls if str(wip.path) in " ".join(argv)]
+    assert touched == []
+
+
+def test_discover_selected_mtime_matches_discover_when_a_sibling_head_is_unreadable(app, projects):
+    """I-1 final review: `_repository_facts` must see every linked worktree's HEAD, not
+    only the selected ones, or a selection changes whether the batched `git log` that
+    fills in `mtime` fails, breaking `discover_selected(ids) == [e for e in discover()
+    if e.id in ids]`.
+    """
+    done, wip = _one_integrated_one_not(app, projects)
+    third = app.add_worktree(projects / "wt" / "third", "third")
+    missing_sha = "0" * 39 + "1"
+    head_file = app.path / ".git" / "worktrees" / third.path.name / "HEAD"
+    head_file.write_text(missing_sha + "\n")
+
+    everything, provider = _discover()
+
+    # Prove the fixture actually reproduces the failure before trusting the equivalence
+    # check below: the whole repository's batched HEAD-times lookup must have failed.
+    assert any("could not read HEAD commit times" in d for d in provider.diagnostics)
+    assert _entry(everything, done.path).mtime is None
+
+    selected = GitWorktreeProvider(RealShell()).discover_selected(frozenset({str(done.path)}))
+    assert selected == [e for e in everything if e.id == str(done.path)]
