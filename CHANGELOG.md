@@ -278,6 +278,13 @@ entries under a versioned heading as described in
 
 ### Fixed
 
+- **Two identical scans no longer run at once.** A finished cleanup started a
+  full rescan (75–100 s on the reference machine) even while one was running,
+  and concurrent scans slowed each other about 5×. The Disk page now drops what
+  a cleanup removed straight away, and a scan that was already running cannot
+  bring it back. The server runs one scan per filter set, which later requests
+  for the same filters share. With providers disabled, the first scan waits for
+  the provider list instead of running unfiltered and then again filtered.
 - **Starting a cleanup in the web UI no longer freezes the app.** Pressing
   *execute* re-scans the providers that own the selection before the job
   exists: about 40 s for `node_modules` on a large disk, and up to 3.7 minutes
