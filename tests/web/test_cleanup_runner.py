@@ -375,3 +375,62 @@ async def test_runner_bundle_approval_resolves_covered_snapshots_without_executi
         assert by_id[s.id].message == f"covered by {bundle_label}"
     # Only the bundle's commands ran; no per-snapshot command ever executed.
     assert executed == [tuple(a.argv) for s in snaps for a in s.actions]
+
+
+def _free_bytes_sequence(monkeypatch, *values: int):
+    """Stand in for the two disk readings a job takes: before it runs, and after."""
+    from devdoctor import cleanup_audit
+
+    remaining = list(values)
+    monkeypatch.setattr(cleanup_audit, "free_bytes", lambda: remaining.pop(0))
+
+
+@pytest.mark.asyncio
+async def test_done_reports_the_measured_free_space_and_whether_it_lagged(monkeypatch):
+    """The web summary used to show only the estimate: 18 GB "reclaimed" while local
+    snapshots held every block and free space did not move."""
+    entry = _e("a", "1", 500_000_000, recipe=["rm -rf /1"])
+    rep = _report(entry)
+    _free_bytes_sequence(monkeypatch, 10_000_000_000, 10_050_000_000)
+
+    async def fake_run_line(_argv: tuple[str, ...]) -> ShellResult:
+        return ShellResult(0, "", "")
+
+    runner = CleanupRunner(report=rep, opts=CleanupOpts(execute=True), run_line=fake_run_line)
+    task = asyncio.create_task(runner.run())
+    await _approve_and_confirm(runner, entry.id)
+    done = (await _events_until_done(runner))[-1]["data"]
+    await asyncio.wait_for(task, timeout=1)
+
+    assert done["free_before_bytes"] == 10_000_000_000
+    assert done["free_after_bytes"] == 10_050_000_000
+    # 50 MB released of 500 MB deleted: the blocks are being held.
+    assert done["free_space_lagged"] is True
+
+    audit = build_storage().read_audit_events(limit=1)[0]
+    assert audit["free_before_bytes"] == 10_000_000_000
+    assert audit["free_after_bytes"] == 10_050_000_000
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_job_still_reports_its_free_space_readings(monkeypatch):
+    rep = _report(_e("a", "1", 100, recipe=["rm /1"]))
+    _free_bytes_sequence(monkeypatch, 10_000_000_000, 10_000_000_000)
+
+    async def fake_run_line(_argv: tuple[str, ...]) -> ShellResult:
+        return ShellResult(0, "", "")
+
+    runner = CleanupRunner(report=rep, opts=CleanupOpts(execute=True), run_line=fake_run_line)
+    task = asyncio.create_task(runner.run())
+    # The route hands the runner its task; that is what lets cancel() interrupt it.
+    runner._task = task
+    await runner.events.get()  # prompt for entry 1
+    await runner.cancel()
+    done = (await _events_until_done(runner))[-1]["data"]
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, timeout=1)
+
+    assert done["cancelled"] is True
+    assert done["free_before_bytes"] == 10_000_000_000
+    assert done["free_after_bytes"] == 10_000_000_000
+    assert done["free_space_lagged"] is False

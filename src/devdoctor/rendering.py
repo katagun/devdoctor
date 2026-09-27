@@ -16,6 +16,7 @@ from rich.status import Status
 from rich.table import Table
 from rich.text import Text
 
+from devdoctor import cleanup_audit
 from devdoctor.cleanup import (
     CleanupEvent,
     ConfirmRequired,
@@ -570,12 +571,7 @@ class CleanupPresenter:
                 f"({sign}{_human_bytes(abs(delta))}) · "
             )
         self._console.print(Text(f"{tail}recorded: devdoctor history"))
-        if (
-            free_before is not None
-            and free_after is not None
-            and reclaimed
-            and free_after - free_before < reclaimed / 2
-        ):
+        if cleanup_audit.free_space_lagged(free_before, free_after, reclaimed):
             self._console.print(Text(_SNAPSHOT_HINT, style="yellow"))
 
     # -- helpers ---------------------------------------------------------------

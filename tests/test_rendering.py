@@ -475,3 +475,19 @@ def test_the_largest_unclassified_directories_are_listed_when_measured():
 
 def test_no_coverage_line_without_coverage():
     assert "Coverage:" not in _render(render_report_table, _rep(_e("uv-cache", "/x", 5)))
+
+
+def test_summary_omits_the_snapshot_hint_for_a_cleanup_too_small_to_measure() -> None:
+    # A 50 MB cleanup whose free-space delta reads as zero is measurement noise
+    # (other processes write that much between the two readings), not a snapshot.
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    pip = _entry("pip", 50_000_000, provider="pip-cache")
+    p.on_event(ConfirmRequired(approved=[pip], total_bytes=50_000_000, plan=(_planned(pip),)))
+    p.summary(
+        [CleanResult(entry_id="pip", status="ok", freed_bytes=50_000_000)],
+        free_before=1_000_000_000,
+        free_after=1_000_000_000,
+    )
+    out = console.export_text()
+    assert "APFS" not in out and "free space" in out
