@@ -11,7 +11,9 @@ your change needs to pass, and the conventions the project follows.
 ## Getting set up
 
 DevDoctor uses [uv](https://docs.astral.sh/uv/) for the Python side and
-[Bun](https://bun.com/docs/installation) for the web UI.
+[Bun](https://bun.com/docs/installation) for the web UI. The web tests run
+vitest on Node, and need Node 22.22.2+ on 22.x, 24.15+ on 24.x, or 26+ (jsdom
+30); Node 24 is what CI uses.
 
 ```bash
 # Python: install the project with dev + web extras into a managed venv

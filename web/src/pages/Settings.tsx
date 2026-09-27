@@ -33,7 +33,17 @@ export default function Settings() {
       ? String(Math.round(settings.minSizeBytes / 1_000_000))
       : "",
   );
-  const [sqlitePath, setSqlitePath] = useState("");
+  const serverSqlitePath = appSettings.data?.sqlite_path;
+  const [sqlitePath, setSqlitePath] = useState(serverSqlitePath ?? "");
+  // A new path from the server (the first load, a save) replaces whatever is in
+  // the field. Adjusted while rendering rather than in an effect, so the field
+  // never renders a stale path first:
+  // https://react.dev/reference/react/useState#storing-information-from-previous-renders
+  const [adoptedSqlitePath, setAdoptedSqlitePath] = useState(serverSqlitePath);
+  if (serverSqlitePath !== adoptedSqlitePath) {
+    setAdoptedSqlitePath(serverSqlitePath);
+    if (serverSqlitePath) setSqlitePath(serverSqlitePath);
+  }
   const [savedFlash, setSavedFlash] = useState(false);
 
   useEffect(() => {
@@ -41,12 +51,6 @@ export default function Settings() {
     const t = setTimeout(() => setSavedFlash(false), SAVED_MS);
     return () => clearTimeout(t);
   }, [savedFlash]);
-
-  useEffect(() => {
-    if (appSettings.data?.sqlite_path) {
-      setSqlitePath(appSettings.data.sqlite_path);
-    }
-  }, [appSettings.data?.sqlite_path]);
 
   function applyAndFlash(patch: Parameters<typeof update>[0]) {
     update(patch);

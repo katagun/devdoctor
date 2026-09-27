@@ -21,10 +21,7 @@ export function useScanProgress(active: boolean): ScanProgressSnapshot | null {
   const [snapshot, setSnapshot] = useState<ScanProgressSnapshot | null>(null);
 
   useEffect(() => {
-    if (!active) {
-      setSnapshot(null);
-      return;
-    }
+    if (!active) return;
     const es = new EventSource(SCAN_PROGRESS_URL);
     let highestScanId = 0;
     let seenRunning = false;
@@ -51,6 +48,8 @@ export function useScanProgress(active: boolean): ScanProgressSnapshot | null {
     return () => {
       es.removeEventListener("progress", onProgress);
       es.close();
+      // The snapshot belongs to this stream: the next one starts from nothing.
+      setSnapshot(null);
     };
   }, [active]);
 

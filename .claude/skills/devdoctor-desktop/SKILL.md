@@ -8,7 +8,7 @@ description: Use when someone wants to build, install, or launch the DevDoctor E
 Builds the Electron desktop app, which bundles the web UI plus a standalone
 (PyInstaller) copy of the `devdoctor` backend, so it runs with no separate
 Python install. **macOS only**, and requires a dev checkout with the toolchain
-(`uv`, Bun, Node 20, and PyInstaller via the `dev` extra).
+(`uv`, Bun, Node 24, and PyInstaller via the `dev` extra).
 
 The result is **unsigned** (ad-hoc). That's fine to run locally; a
 signed/notarized `.dmg` for distribution is separate (issue #6, needs an Apple
