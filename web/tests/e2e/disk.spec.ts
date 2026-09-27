@@ -1,6 +1,15 @@
 import { expect, test } from "@playwright/test";
 import fs from "node:fs";
-import { CACHE_LABEL, PROJECT_NAME, STORE_LABEL, cachePath, nodeModulesPath } from "./fixture";
+import path from "node:path";
+import {
+  CACHE_LABEL,
+  NODE_MODULES_BYTES,
+  PROJECT_NAME,
+  PROJECT_PROVIDER,
+  STORE_LABEL,
+  cachePath,
+  nodeModulesPath,
+} from "./fixture";
 
 test("the scan lists the fixture entries", async ({ page }) => {
   await page.goto("/disk");
@@ -71,4 +80,33 @@ test("the age chips hide fresh rows without another scan, and the scan states it
 
   // An unfiltered scan says how much of the volume's used space it accounts for.
   await expect(page.getByText(/accounts for .+ of .+ used · \d+%/)).toBeVisible();
+});
+
+test("a finished cleanup drops its row without another scan", async ({ page }) => {
+  await page.goto("/disk");
+  const row = page.getByText(`${PROJECT_NAME}/node_modules`);
+  await expect(row).toBeVisible();
+  const scans: string[] = [];
+  try {
+    await page
+      .getByRole("checkbox", { name: new RegExp(`^select ${PROJECT_PROVIDER} ${PROJECT_NAME}/node_modules$`) })
+      .check();
+    await page.getByRole("button", { name: /^clean up 1 item$/ }).click();
+    page.on("request", (request) => {
+      if (/\/api\/(disk\/)?scan(\?|$)/.test(request.url())) scans.push(request.url());
+    });
+    await page.getByRole("button", { name: "execute", exact: true }).click();
+    await page.getByRole("button", { name: "[y]" }).click();
+    await page.getByRole("button", { name: "yes, execute" }).click();
+    await expect(page.getByText("Cleanup complete.")).toBeVisible();
+    await page.getByRole("button", { name: "Close cleanup wizard" }).click();
+
+    await expect(row).toHaveCount(0);
+    expect(fs.existsSync(nodeModulesPath())).toBe(false);
+    expect(scans).toEqual([]);
+  } finally {
+    // The specs after this one expect the fixture as serve.ts built it.
+    fs.mkdirSync(path.join(nodeModulesPath(), "pkg"), { recursive: true });
+    fs.writeFileSync(path.join(nodeModulesPath(), "pkg", "index.js"), Buffer.alloc(NODE_MODULES_BYTES, 2));
+  }
 });

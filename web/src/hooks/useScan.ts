@@ -1,7 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/api";
 import type { CacheTableRow } from "@/components/CacheTable";
-import type { ScanCoverage } from "@/lib/scanRows";
+import { removalsSince } from "@/lib/cleanupRemovals";
+import { applyRemovals, type ScanCoverage, type ScanResult } from "@/lib/scanRows";
 
 interface ScanResponseEntry {
   id: string;
@@ -30,6 +31,7 @@ interface ScanResponseCoverage {
 interface ScanResponse {
   entries: ScanResponseEntry[];
   scanned_at: string;
+  started_at?: string | null;
   hostname: string;
   platform: string;
   skipped_paths: string[];
@@ -49,6 +51,8 @@ export interface UseScanOptions {
    * mtime and skips writes inside this window, so the user's cadence holds
    * however many pages or refetches ask. Never below AUTO_SNAPSHOT_FLOOR_MS. */
   snapshotMinIntervalMs?: number;
+  /** False holds the request back, e.g. until the provider list that decides the filter has loaded. */
+  enabled?: boolean;
 }
 
 // The "live" cadence has a zero staleTime; without a floor every page mount and
@@ -61,12 +65,14 @@ export const AUTO_SNAPSHOT_FLOOR_MS = 5 * 60_000;
  * Dashboard and the Disk page no longer run a scan each (#104).
  */
 export function useScan(params: UseScanOptions = {}) {
-  const { staleTime, refetchOnMount, snapshotMinIntervalMs, ...filters } = params;
+  const { staleTime, refetchOnMount, snapshotMinIntervalMs, enabled, ...filters } = params;
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: ["scan", filters],
     staleTime,
     refetchOnMount,
-    queryFn: async () => {
+    enabled,
+    queryFn: async (): Promise<ScanResult> => {
       const qs = new URLSearchParams();
       if (filters.minSize) qs.set("min_size", filters.minSize);
       if (filters.provider) qs.set("provider", filters.provider);
@@ -109,7 +115,7 @@ export function useScan(params: UseScanOptions = {}) {
           perms: e.perms ?? null,
         };
       });
-      return {
+      const scan: ScanResult = {
         rows,
         totalBytes:
           raw.total_reclaimable_bytes ??
@@ -117,8 +123,12 @@ export function useScan(params: UseScanOptions = {}) {
             .filter((entry) => entry.risk !== "dangerous")
             .reduce((sum, entry) => sum + (entry.reclaimable_bytes ?? 0), 0),
         scannedAt: raw.scanned_at,
+        startedAt: raw.started_at ?? null,
         coverage: toCoverage(raw.coverage),
       };
+      // A cleanup that finished after this scan began may have deleted rows it
+      // still lists; they stay gone (spec: scan-dedupe §1).
+      return applyRemovals(scan, removalsSince(queryClient, scan.startedAt));
     },
   });
 }

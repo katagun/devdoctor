@@ -1,6 +1,7 @@
 import asyncio
 import json
 import socket
+import threading
 from pathlib import Path
 
 from httpx import AsyncClient
@@ -324,3 +325,50 @@ def test_scan_route_reports_progress_to_the_hub(tmp_path, monkeypatch) -> None:
     assert snap.scan_id == 1
     assert snap.status == "done"
     assert snap.done == snap.total == len(resp.json()["per_provider"])
+
+
+async def test_concurrent_scans_of_the_same_filters_share_one_scan(tmp_path, monkeypatch):
+    """Two identical full scans used to run at once and slow each other about 5x."""
+    from devdoctor.web import routes_scan
+
+    sock, port = _bind_loopback_socket()
+    app = _app_for_port(tmp_path, monkeypatch, port)
+    real_scan = routes_scan.discovery.scan
+    entered, release = threading.Event(), threading.Event()
+    calls: list[int] = []
+
+    def gated_scan(*args, **kwargs):
+        calls.append(1)
+        entered.set()
+        release.wait(10)
+        return real_scan(*args, **kwargs)
+
+    monkeypatch.setattr(routes_scan.discovery, "scan", gated_scan)
+    storage_type = type(app.state.storage)
+    real_write = storage_type.write_disk_dashboard_summary
+    writes: list[object] = []
+
+    def counting_write(self, report):
+        writes.append(report)
+        return real_write(self, report)
+
+    monkeypatch.setattr(storage_type, "write_disk_dashboard_summary", counting_write)
+
+    with run_server(app, sock):
+        async with AsyncClient(base_url=f"http://127.0.0.1:{port}") as c:
+            first = asyncio.create_task(c.get("/api/scan", timeout=15))
+            second = None
+            try:
+                assert await asyncio.to_thread(entered.wait, 10)
+                second = asyncio.create_task(c.get("/api/scan", timeout=15))
+                await asyncio.sleep(0.3)  # the second request reaches the server and joins
+            finally:
+                release.set()
+                one = await first
+                two = await second if second is not None else None
+
+    assert one.status_code == 200
+    assert two is not None and two.status_code == 200
+    assert one.json()["entries"] == two.json()["entries"]
+    assert len(calls) == 1
+    assert len(writes) == 1

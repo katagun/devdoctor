@@ -7,6 +7,8 @@ import type {
   ExecuteProgressEntry,
   WizardState,
 } from "@/components/CleanupWizard/CleanupWizardState";
+import { recordRemoval, removalFrom } from "@/lib/cleanupRemovals";
+import { applyRemovals, type ScanResult } from "@/lib/scanRows";
 
 type Action =
   | { type: "START_REQUESTED" }
@@ -284,9 +286,26 @@ export function useCleanupWizard({
       });
       es.close();
       if (esRef.current === es) esRef.current = null;
-      // Refresh any view sitting on stale post-cleanup data. Invalidate rather
-      // than refetch: consumers that aren't mounted just get marked stale.
-      queryClient.invalidateQueries({ queryKey: ["scan"] });
+      // What the cleanup removed leaves every cached scan now, and a scan still
+      // running drops it when it lands (useScan), so nothing needs a full rescan:
+      // that rescan was how two identical scans ended up running at once.
+      const removal = removalFrom(results, entriesRef.current, Date.now());
+      if (removal) {
+        recordRemoval(queryClient, removal);
+        // Patch each cached scan in place rather than setQueriesData: that stamps
+        // dataUpdatedAt: Date.now() on every match, restarting the cadence's reuse
+        // window even for a scan this removal never touched.
+        for (const query of queryClient.getQueryCache().findAll({ queryKey: ["scan"] })) {
+          const data = query.state.data as ScanResult | undefined;
+          if (!data) continue;
+          const next = applyRemovals(data, [removal]);
+          if (next !== data) {
+            queryClient.setQueryData(query.queryKey, next, {
+              updatedAt: query.state.dataUpdatedAt,
+            });
+          }
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ["history"] });
       queryClient.invalidateQueries({ queryKey: ["disk-usage"] });
       onSuccessRef.current?.(results);

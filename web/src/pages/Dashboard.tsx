@@ -23,7 +23,7 @@ import {
   type MosaicTone,
 } from "@/lib/dashboard";
 import { humanBytes, timeAgo } from "@/lib/format";
-import { diskProviderParam, memoryProviderIds } from "@/lib/providerFilters";
+import { diskProviderParam, diskScanReady, memoryProviderIds } from "@/lib/providerFilters";
 import { DISK_LABEL, DISK_TITLE, MEMORY_LABEL, MEMORY_TITLE } from "@/lib/resourceLabels";
 import { formatScanProgress } from "@/lib/scanProgress";
 
@@ -39,14 +39,20 @@ export default function Dashboard() {
     [diskProviders.data, selectedDiskProviders.disabled],
   );
   const diskSummary = useDiskDashboardSummary(diskProvider);
+  const diskScanReadyNow = diskScanReady(
+    diskProviders.data,
+    selectedDiskProviders.disabled,
+    diskProviders.isError,
+  );
   // Same options as the Disk page, so the two share one scan (#104).
   const disk = useScan({
     provider: diskProvider,
     staleTime,
     refetchOnMount: !manualOnly,
     snapshotMinIntervalMs: staleTime,
+    enabled: diskScanReadyNow,
   });
-  const diskLoading = diskPanelLoading(disk.isLoading, diskSummary.data);
+  const diskLoading = diskPanelLoading(disk.isLoading || !diskScanReadyNow, diskSummary.data);
   // Only the loading state shows progress, so only it opens the stream.
   const diskProgress = useScanProgress(diskLoading);
 

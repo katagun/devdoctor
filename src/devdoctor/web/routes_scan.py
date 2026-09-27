@@ -62,35 +62,42 @@ def scan(
         risks=_parse_risks(risk),
         providers=frozenset(provider.split(",")) if provider else None,
     )
-    providers_list = registry.load_providers(request.app.state.shell)
-    report = discovery.scan(
-        providers_list,
-        filters,
-        datetime.now(UTC),
-        on_progress=request.app.state.scan_progress.observer(),
-    )
     storage: StorageBackend = request.app.state.storage
-    # Only an unfiltered scan may be stored: a filtered report's totals cover part of
-    # the disk, and would read as a drop in history (#103).
-    if filters.is_unfiltered:
-        try:
-            storage.write_disk_dashboard_summary(report)
-        except OSError as exc:
-            logger.warning("scan: failed to write dashboard summary: %s", exc)
-    if (
-        snapshot
-        and filters.is_unfiltered
-        and _should_write_auto_snapshot(storage, snapshot_min_interval_ms)
-    ):
-        auto_report = dataclasses.replace(report, kind=SnapshotKind.AUTO)
-        try:
-            storage.write_disk_snapshot(auto_report)
-            storage.prune_auto_disk_snapshots(keep=history.AUTO_SNAPSHOT_RETENTION)
-        except OSError as exc:
-            # Disk full / permission denied / whatever — don't fail the
-            # scan response because the auto-snapshot write choked. Client
-            # still gets the scan; next scan will try again.
-            logger.warning("scan: auto-snapshot write failed: %s", exc)
+
+    def scan_and_store() -> Report:
+        providers_list = registry.load_providers(request.app.state.shell)
+        report = discovery.scan(
+            providers_list,
+            filters,
+            datetime.now(UTC),
+            on_progress=request.app.state.scan_progress.observer(),
+        )
+        # Only an unfiltered scan may be stored: a filtered report's totals cover part of
+        # the disk, and would read as a drop in history (#103).
+        if filters.is_unfiltered:
+            try:
+                storage.write_disk_dashboard_summary(report)
+            except OSError as exc:
+                logger.warning("scan: failed to write dashboard summary: %s", exc)
+        if (
+            snapshot
+            and filters.is_unfiltered
+            and _should_write_auto_snapshot(storage, snapshot_min_interval_ms)
+        ):
+            auto_report = dataclasses.replace(report, kind=SnapshotKind.AUTO)
+            try:
+                storage.write_disk_snapshot(auto_report)
+                storage.prune_auto_disk_snapshots(keep=history.AUTO_SNAPSHOT_RETENTION)
+            except OSError as exc:
+                # Disk full / permission denied / whatever — don't fail the
+                # scan response because the auto-snapshot write choked. Client
+                # still gets the scan; next scan will try again.
+                logger.warning("scan: auto-snapshot write failed: %s", exc)
+        return report
+
+    # A request for filters whose scan is already running waits for it and returns
+    # its report: the scan, and its storage writes, happen once.
+    report = request.app.state.scan_coalescer.run(filters, scan_and_store)
     return JSONResponse(content=_report_to_dict(report))
 
 

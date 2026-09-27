@@ -71,3 +71,57 @@ export function formatCoverage(coverage: ScanCoverage | null | undefined): strin
   const pct = Math.round(coverage.ratio * 100);
   return `accounts for ${humanBytes(coverage.classifiedBytes)} of ${humanBytes(coverage.usedBytes)} used · ${pct}%`;
 }
+
+/** What a cleanup removed: rows with these ids, and anything at or under these paths. */
+export interface Removal {
+  ids: string[];
+  paths: string[];
+  /** When the cleanup's result arrived, in ms since the epoch. */
+  at: number;
+}
+
+/** A scan as the Disk page and the Dashboard hold it. */
+export interface ScanResult {
+  rows: CacheTableRow[];
+  totalBytes: number;
+  scannedAt: string;
+  /** The server's clock when the scan began; null from a server that predates it. */
+  startedAt: string | null;
+  coverage: ScanCoverage | null;
+}
+
+function removedBy(row: CacheTableRow, removals: readonly Removal[]): boolean {
+  return removals.some(
+    (removal) =>
+      removal.ids.includes(row.id) ||
+      removal.paths.some((path) => row.path === path || row.path.startsWith(`${path}/`)),
+  );
+}
+
+/**
+ * The scan without the rows these cleanups removed, its totals reduced by what
+ * those rows held. Rows under a removed path go too: a worktree's contents are
+ * deleted with it (spec §6.4).
+ */
+export function applyRemovals(result: ScanResult, removals: readonly Removal[]): ScanResult {
+  if (removals.length === 0) return result;
+  const rows: CacheTableRow[] = [];
+  let reclaimable = 0;
+  let footprint = 0;
+  for (const row of result.rows) {
+    if (!removedBy(row, removals)) {
+      rows.push(row);
+      continue;
+    }
+    if (row.risk !== "dangerous") reclaimable += row.reclaimable_bytes ?? 0;
+    footprint += row.footprint_bytes ?? 0;
+  }
+  if (rows.length === result.rows.length) return result;
+  let coverage = result.coverage;
+  if (coverage) {
+    const usedBytes = Math.max(0, coverage.usedBytes - footprint);
+    const classifiedBytes = Math.max(0, coverage.classifiedBytes - footprint);
+    coverage = { usedBytes, classifiedBytes, ratio: usedBytes > 0 ? classifiedBytes / usedBytes : null };
+  }
+  return { ...result, rows, totalBytes: Math.max(0, result.totalBytes - reclaimable), coverage };
+}
