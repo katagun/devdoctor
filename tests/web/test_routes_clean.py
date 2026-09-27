@@ -295,7 +295,7 @@ async def test_cleanup_rescans_only_the_providers_the_selection_names(tmp_path, 
 
 
 @pytest.mark.asyncio
-async def test_an_id_no_provider_owns_falls_back_to_a_full_rescan(tmp_path, monkeypatch):
+async def test_an_id_no_provider_owns_runs_no_provider_and_is_unknown(tmp_path, monkeypatch):
     from devdoctor.web import routes_clean
 
     app = _build(tmp_path, monkeypatch)
@@ -318,6 +318,30 @@ async def test_an_id_no_provider_owns_falls_back_to_a_full_rescan(tmp_path, monk
     assert r.status_code == 400
     assert r.json()["error"]["ids"] == ["bare-legacy-id"]
     assert seen == [None]
+
+
+@pytest.mark.asyncio
+async def test_a_selected_entry_that_vanished_is_unknown(tmp_path, monkeypatch):
+    app = _build(tmp_path, monkeypatch)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        r1 = await client.post(
+            "/api/clean/jobs",
+            json={"entry_ids": [f"t:{tmp_path}/gone"]},
+            headers={"Host": "testserver"},
+        )
+        assert r1.status_code == 400
+        assert r1.json()["error"]["code"] == "unknown_entry"
+        assert r1.json()["error"]["ids"] == [f"t:{tmp_path}/gone"]
+
+        r2 = await client.post(
+            "/api/clean/jobs",
+            json={"entry_ids": [f"t:{tmp_path}/cache", f"t:{tmp_path}/gone"]},
+            headers={"Host": "testserver"},
+        )
+        assert r2.status_code == 400
+        assert r2.json()["error"]["ids"] == [f"t:{tmp_path}/gone"]
 
 
 @pytest.mark.asyncio

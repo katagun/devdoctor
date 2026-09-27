@@ -88,8 +88,8 @@ share is empty is not called at all. Everything after discovery is
 unchanged: reconciliation, `contain=False`, the id check and narrowing to the selection.
 
 Only `routes_clean._scan_selection` passes a selection. An id no provider can
-attribute still makes the provider filter `None` (#92), but under a selection every
-provider's share is then empty, so that fallback costs nothing. The id is reported
+attribute still makes the provider filter `None` (#92), but an unattributable id
+belongs to no provider's share, so no provider runs for it. The id is reported
 as `unknown_entry` as before.
 
 ### Amendment to §6.4
@@ -137,10 +137,11 @@ derived by provider code. Both still hold.
 
 ## Rollout
 
-One PR, stacked on #153 (it changes `_scan_selection`, which #153 introduced), with a
-CHANGELOG entry. Expected on the reference machine: `node_modules` about 58 s to
-about 12 s, the walk being most of what remains. Cache folders from YAML providers
-and Xcode go from a full provider re-size to about the size of the selection.
+One PR against main (#153 is merged, 78e77f1); it changes `_scan_selection`, which
+#153 introduced, with a CHANGELOG entry. Expected on the reference machine:
+`node_modules` about 58 s to about 12 s, the walk being most of what remains. Cache
+folders from YAML providers and Xcode go from a full provider re-size to about the
+size of the selection.
 
 ## Open questions for review
 

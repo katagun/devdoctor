@@ -1248,3 +1248,26 @@ def test_an_unselected_worktree_is_never_inspected(app, projects):
     GitWorktreeProvider(shell).discover_selected(frozenset({str(done.path)}))
     touched = [argv for argv, _env in shell.calls if str(wip.path) in " ".join(argv)]
     assert touched == []
+
+
+def test_discover_selected_mtime_matches_discover_when_a_sibling_head_is_unreadable(app, projects):
+    """I-1 final review: `_repository_facts` must see every linked worktree's HEAD, not
+    only the selected ones, or a selection changes whether the batched `git log` that
+    fills in `mtime` fails, breaking `discover_selected(ids) == [e for e in discover()
+    if e.id in ids]`.
+    """
+    done, wip = _one_integrated_one_not(app, projects)
+    third = app.add_worktree(projects / "wt" / "third", "third")
+    missing_sha = "0" * 39 + "1"
+    head_file = app.path / ".git" / "worktrees" / third.path.name / "HEAD"
+    head_file.write_text(missing_sha + "\n")
+
+    everything, provider = _discover()
+
+    # Prove the fixture actually reproduces the failure before trusting the equivalence
+    # check below: the whole repository's batched HEAD-times lookup must have failed.
+    assert any("could not read HEAD commit times" in d for d in provider.diagnostics)
+    assert _entry(everything, done.path).mtime is None
+
+    selected = GitWorktreeProvider(RealShell()).discover_selected(frozenset({str(done.path)}))
+    assert selected == [e for e in everything if e.id == str(done.path)]

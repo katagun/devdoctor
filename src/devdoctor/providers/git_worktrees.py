@@ -142,13 +142,12 @@ class GitWorktreeProvider(Provider):
                 continue
             listed.update(_real(record.path) for record in records)
             linked = self._linked_worktrees(repository, records)
-            if wanted is not None:
-                # Every repository is still listed above: whether a worktree may be
-                # removed depends on what all of them register.
-                linked = [record for record in linked if str(record.path) in wanted]
-            if linked:
+            # Every repository is still listed above: whether a worktree may be
+            # removed depends on what all of them register.
+            chosen = linked if wanted is None else [r for r in linked if str(r.path) in wanted]
+            if chosen:
                 facts = self._repository_facts(repository, linked, objects_dir)
-                work.extend((facts, record) for record in linked)
+                work.extend((facts, record) for record in chosen)
         # Every repository has been listed: a worktree holding any of them is not removable.
         registered = frozenset(listed)
         with ThreadPoolExecutor(max_workers=WORKER_THREADS) as pool:
