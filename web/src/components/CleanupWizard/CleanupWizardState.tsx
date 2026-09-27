@@ -36,6 +36,13 @@ export interface WizardState {
   results: CleanupResult[] | null;
   estimatedReclaimedBytes: number | null;
   bytesVerified: boolean;
+  // What the disk actually released, read before and after the job; null when
+  // the server could not read the volume.
+  freeBeforeBytes: number | null;
+  freeAfterBytes: number | null;
+  // The disk released under half of what was deleted: a local snapshot is
+  // probably holding the blocks. The rule lives on the server, shared with the CLI.
+  freeSpaceLagged: boolean;
   error: string | null;
 }
 

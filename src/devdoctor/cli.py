@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-import shutil
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -160,24 +159,6 @@ def _parse_providers(values: tuple[str, ...], known: list[Provider]) -> frozense
             param_hint="--provider",
         )
     return frozenset(names)
-
-
-def _free_bytes() -> int | None:
-    """Free bytes on the volume holding the home directory; None when unavailable.
-
-    Walks up to the nearest existing ancestor first: a non-existent (but
-    otherwise valid) $HOME — as tests pin it, or a fresh account — would
-    otherwise make ``disk_usage`` raise even though the volume is readable.
-    Note this means a missing $HOME mount can silently report the free space
-    of whatever volume holds its nearest existing ancestor (e.g. `/`) instead.
-    """
-    path = Path.home()
-    try:
-        while not path.exists():
-            path = path.parent
-        return shutil.disk_usage(path).free
-    except OSError:
-        return None
 
 
 # Selection-phase skip messages (cleanup._resolve_aborted / _to_result) that mean
@@ -420,7 +401,7 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
             render_report_table(console, report)
             console.print("[dim]Preview only — re-run with --execute to perform cleanup.[/]")
             return
-        free_before = _free_bytes()
+        free_before = cleanup_audit.free_bytes()
         try:
             with presenter.executing():
                 results = cleanup_run(
@@ -441,11 +422,11 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
         except KeyboardInterrupt:
             # A run interrupted mid-flight still gets a summary line and an audit
             # record — silence here is exactly what spec issue #126 complains about.
-            free_after = _free_bytes()
+            free_after = cleanup_audit.free_bytes()
             presenter.summary([], free_before=free_before, free_after=free_after)
             _record_run(report, presenter, [], free_before, free_after, outcome="interrupted")
             sys.exit(130)
-        free_after = _free_bytes()
+        free_after = cleanup_audit.free_bytes()
         reclaimed_bytes = cleanup_audit.estimated_reclaimed_bytes(report.entries, results)
         presenter.summary(
             results,

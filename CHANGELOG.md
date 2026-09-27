@@ -292,6 +292,14 @@ entries under a versioned heading as described in
 
 ### Fixed
 
+- **The desktop cleanup summary shows what the disk actually released.** It
+  used to show only the estimate: on a Mac with Time Machine local snapshots,
+  18 GB of deletions released nothing, and the summary still said "~18 GB
+  reclaimed". The job now reads free space before and after, shows the change,
+  and warns when it is under half of what was deleted, with a link to the Time
+  Machine snapshots that hold those blocks until they are thinned. That warning,
+  on the CLI and here, now stays quiet for cleanups under 100 MB, where other
+  writes hide the difference.
 - **The desktop app no longer crashes when its window is reopened from the
   Dock.** On macOS, closing the DevDoctor window kept the app running, but the
   main process held on to the destroyed window and the next Dock click failed

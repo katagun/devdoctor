@@ -54,6 +54,9 @@ class CleanupRunner:
     async def run(self) -> list[CleanResult]:
         results: list[CleanResult] = []
         outcome: str = "ok"
+        # Two readings of the volume, so the summary can say what the disk actually
+        # released: the estimate alone hid a snapshot holding every deleted block.
+        free_before = cleanup_audit.free_bytes()
         try:
             gen = cleanup_mod.iter_cleanup_events(self.report, self.opts)
             try:
@@ -81,32 +84,21 @@ class CleanupRunner:
                         event = next(gen)
             except StopIteration:
                 pass
-            await self._emit_results(results)
+            free_after = cleanup_audit.free_bytes()
+            await self._emit_results(results, free_before, free_after)
         except asyncio.CancelledError:
             outcome = "cancelled"
+            free_after = cleanup_audit.free_bytes()
             await self.events.put(
                 {
                     "event": "done",
                     "data": {
-                        "results": [
-                            {
-                                "entry_id": r.entry_id,
-                                "status": r.status,
-                                "freed_bytes": r.freed_bytes,
-                                "message": r.message,
-                                "bytes_verified": r.bytes_verified,
-                            }
-                            for r in results
-                        ],
-                        "estimated_reclaimed_bytes": cleanup_audit.estimated_reclaimed_bytes(
-                            self.report.entries, results
-                        ),
-                        "bytes_verified": cleanup_audit.all_bytes_verified(results),
+                        **self._done_data(results, free_before, free_after),
                         "cancelled": True,
                     },
                 }
             )
-            self._write_audit(results, outcome)
+            self._write_audit(results, outcome, free_before=free_before, free_after=free_after)
             raise
         except Exception as exc:  # surface anything as an SSE job_error event
             # Named 'job_error' (not 'error') to avoid colliding with the
@@ -118,9 +110,15 @@ class CleanupRunner:
                     "data": {"code": "internal", "message": str(exc)},
                 }
             )
-            self._write_audit(results, outcome, error=str(exc))
+            self._write_audit(
+                results,
+                outcome,
+                error=str(exc),
+                free_before=free_before,
+                free_after=cleanup_audit.free_bytes(),
+            )
             return results
-        self._write_audit(results, outcome)
+        self._write_audit(results, outcome, free_before=free_before, free_after=free_after)
         return results
 
     def _write_audit(
@@ -129,6 +127,8 @@ class CleanupRunner:
         outcome: str,
         *,
         error: str | None = None,
+        free_before: int | None = None,
+        free_after: int | None = None,
     ) -> None:
         """Persist the job outcome to the audit log. Errors here are non-fatal."""
         try:
@@ -140,6 +140,8 @@ class CleanupRunner:
                 entries=self.report.entries,
                 job_id=self.id,
                 error=error,
+                free_before=free_before,
+                free_after=free_after,
             )
             if self.storage is not None:
                 self.storage.append_audit_event(payload)
@@ -223,7 +225,9 @@ class CleanupRunner:
         )
         return await fut
 
-    async def _emit_results(self, results: list[CleanResult]) -> None:
+    async def _emit_results(
+        self, results: list[CleanResult], free_before: int | None, free_after: int | None
+    ) -> None:
         for r in results:
             await self.events.put(
                 {
@@ -238,26 +242,33 @@ class CleanupRunner:
                 }
             )
         await self.events.put(
-            {
-                "event": "done",
-                "data": {
-                    "results": [
-                        {
-                            "entry_id": r.entry_id,
-                            "status": r.status,
-                            "freed_bytes": r.freed_bytes,
-                            "message": r.message,
-                            "bytes_verified": r.bytes_verified,
-                        }
-                        for r in results
-                    ],
-                    "estimated_reclaimed_bytes": cleanup_audit.estimated_reclaimed_bytes(
-                        self.report.entries, results
-                    ),
-                    "bytes_verified": cleanup_audit.all_bytes_verified(results),
-                },
-            }
+            {"event": "done", "data": self._done_data(results, free_before, free_after)}
         )
+
+    def _done_data(
+        self, results: list[CleanResult], free_before: int | None, free_after: int | None
+    ) -> dict[str, Any]:
+        """The ``done`` payload: outcomes, the estimate, and what the disk released."""
+        estimated = cleanup_audit.estimated_reclaimed_bytes(self.report.entries, results)
+        return {
+            "results": [
+                {
+                    "entry_id": r.entry_id,
+                    "status": r.status,
+                    "freed_bytes": r.freed_bytes,
+                    "message": r.message,
+                    "bytes_verified": r.bytes_verified,
+                }
+                for r in results
+            ],
+            "estimated_reclaimed_bytes": estimated,
+            "bytes_verified": cleanup_audit.all_bytes_verified(results),
+            "free_before_bytes": free_before,
+            "free_after_bytes": free_after,
+            "free_space_lagged": cleanup_audit.free_space_lagged(
+                free_before, free_after, estimated
+            ),
+        }
 
     async def answer_prompt(self, entry_id: str, choice: Choice) -> None:
         fut = self._pending_prompts.get(entry_id)

@@ -110,3 +110,43 @@ def test_totals_count_only_successful_entries() -> None:
     assert estimated_reclaimed_bytes([a, b], results) == 100
     assert all_bytes_verified(results) is True
     assert all_bytes_verified([CleanResult(entry_id="b", status="error", freed_bytes=0)]) is False
+
+
+def test_free_bytes_reports_the_volume_even_when_home_does_not_exist() -> None:
+    # tests/conftest.py pins HOME to a directory that is never created; the walk
+    # up to the nearest existing ancestor is what makes this an int, not None.
+    from devdoctor import cleanup_audit
+
+    free = cleanup_audit.free_bytes()
+    assert isinstance(free, int) and free > 0
+
+
+def test_free_space_lagged_when_the_disk_released_under_half_of_what_was_deleted() -> None:
+    from devdoctor import cleanup_audit
+
+    # 18.1 GB deleted, 100 MB released: local snapshots are holding the blocks.
+    assert cleanup_audit.free_space_lagged(35_800_000_000, 35_900_000_000, 18_100_000_000)
+
+
+def test_free_space_not_lagged_at_or_above_half() -> None:
+    from devdoctor import cleanup_audit
+
+    assert not cleanup_audit.free_space_lagged(1_000_000_000, 1_350_000_000, 700_000_000)
+    assert not cleanup_audit.free_space_lagged(1_000_000_000, 1_700_000_000, 700_000_000)
+
+
+def test_free_space_lagged_needs_both_measurements_and_something_deleted() -> None:
+    from devdoctor import cleanup_audit
+
+    assert not cleanup_audit.free_space_lagged(None, 1_000, 1_000_000_000)
+    assert not cleanup_audit.free_space_lagged(1_000, None, 1_000_000_000)
+    assert not cleanup_audit.free_space_lagged(1_000, 1_000, 0)
+
+
+def test_free_space_lagged_ignores_cleanups_too_small_to_measure() -> None:
+    from devdoctor import cleanup_audit
+
+    # Other processes write tens of megabytes between the two measurements, so a
+    # 50 MB cleanup whose delta reads as zero is noise, not a held snapshot.
+    assert not cleanup_audit.free_space_lagged(1_000_000_000, 1_000_000_000, 50_000_000)
+    assert cleanup_audit.free_space_lagged(1_000_000_000, 1_000_000_000, 100_000_000)

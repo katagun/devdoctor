@@ -32,6 +32,9 @@ type Action =
       results: CleanupResult[];
       estimatedReclaimedBytes: number;
       bytesVerified: boolean;
+      freeBeforeBytes: number | null;
+      freeAfterBytes: number | null;
+      freeSpaceLagged: boolean;
     }
   | { type: "JOB_ERROR"; message: string }
   | { type: "TOGGLE_ENABLED"; id: string; next: boolean }
@@ -119,6 +122,9 @@ export function reducer(state: WizardState, action: Action): WizardState {
         results: action.results,
         estimatedReclaimedBytes: action.estimatedReclaimedBytes,
         bytesVerified: action.bytesVerified,
+        freeBeforeBytes: action.freeBeforeBytes,
+        freeAfterBytes: action.freeAfterBytes,
+        freeSpaceLagged: action.freeSpaceLagged,
       };
     case "JOB_ERROR":
       return { ...state, step: "summary", error: action.message };
@@ -138,6 +144,9 @@ export function reducer(state: WizardState, action: Action): WizardState {
         results: null,
         estimatedReclaimedBytes: null,
         bytesVerified: false,
+        freeBeforeBytes: null,
+        freeAfterBytes: null,
+        freeSpaceLagged: false,
         progress: {},
         pendingPrompts: [],
         awaitingConfirm: null,
@@ -162,6 +171,9 @@ export function initial(entries: CacheTableRow[]): WizardState {
     results: null,
     estimatedReclaimedBytes: null,
     bytesVerified: false,
+    freeBeforeBytes: null,
+    freeAfterBytes: null,
+    freeSpaceLagged: false,
     error: null,
   };
 }
@@ -283,6 +295,9 @@ export function useCleanupWizard({
             results.reduce((sum, result) => sum + (result.freed_bytes || 0), 0),
         ),
         bytesVerified: Boolean(d.bytes_verified),
+        freeBeforeBytes: typeof d.free_before_bytes === "number" ? d.free_before_bytes : null,
+        freeAfterBytes: typeof d.free_after_bytes === "number" ? d.free_after_bytes : null,
+        freeSpaceLagged: d.free_space_lagged === true,
       });
       es.close();
       if (esRef.current === es) esRef.current = null;
