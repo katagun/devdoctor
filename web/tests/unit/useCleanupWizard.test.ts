@@ -393,4 +393,37 @@ describe("useCleanupWizard", () => {
     expect(qc.getQueryData(["scan", { provider: "other" }])).toBe(otherScan);
     expect(qc.getQueryState(["history"])!.isInvalidated).toBe(true);
   });
+  it("keeps the measured free-space change and the snapshot verdict from done", async () => {
+    const { result } = renderWizard();
+    await act(async () => {
+      await result.current.startJob();
+    });
+    act(() =>
+      FakeEventSource.instances[0].emit("done", {
+        results: [{ entry_id: ENTRY.id, status: "ok", freed_bytes: 18_100_000_000 }],
+        estimated_reclaimed_bytes: 18_100_000_000,
+        free_before_bytes: 35_800_000_000,
+        free_after_bytes: 35_700_000_000,
+        free_space_lagged: true,
+      }),
+    );
+    expect(result.current.state.freeBeforeBytes).toBe(35_800_000_000);
+    expect(result.current.state.freeAfterBytes).toBe(35_700_000_000);
+    expect(result.current.state.freeSpaceLagged).toBe(true);
+  });
+
+  it("leaves the free-space change unknown when the server did not measure it", async () => {
+    const { result } = renderWizard();
+    await act(async () => {
+      await result.current.startJob();
+    });
+    act(() =>
+      FakeEventSource.instances[0].emit("done", {
+        results: [{ entry_id: ENTRY.id, status: "ok", freed_bytes: 100 }],
+      }),
+    );
+    expect(result.current.state.freeBeforeBytes).toBeNull();
+    expect(result.current.state.freeAfterBytes).toBeNull();
+    expect(result.current.state.freeSpaceLagged).toBe(false);
+  });
 });
