@@ -292,6 +292,13 @@ entries under a versioned heading as described in
 
 ### Fixed
 
+- **The desktop app no longer crashes when its window is reopened from the
+  Dock.** On macOS, closing the DevDoctor window kept the app running, but the
+  main process held on to the destroyed window and the next Dock click failed
+  with an uncaught `TypeError: Object has been destroyed`. The window
+  reference is now dropped when the window closes, a Dock click recreates the
+  window against the still-running backend, and dialogs and second-instance
+  focus only ever target a live window.
 - **Two identical scans no longer run at once.** A finished cleanup started a
   full rescan (75–100 s on the reference machine) even while one was running,
   and concurrent scans slowed each other about 5×. The Disk page now drops what

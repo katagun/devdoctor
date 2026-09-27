@@ -10,6 +10,7 @@ import {
   FULL_DISK_ACCESS_SETTINGS_URL,
   fullDiskAccessDialogOptions,
 } from "./full-disk-access.mjs";
+import { createWindowTracker } from "./window-tracker.mjs";
 
 // Set the app name before any app.getPath()/whenReady call so userData and logs
 // land in a "DevDoctor" folder instead of one derived from package.json `name`
@@ -24,7 +25,10 @@ const HEALTH_INTERVAL_MS = 250;
 const BACKEND_STOP_TIMEOUT_MS = 2_000;
 
 let backend = null;
-let mainWindow = null;
+const windows = createWindowTracker({
+  createWindow: buildMainWindow,
+  getAllWindows: () => BrowserWindow.getAllWindows(),
+});
 let backendExitedEarly = false;
 let isQuitting = false;
 let logStream = null;
@@ -35,9 +39,7 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    if (!mainWindow) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
+    windows.focus();
   });
 
   app.whenReady().then(async () => {
@@ -48,7 +50,7 @@ if (!gotLock) {
       backend = startBackend(port);
       const url = `http://127.0.0.1:${port}`;
       await waitForHealth(`${url}/api/health`, START_TIMEOUT_MS);
-      createWindow(url);
+      windows.open(url);
       await maybeShowFirstRunFullDiskAccess();
     } catch (error) {
       await dialog.showMessageBox({
@@ -67,9 +69,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0 && mainWindow) {
-    mainWindow.show();
-  }
+  windows.activate();
 });
 
 app.on("before-quit", () => {
@@ -77,8 +77,8 @@ app.on("before-quit", () => {
   closeLogStream();
 });
 
-function createWindow(url) {
-  mainWindow = new BrowserWindow({
+function buildMainWindow(url) {
+  const win = new BrowserWindow({
     width: 1280,
     height: 860,
     minWidth: 980,
@@ -92,19 +92,27 @@ function createWindow(url) {
     },
   });
 
-  mainWindow.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
+  win.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
     void shell.openExternal(targetUrl);
     return { action: "deny" };
   });
 
-  mainWindow.loadURL(url).catch((error) => {
-    void dialog.showMessageBox(mainWindow, {
+  win.loadURL(url).catch((error) => {
+    void showMessageBox({
       type: "error",
       title: "DevDoctor failed to load",
       message: "The DevDoctor UI could not load.",
       detail: error instanceof Error ? error.message : String(error),
     });
   });
+  return win;
+}
+
+// Attach dialogs to the live main window when there is one; a destroyed
+// window as parent would throw.
+function showMessageBox(options) {
+  const win = windows.current();
+  return win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options);
 }
 
 function startBackend(port) {
@@ -128,11 +136,11 @@ function startBackend(port) {
     if (isQuitting) return;
     backendExitedEarly = true;
     const detail = `Backend exited with code ${code ?? "null"} and signal ${signal ?? "null"}.`;
-    if (!mainWindow) {
+    if (!windows.current()) {
       writeLog("electron", `${detail}\n`);
       return;
     }
-    void dialog.showMessageBox(mainWindow, {
+    void showMessageBox({
       type: "error",
       title: "DevDoctor backend stopped",
       message: "The local DevDoctor backend stopped unexpectedly.",
@@ -308,10 +316,7 @@ async function maybeShowFirstRunFullDiskAccess() {
 }
 
 async function showFullDiskAccessHelp() {
-  const options = fullDiskAccessDialogOptions();
-  const result = mainWindow
-    ? await dialog.showMessageBox(mainWindow, options)
-    : await dialog.showMessageBox(options);
+  const result = await showMessageBox(fullDiskAccessDialogOptions());
   if (result.response === 0) {
     void shell.openExternal(FULL_DISK_ACCESS_SETTINGS_URL);
   }
