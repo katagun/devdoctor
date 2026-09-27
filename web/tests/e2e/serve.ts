@@ -12,12 +12,14 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const env = buildFixture();
 
 // Providers that shell out (ollama, docker, xcrun, ...) probe PATH, so the
-// server sees a PATH holding only the system tools the memory page reads. The
-// tool-cache variables are dropped for the same reason: left in place they
-// would point providers at the developer's real caches.
+// server sees a PATH holding only the system tools the memory page reads,
+// plus `rm`: a cleanup's delete-path actions run it for real, against paths
+// under this fixture home, not the developer's. The tool-cache variables are
+// dropped for the same reason: left in place they would point providers at
+// the developer's real caches.
 const bin = path.join(env.DEVDOCTOR_E2E_ROOT, "bin");
 fs.mkdirSync(bin);
-for (const tool of ["ps", "sysctl", "vm_stat"]) {
+for (const tool of ["ps", "sysctl", "vm_stat", "rm"]) {
   const found = Bun.which(tool);
   if (found !== null) fs.symlinkSync(found, path.join(bin, tool));
 }
