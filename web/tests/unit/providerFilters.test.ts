@@ -13,4 +13,9 @@ describe("diskScanReady", () => {
   it("is ready once the list has loaded", () => {
     expect(diskScanReady([{ name: "docker" }, { name: "uv-cache" }], new Set(["docker"]))).toBe(true);
   });
+
+  it("opens when the provider list failed to load, so the page falls back to an unfiltered scan", () => {
+    expect(diskScanReady(undefined, new Set(["docker"]), true)).toBe(true);
+    expect(diskScanReady(undefined, new Set(["docker"]), false)).toBe(false);
+  });
 });

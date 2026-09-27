@@ -60,14 +60,15 @@ export default function Scan() {
   const [activeAge, setActiveAge] = useState<string>("any");
   const minAgeDays = AGE_CHIPS.find((c) => c.key === activeAge)?.minDays ?? 0;
 
-  const { data: providers } = useProviders();
+  const { data: providers, isError: providersFailed } = useProviders();
   const { disabled } = useSelectedProviders();
   const providerParam = useMemo(
     () => diskProviderParam(providers, disabled),
     [providers, disabled],
   );
   const effectiveProviderParam = providerQuery ?? providerParam;
-  const scanReady = providerQuery !== undefined || diskScanReady(providers, disabled);
+  const scanReady =
+    providerQuery !== undefined || diskScanReady(providers, disabled, providersFailed);
 
   const { settings } = useSettings();
   const staleTime = cadenceMs(settings.cadence);

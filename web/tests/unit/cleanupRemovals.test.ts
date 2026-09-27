@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CacheTableRow } from "@/components/CacheTable";
 import { recordRemoval, removalFrom, removalsSince } from "@/lib/cleanupRemovals";
 
-function row(id: string, path: string): CacheTableRow {
+function row(id: string, path: string, reclaimable_bytes: number | null = 1): CacheTableRow {
   return {
     id,
     provider: "p",
@@ -11,7 +11,7 @@ function row(id: string, path: string): CacheTableRow {
     path,
     size_bytes: 1,
     footprint_bytes: 1,
-    reclaimable_bytes: 1,
+    reclaimable_bytes,
     shared_bytes: 0,
     risk: "safe",
     mtime: null,
@@ -42,6 +42,18 @@ describe("removalFrom", () => {
 
   it("is nothing when nothing was removed", () => {
     expect(removalFrom([{ entry_id: "a", status: "skipped", freed_bytes: 0 }], [], 1)).toBeNull();
+  });
+
+  it("leaves an entry whose reclaim is unknown in place: a prune leaves the store on disk", () => {
+    const removal = removalFrom(
+      [
+        { entry_id: "a", status: "ok", freed_bytes: 1 },
+        { entry_id: "b", status: "ok", freed_bytes: 0 },
+      ],
+      [row("a", "/x/a", 100), row("b", "/x/b", null)],
+      1,
+    );
+    expect(removal).toEqual({ ids: ["a"], paths: ["/x/a"], at: 1 });
   });
 });
 

@@ -24,11 +24,14 @@ export function memoryProviderIds(
 /**
  * Whether the disk scan's provider filter is final. It only depends on the
  * provider list when some are disabled; until that list loads, a scan would go
- * out unfiltered and then again filtered.
+ * out unfiltered and then again filtered. When the provider list failed to
+ * load, fall back to an unfiltered scan rather than waiting forever: a real
+ * fault then surfaces as the scan's own error instead of a stuck "scanning…".
  */
 export function diskScanReady(
   providers: Array<{ name: string }> | undefined,
   disabled: Set<string>,
+  providersFailed: boolean = false,
 ): boolean {
-  return disabled.size === 0 || providers !== undefined;
+  return disabled.size === 0 || providers !== undefined || providersFailed;
 }

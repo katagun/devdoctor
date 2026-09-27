@@ -39,7 +39,11 @@ export default function Dashboard() {
     [diskProviders.data, selectedDiskProviders.disabled],
   );
   const diskSummary = useDiskDashboardSummary(diskProvider);
-  const diskScanReadyNow = diskScanReady(diskProviders.data, selectedDiskProviders.disabled);
+  const diskScanReadyNow = diskScanReady(
+    diskProviders.data,
+    selectedDiskProviders.disabled,
+    diskProviders.isError,
+  );
   // Same options as the Disk page, so the two share one scan (#104).
   const disk = useScan({
     provider: diskProvider,

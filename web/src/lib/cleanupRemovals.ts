@@ -11,8 +11,14 @@ export function removalFrom(
   entries: CacheTableRow[],
   at: number,
 ): Removal | null {
-  const ids = results.filter((result) => result.status === "ok").map((result) => result.entry_id);
-  if (ids.length === 0) return null;
+  const okIds = results.filter((result) => result.status === "ok").map((result) => result.entry_id);
+  if (okIds.length === 0) return null;
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  // "ok" only means every action exited 0. A prune-style command (pnpm store
+  // prune, conda clean --packages) or a Time Machine "all but newest" bundle
+  // can leave the entry in place — those carry reclaimable_bytes: null. Keep
+  // that row in the cached scans; only a later scan can say what remains.
+  const ids = okIds.filter((id) => byId.get(id)?.reclaimable_bytes !== null);
   const removed = new Set(ids);
   const paths = entries
     .filter((entry) => removed.has(entry.id) && entry.path.startsWith("/"))

@@ -10,7 +10,7 @@
 - `useScan` re-applies any removal newer than a scan's `started_at`, so a scan that was already running cannot bring deleted rows back.
 - The scan query waits for the provider list when a provider filter depends on it.
 
-**Tech Stack:** Python 3.12, FastAPI/Starlette (sync route on worker threads), pytest; React 19, TanStack Query v5, Vitest, Playwright.
+**Tech Stack:** Python 3.12, FastAPI/Starlette (sync route on worker threads), pytest; React 18, TanStack Query v5, Vitest, Playwright.
 
 **Spec:** `docs/superpowers/specs/2026-09-25-scan-dedupe-design.md`
 

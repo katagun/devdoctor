@@ -287,9 +287,19 @@ export function useCleanupWizard({
       const removal = removalFrom(results, entriesRef.current, Date.now());
       if (removal) {
         recordRemoval(queryClient, removal);
-        queryClient.setQueriesData<ScanResult>({ queryKey: ["scan"] }, (data) =>
-          data ? applyRemovals(data, [removal]) : data,
-        );
+        // Patch each cached scan in place rather than setQueriesData: that stamps
+        // dataUpdatedAt: Date.now() on every match, restarting the cadence's reuse
+        // window even for a scan this removal never touched.
+        for (const query of queryClient.getQueryCache().findAll({ queryKey: ["scan"] })) {
+          const data = query.state.data as ScanResult | undefined;
+          if (!data) continue;
+          const next = applyRemovals(data, [removal]);
+          if (next !== data) {
+            queryClient.setQueryData(query.queryKey, next, {
+              updatedAt: query.state.dataUpdatedAt,
+            });
+          }
+        }
       }
       queryClient.invalidateQueries({ queryKey: ["history"] });
       queryClient.invalidateQueries({ queryKey: ["disk-usage"] });

@@ -1,6 +1,6 @@
 # One scan at a time, and no rescan after a cleanup
 
-**Status:** proposed, awaiting review · **Date:** 2026-09-25 ·
+**Status:** accepted 2026-09-27 · **Date:** 2026-09-25 ·
 **Related:** PR #153 (cleanup start off the event loop), #104 (one scan key shared
 by the Dashboard and the Disk page), #117 (scan progress stream).
 
@@ -71,6 +71,10 @@ same clock.
 The shared function is `applyRemovals(result, removals)` in `web/src/lib/scanRows.ts`,
 next to the other row filters.
 
+An entry whose reclaimable size is unknown (a prune-style command, a snapshot
+bundle) is not removed from the cached scans: the command may leave the entry in
+place, so only a later scan can say what remains.
+
 ### 2. Start with the final filters (client)
 
 When any provider is disabled, the scan query waits (`enabled: false`) until
@@ -127,8 +131,8 @@ Requests run on worker threads, so the coalescer uses a lock and a
 
 ## Rollout
 
-One PR stacked on #153, which also changes `useCleanupWizard.ts`, with a CHANGELOG
-entry.
+One PR against main (#153 is merged as 78e77f1), which also changes
+`useCleanupWizard.ts`, with a CHANGELOG entry.
 
 ## Open questions for review
 

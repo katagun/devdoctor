@@ -317,8 +317,19 @@ describe("useCleanupWizard", () => {
       startedAt: "2026-09-25T09:59:00+00:00",
       coverage: null,
     };
-    qc.setQueryData(["scan", {}], scan);
+    qc.setQueryData(["scan", {}], scan, { updatedAt: 1_000 });
     qc.setQueryData(["history"], []);
+    // A filtered scan the removal doesn't touch: its cache entry must not be
+    // re-stamped or replaced just because some other cached scan changed.
+    const untouchedRow = { ...cleaned, id: "p:/z", path: "/z", label: "untouched" };
+    const otherScan: ScanResult = {
+      rows: [untouchedRow],
+      totalBytes: 100,
+      scannedAt: "2026-09-25T10:00:00+00:00",
+      startedAt: "2026-09-25T09:59:00+00:00",
+      coverage: null,
+    };
+    qc.setQueryData(["scan", { provider: "other" }], otherScan);
     const wrapper = ({ children }: { children: ReactNode }) =>
       createElement(QueryClientProvider, { client: qc }, children);
     const { result } = renderHook(() => useCleanupWizard({ entries: [cleaned] }), { wrapper });
@@ -336,6 +347,11 @@ describe("useCleanupWizard", () => {
     expect(after.rows.map((r) => r.id)).toEqual(["p:/y"]);
     expect(after.totalBytes).toBe(100);
     expect(qc.getQueryState(["scan", {}])!.isInvalidated).toBe(false);
+    // The cleanup's own patch must not restart this scan's reuse-window clock.
+    expect(qc.getQueryState(["scan", {}])!.dataUpdatedAt).toBe(1_000);
+    // An untouched cached scan keeps its exact data reference (and so its own
+    // dataUpdatedAt), instead of every cached scan being re-stamped.
+    expect(qc.getQueryData(["scan", { provider: "other" }])).toBe(otherScan);
     expect(qc.getQueryState(["history"])!.isInvalidated).toBe(true);
   });
 });
