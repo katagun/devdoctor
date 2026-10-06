@@ -80,6 +80,11 @@ _CLASS_PROVIDERS: list[type[Provider]] = [
 ]
 
 
+def provider_class(name: str) -> type[Provider] | None:
+    """The built-in provider class registered under ``name``; None for YAML or unknown ones."""
+    return next((cls for cls in _CLASS_PROVIDERS if cls.name == name), None)
+
+
 def load_providers(shell: Shell) -> list[Provider]:
     """Load and sort all providers. Fails on duplicate names."""
     project_index = ProjectArtifactIndex()

@@ -182,7 +182,7 @@ def test_clean_execute_prints_plan_progress_failure_and_records_the_run(tmp_path
     assert "bytes" not in result.output.split("Done:")[1]
 
     (event,) = build_storage().read_audit_events(limit=1)
-    assert event["source"] == "cli" and event["outcome"] == "ok"
+    assert event["source"] == "cli" and event["outcome"] == "failed"
     assert event["results"][0]["status"] == "error"
     assert event["results"][0]["message"] == "rm: cannot remove: boom"
     assert event["plan"][0]["provider"] == "sample-cache"

@@ -331,6 +331,21 @@ def _group_reasons(reasons: Iterable[str]) -> str:
     return ", ".join(f"{n} {_strip_controls(reason)}" for reason, n in counts.items())
 
 
+def _failure_remedies(results: Iterable[CleanResult]) -> list[str]:
+    """What to do about each failure, once each: the last line of a multi-line message.
+
+    The per-entry line shows only the first line, truncated to the console width, so a
+    provider's remedy (``Provider.explain_failure`` puts it last) would never be read
+    there. Only the last line: a long stderr must not flood the summary.
+    """
+    remedies: dict[str, None] = {}
+    for result in results:
+        lines = [line for line in (result.message or "").splitlines() if line.strip()]
+        if result.status == "error" and len(lines) > 1:
+            remedies[_strip_controls(lines[-1]).strip()] = None
+    return list(remedies)
+
+
 class CleanupPresenter:
     """Every line `devdoctor clean` prints, driven by cleanup and scan events (spec §4).
 
@@ -559,6 +574,8 @@ class CleanupPresenter:
                 style="bold",
             )
         )
+        for remedy in _failure_remedies(results):
+            self._console.print(Text(remedy, style="yellow"))
         if not self._plan_printed and skipped:
             skip_messages = (r.message or "skipped" for r in results if r.status == "skipped")
             self._console.print(Text(f"Nothing to clean: {_group_reasons(skip_messages)}"))

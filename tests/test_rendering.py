@@ -491,3 +491,39 @@ def test_summary_omits_the_snapshot_hint_for_a_cleanup_too_small_to_measure() ->
     )
     out = console.export_text()
     assert "APFS" not in out and "free space" in out
+
+
+def test_summary_prints_each_failures_remedy_once_in_full() -> None:
+    """The per-entry line truncates to one line; the remedy (sudo for tmutil) must still be read."""
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    a, b = _entry("a", 0), _entry("b", 0)
+    p.on_event(ConfirmRequired(approved=[a, b], total_bytes=0, plan=(_planned(a), _planned(b))))
+    remedy = "Run `sudo tmutil deletelocalsnapshots /` in Terminal, then rescan."
+    p.summary(
+        [
+            CleanResult(entry_id="a", status="error", freed_bytes=0, message=f"refused\n{remedy}"),
+            CleanResult(entry_id="b", status="error", freed_bytes=0, message=f"refused\n{remedy}"),
+            CleanResult(entry_id="c", status="error", freed_bytes=0, message="boom"),
+        ],
+        free_before=None,
+        free_after=None,
+    )
+    out = console.export_text()
+    assert out.count("sudo tmutil deletelocalsnapshots /") == 1
+    assert "boom" not in out
+
+
+def test_summary_prints_only_the_last_line_of_a_long_failure() -> None:
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    a = _entry("a", 0)
+    p.on_event(ConfirmRequired(approved=[a], total_bytes=0, plan=(_planned(a),)))
+    stderr = "\n".join(f"trace line {i}" for i in range(50)) + "\nlast word"
+    p.summary(
+        [CleanResult(entry_id="a", status="error", freed_bytes=0, message=stderr)],
+        free_before=None,
+        free_after=None,
+    )
+    out = console.export_text()
+    assert "last word" in out and "trace line 1" not in out

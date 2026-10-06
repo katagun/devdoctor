@@ -890,3 +890,38 @@ def test_build_script_lists_bundle_commands_once_and_covered_snapshots_label_onl
             line for line in script.splitlines() if s.label in line and "covered by" in line
         )
         assert f"(covered by {_BUNDLE_LABEL}; commands listed above)" in label_line
+
+
+def test_a_refused_snapshot_delete_fails_the_entry_with_the_root_hint():
+    """tmutil needs root to delete a snapshot: the entry fails, and the message says what to run."""
+    snaps = [_tm_snap("2026-09-01-000001"), _tm_snap("2026-09-02-000001")]
+    bundle = _tm_bundle(*snaps)
+    refused = ShellResult(1, "", "Failed to delete local snapshot '2026-09-01-000001'\n")
+    shell = FakeShell(responses={tuple(a.argv): refused for s in snaps for a in s.actions})
+    results = run(
+        _tm_report(bundle, *snaps),
+        shell=shell,
+        prompt_choice=_recording_prompt({_BUNDLE_ID: "y"}, []),
+        confirm=_always(True),
+        opts=CleanupOpts(execute=True),
+    )
+    bundle_result = {r.entry_id: r for r in results}[_BUNDLE_ID]
+    assert bundle_result.status == "error"
+    assert bundle_result.message is not None
+    assert bundle_result.message.startswith("Failed to delete local snapshot '2026-09-01-000001'")
+    assert "sudo tmutil deletelocalsnapshots /" in bundle_result.message
+    # The first refusal stops the bundle: the remaining deletes would be refused too.
+    assert shell.calls == [("tmutil", "deletelocalsnapshots", "2026-09-01-000001")]
+
+
+def test_a_failed_command_from_a_provider_without_a_hint_keeps_its_own_message():
+    entry = _e("a", "1", 100, actions=(CommandAction(("false",)),))
+    shell = FakeShell(responses={("false",): ShellResult(1, "", "nope\n")})
+    results = run(
+        _report(entry),
+        shell=shell,
+        prompt_choice=lambda _e: "y",
+        confirm=_always(True),
+        opts=CleanupOpts(execute=True),
+    )
+    assert [(r.status, r.message) for r in results] == [("error", "nope")]

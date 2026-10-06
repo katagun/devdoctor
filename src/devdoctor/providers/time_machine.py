@@ -10,6 +10,14 @@ from devdoctor.types import CommandAction, DiskUsage, Entry, Risk
 logger = logging.getLogger(__name__)
 
 _LIST_ARGV = ("tmutil", "listlocalsnapshots", "/")
+_DELETE_ARGV_PREFIX = ("tmutil", "deletelocalsnapshots")
+# Run without root, tmutil refuses the delete and says only "Failed to delete
+# local snapshot '<date>'" (seen 2026-10 on macOS 26 from the desktop app).
+_DELETE_AS_ROOT_HINT = (
+    "Deleting Time Machine local snapshots needs administrator rights. "
+    "Run `sudo tmutil deletelocalsnapshots /` in Terminal to delete every local "
+    "snapshot on the startup disk, then rescan."
+)
 
 # Matches `com.apple.TimeMachine.<YYYY-MM-DD-HHMMSS>.local`. Everything else —
 # in particular `com.apple.os.update-*` snapshots — must never be touched.
@@ -58,6 +66,13 @@ class TimeMachineSnapshotsProvider(Provider):
             # entry before the entries it covers regardless of scan order.
             entries.append(_bundle_entry(self, snapshots))
         return entries
+
+    @classmethod
+    def explain_failure(cls, argv: tuple[str, ...], detail: str) -> str | None:
+        if argv[: len(_DELETE_ARGV_PREFIX)] != _DELETE_ARGV_PREFIX:
+            return None
+        # The first line stays tmutil's own; the CLI prints the last line in its summary.
+        return f"{detail}\n{_DELETE_AS_ROOT_HINT}"
 
 
 def _parse_snapshots(output: str) -> list[tuple[str, float]]:

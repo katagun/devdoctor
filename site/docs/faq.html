@@ -17,7 +17,7 @@
 <li><b>Time Machine local snapshots pin the freed blocks.</b> Hourly snapshots keep deleted data allocated until they age out. Thin them (keeping the newest restore point) and the space appears:
 <pre><code>devdoctor scan --provider time-machine-local-snapshots
 devdoctor clean --execute --provider time-machine-local-snapshots</code></pre>
-The end-of-run summary says so explicitly when it detects the measured change lagging the estimate for this reason.</li>
+The end-of-run summary says so explicitly when it detects the measured change lagging the estimate for this reason. Deleting a snapshot needs administrator rights: when <code>tmutil</code> refuses, the entry and the run are marked failed (never “ok”), and the summary tells you to run <code>sudo tmutil deletelocalsnapshots /</code> in Terminal, which deletes every local snapshot on the startup disk.</li>
 <li><b>Docker Desktop compacts its VM disk later.</b> A prune frees space <em>inside</em> the VM; the <code>Docker.raw</code> file on your Mac shrinks afterwards, not instantly. Judge with <code>docker system df</code>, then give it time or force it with <code>docker run --privileged --pid=host docker/desktop-reclaim-space</code>. Docker may stop answering for a few minutes while it compacts. Deleting files inside a running container frees nothing on the host; only removing images, containers, volumes or build cache does.</li>
 <li><b>You cleaned advice-only entries.</b> Entries marked <code>·</code> print guidance instead of running anything — re-read the summary's estimated-vs-planned numbers.</li>
 </ol>

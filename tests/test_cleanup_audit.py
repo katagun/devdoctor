@@ -2,7 +2,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from devdoctor.cleanup import PlannedEntry
-from devdoctor.cleanup_audit import all_bytes_verified, build_event, estimated_reclaimed_bytes
+from devdoctor.cleanup_audit import (
+    all_bytes_verified,
+    build_event,
+    estimated_reclaimed_bytes,
+    run_outcome,
+)
 from devdoctor.types import CleanResult, DeletePathAction, Entry, Risk
 
 
@@ -150,3 +155,22 @@ def test_free_space_lagged_ignores_cleanups_too_small_to_measure() -> None:
     # 50 MB cleanup whose delta reads as zero is noise, not a held snapshot.
     assert not cleanup_audit.free_space_lagged(1_000_000_000, 1_000_000_000, 50_000_000)
     assert cleanup_audit.free_space_lagged(1_000_000_000, 1_000_000_000, 100_000_000)
+
+
+def _result(status: str, message: str | None = None) -> CleanResult:
+    return CleanResult(entry_id="x", status=status, freed_bytes=0, message=message)
+
+
+def test_a_run_with_a_failed_entry_is_recorded_as_failed():
+    """Time Machine jobs were recorded "ok" while tmutil refused every delete."""
+    assert run_outcome([_result("error", "Failed to delete"), _result("skipped")]) == "failed"
+    assert run_outcome([_result("ok"), _result("error", "exit 1")]) == "failed"
+
+
+def test_a_run_whose_entries_all_succeeded_is_ok():
+    assert run_outcome([_result("ok"), _result("skipped", "declined")]) == "ok"
+
+
+def test_a_run_that_never_executed_after_a_declined_confirm_is_aborted():
+    assert run_outcome([_result("skipped", "aborted at confirm")]) == "aborted"
+    assert run_outcome([]) == "ok"

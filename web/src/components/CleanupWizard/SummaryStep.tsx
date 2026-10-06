@@ -78,7 +78,7 @@ export function SummaryStep() {
             <div>
               <div className="text-text">{r.entry_id}</div>
               {r.status === "error" && r.message && (
-                <div className="text-risk-danger text-[10px] mt-0.5">{r.message}</div>
+                <div className="text-risk-danger text-[10px] mt-0.5 whitespace-pre-line">{r.message}</div>
               )}
             </div>
             <div className={r.status === "ok" ? "text-risk-safe" : r.status === "error" ? "text-risk-danger" : "text-text-muted"}>

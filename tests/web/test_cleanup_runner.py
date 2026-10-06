@@ -434,3 +434,41 @@ async def test_a_cancelled_job_still_reports_its_free_space_readings(monkeypatch
     assert done["free_before_bytes"] == 10_000_000_000
     assert done["free_after_bytes"] == 10_000_000_000
     assert done["free_space_lagged"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_job_whose_snapshot_delete_was_refused_is_audited_as_failed(monkeypatch):
+    """The audit said "ok" for jobs where tmutil refused every delete (no root)."""
+    from devdoctor.types import DiskUsage
+
+    ts = "2026-09-27-094139"
+    entry = Entry(
+        provider="time-machine-local-snapshots",
+        id=f"snapshot-{ts}",
+        path=None,
+        label=f"Time Machine local snapshot {ts}",
+        size_bytes=0,
+        mtime=None,
+        risk=Risk.RECLAIMABLE,
+        recipe=[f"tmutil deletelocalsnapshots {ts}"],
+        usage=DiskUsage(None, None),
+        actions=(CommandAction(("tmutil", "deletelocalsnapshots", ts)),),
+    )
+    _free_bytes_sequence(monkeypatch, 21_822_849_024, 21_800_775_680)
+
+    async def refusing_run_line(_argv: tuple[str, ...]) -> ShellResult:
+        return ShellResult(1, "", f"Failed to delete local snapshot '{ts}'\n")
+
+    runner = CleanupRunner(
+        report=_report(entry), opts=CleanupOpts(execute=True), run_line=refusing_run_line
+    )
+    task = asyncio.create_task(runner.run())
+    await _approve_and_confirm(runner, entry.id)
+    done = (await _events_until_done(runner))[-1]["data"]
+    await asyncio.wait_for(task, timeout=1)
+
+    [result] = done["results"]
+    assert result["status"] == "error"
+    assert "sudo tmutil deletelocalsnapshots /" in result["message"]
+    audit = build_storage().read_audit_events(limit=1)[0]
+    assert audit["outcome"] == "failed"
