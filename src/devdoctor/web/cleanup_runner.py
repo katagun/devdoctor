@@ -86,6 +86,7 @@ class CleanupRunner:
                 pass
             free_after = cleanup_audit.free_bytes()
             await self._emit_results(results, free_before, free_after)
+            outcome = cleanup_audit.run_outcome(results)
         except asyncio.CancelledError:
             outcome = "cancelled"
             free_after = cleanup_audit.free_bytes()

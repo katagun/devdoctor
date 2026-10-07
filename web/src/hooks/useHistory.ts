@@ -13,7 +13,7 @@ export interface CleanupEvent {
   type: "cleanup";
   at: string;
   job_id: string;
-  outcome: "ok" | "cancelled" | "error" | string;
+  outcome: "ok" | "failed" | "aborted" | "cancelled" | "error" | string;
   total_freed_bytes: number;
   total_estimated_reclaimed_bytes?: number;
   bytes_verified?: boolean;

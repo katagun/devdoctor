@@ -292,6 +292,17 @@ entries under a versioned heading as described in
 
 ### Fixed
 
+- **A cleanup whose command failed is recorded as failed, and a refused Time
+  Machine snapshot delete says what to run.** `tmutil deletelocalsnapshots`
+  needs administrator rights; without them it fails with "Failed to delete
+  local snapshot", and the entry already resolved as an error, but the job's
+  `outcome` in the audit log and History was still "ok" because any run that
+  reached its end counted as ok. A run with a failed entry is now recorded as
+  `failed` (CLI and web alike), and the Time Machine provider adds the remedy
+  to the error: run `sudo tmutil deletelocalsnapshots /` in Terminal. The CLI
+  prints that remedy in full in its summary; the desktop app shows it under
+  the failed entry.
+
 - **The desktop cleanup summary shows what the disk actually released.** It
   used to show only the estimate: on a Mac with Time Machine local snapshots,
   18 GB of deletions released nothing, and the summary still said "~18 GB

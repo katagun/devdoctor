@@ -258,3 +258,22 @@ def test_snapshot_mtime_uses_local_timezone(monkeypatch):
     }
     expected = datetime.strptime(_TS_OLD, "%Y-%m-%d-%H%M%S").astimezone().timestamp()
     assert by_id[f"snapshot-{_TS_OLD}"].mtime == expected
+
+
+def test_a_refused_delete_explains_how_to_delete_the_snapshots_as_root():
+    from devdoctor.providers.time_machine import TimeMachineSnapshotsProvider
+
+    message = TimeMachineSnapshotsProvider.explain_failure(
+        ("tmutil", "deletelocalsnapshots", _TS_OLD),
+        "Failed to delete local snapshot '2026-09-18-100000'",
+    )
+    assert message is not None
+    # tmutil's own words stay first; the remedy follows.
+    assert message.startswith("Failed to delete local snapshot '2026-09-18-100000'")
+    assert "sudo tmutil deletelocalsnapshots /" in message
+
+
+def test_only_snapshot_deletes_get_the_root_hint():
+    from devdoctor.providers.time_machine import TimeMachineSnapshotsProvider
+
+    assert TimeMachineSnapshotsProvider.explain_failure(_LIST_ARGV, "boom") is None

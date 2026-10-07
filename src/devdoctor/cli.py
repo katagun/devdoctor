@@ -161,25 +161,6 @@ def _parse_providers(values: tuple[str, ...], known: list[Provider]) -> frozense
     return frozenset(names)
 
 
-# Selection-phase skip messages (cleanup._resolve_aborted / _to_result) that mean
-# "nothing ran": the confirm was declined, or the user quit the per-entry prompts.
-_ABORTED_MESSAGES = frozenset({"aborted at confirm", "quit before confirm"})
-
-
-def _run_outcome(results: list[CleanResult]) -> str:
-    """Return "aborted" when the run never reached execution; "ok" otherwise (spec §7).
-
-    A completed run that includes failed entries is still "ok" — that ruling
-    stands; only a run with zero ok/error results (nothing executed) and at
-    least one confirm-decline/quit message counts as "aborted".
-    """
-    if any(r.status in ("ok", "error") for r in results):
-        return "ok"
-    if any(r.message in _ABORTED_MESSAGES for r in results):
-        return "aborted"
-    return "ok"
-
-
 def _record_run(
     report: Report,
     presenter: CleanupPresenter,
@@ -192,7 +173,7 @@ def _record_run(
     try:
         event = cleanup_audit.build_event(
             results,
-            outcome or _run_outcome(results),
+            outcome or cleanup_audit.run_outcome(results),
             source="cli",
             plan=presenter.plan,
             entries=report.entries,

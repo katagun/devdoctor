@@ -98,6 +98,16 @@ class Provider(ABC):
             return []
         return [entry for entry in self.discover() if entry.id in ids]
 
+    @classmethod
+    def explain_failure(cls, argv: tuple[str, ...], detail: str) -> str | None:
+        """The message for one of this provider's cleanup commands that failed, or None.
+
+        ``detail`` is the command's own error text. A provider that knows why its
+        command fails, and what the user can do about it, returns ``detail`` followed
+        by that remedy as one last line; None keeps ``detail`` as is.
+        """
+        return None
+
 
 def _normalize_platform(raw: str) -> str:
     if raw.startswith("linux"):

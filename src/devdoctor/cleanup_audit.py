@@ -51,6 +51,27 @@ def free_space_lagged(free_before: int | None, free_after: int | None, reclaimed
     return free_after - free_before < reclaimed / 2
 
 
+# Selection-phase skip messages (cleanup._resolve_aborted / _to_result) that mean
+# "nothing ran": the confirm was declined, or the user quit the per-entry prompts.
+_ABORTED_MESSAGES = frozenset({"aborted at confirm", "quit before confirm"})
+
+
+def run_outcome(results: Sequence[CleanResult]) -> str:
+    """The outcome of a run that reached its end: "failed", "aborted" or "ok".
+
+    "failed" when any entry's command failed: a run that tried to delete something
+    and could not did not succeed, even if other entries did. "aborted" when nothing
+    ran because the confirm was declined or the prompts were quit.
+    """
+    if any(r.status == "error" for r in results):
+        return "failed"
+    if any(r.status == "ok" for r in results):
+        return "ok"
+    if any(r.message in _ABORTED_MESSAGES for r in results):
+        return "aborted"
+    return "ok"
+
+
 def estimated_reclaimed_bytes(entries: Sequence[Entry], results: Sequence[CleanResult]) -> int:
     successful = {r.entry_id for r in results if r.status == "ok"}
     return estimated_reclaimable_bytes([e for e in entries if e.id in successful])

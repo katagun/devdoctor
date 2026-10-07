@@ -9,6 +9,7 @@ from typing import Literal
 
 from devdoctor.containment import is_reclaimable_worktree, path_is_inside
 from devdoctor.ports import Shell
+from devdoctor.registry import provider_class
 from devdoctor.types import (
     AsyncConfirm,
     AsyncPromptChoice,
@@ -457,9 +458,16 @@ def _run_actions(entry: Entry) -> Generator[CleanupEvent, object, tuple[str | No
         result = yield ExecuteStep(entry=entry, action=action)
         assert isinstance(result, ShellResult)
         if result.returncode != 0:
-            detail = (result.stderr or result.stdout or "").strip()
-            return detail or f"exit {result.returncode}", executed
+            detail = (result.stderr or result.stdout or "").strip() or f"exit {result.returncode}"
+            return _failure_message(entry, cleanup_action_argv(action) or (), detail), executed
     return None, executed
+
+
+def _failure_message(entry: Entry, argv: tuple[str, ...], detail: str) -> str:
+    """The command's own error, or the providing provider's explanation of it."""
+    cls = provider_class(entry.provider)
+    explained = None if cls is None else cls.explain_failure(argv, detail)
+    return explained or detail
 
 
 def run(

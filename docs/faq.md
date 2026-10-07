@@ -14,6 +14,10 @@ The three usual causes, in order of likelihood on macOS:
    The end-of-run summary says so explicitly when it detects the measured
    change lagging the estimate for this reason; the desktop app's cleanup
    summary shows the same warning, with a link to the snapshots.
+   Deleting a snapshot needs administrator rights: when `tmutil` refuses,
+   the entry and the run are marked failed (never "ok"), and the summary
+   tells you to run `sudo tmutil deletelocalsnapshots /` in Terminal, which
+   deletes every local snapshot on the startup disk.
 2. **Docker Desktop compacts its VM disk later.** A prune frees space
    *inside* the VM; the `Docker.raw` file on your Mac shrinks afterwards,
    not instantly. Judge the prune with `docker system df`, then give it time
