@@ -925,3 +925,40 @@ def test_a_failed_command_from_a_provider_without_a_hint_keeps_its_own_message()
         opts=CleanupOpts(execute=True),
     )
     assert [(r.status, r.message) for r in results] == [("error", "nope")]
+
+
+def test_all_in_provider_still_prompts_for_each_dangerous_entry():
+    """`a` on a reclaimable entry must not approve the provider's dangerous ones
+    unseen: with --allow-dangerous a named Docker volume was deleted that way."""
+    rep = _report(
+        _e("docker", "anon", 100, Risk.RECLAIMABLE, recipe=["rm -rf /anon"]),
+        _e("docker", "pgdata", 900, Risk.DANGEROUS, recipe=["rm -rf /pgdata"]),
+        _e("docker", "cache", 50, Risk.RECLAIMABLE, recipe=["rm -rf /cache"]),
+    )
+    shell = FakeShell(
+        responses={
+            ("rm", "-rf", "/anon"): ShellResult(0, "", ""),
+            ("rm", "-rf", "/cache"): ShellResult(0, "", ""),
+        }
+    )
+    prompted: list[str] = []
+    answers = iter(["a", "n"])
+
+    def prompt(entry):
+        prompted.append(entry.id)
+        return next(answers)
+
+    results = run(
+        rep,
+        shell=shell,
+        prompt_choice=prompt,
+        confirm=_always(True),
+        opts=CleanupOpts(execute=True, allow_dangerous=True),
+    )
+    assert prompted == ["anon", "pgdata"]
+    assert {r.entry_id: r.status for r in results} == {
+        "anon": "ok",
+        "pgdata": "skipped",
+        "cache": "ok",
+    }
+    assert ("rm", "-rf", "/pgdata") not in [tuple(c) for c in shell.calls]

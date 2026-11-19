@@ -286,9 +286,12 @@ def _auto_state(
         return "skipped:dangerous"
     # _apply_choice only ever stores "all" or "skip" per provider.
     override = provider_override.get(entry.provider)
-    if override is not None:
-        return "approved" if override == "all" else "skipped:provider-skip"
-    if opts.yes_safe and entry.risk == Risk.SAFE:
+    if override == "skip":
+        return "skipped:provider-skip"
+    # "All in this provider" never reaches a dangerous entry: each one is shown
+    # and answered for on its own, whatever was approved before it.
+    approved_with_provider = override == "all" and entry.risk != Risk.DANGEROUS
+    if approved_with_provider or (opts.yes_safe and entry.risk == Risk.SAFE):
         return "approved"
     return None
 

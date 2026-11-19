@@ -292,6 +292,18 @@ entries under a versioned heading as described in
 
 ### Fixed
 
+- **Four ways a cleanup could delete more than it showed are closed.** With
+  `--allow-dangerous`, answering `a` (all in this provider) approved the
+  provider's dangerous entries unseen, so a named Docker volume went with an
+  anonymous one; every dangerous entry is now prompted for on its own.
+  `poetry-cache` covered the whole `pypoetry` directory, which also holds
+  Poetry's virtualenvs; it now covers only `cache` and `artifacts`.
+  `homebrew-downloads` and `npm-cache` ran `brew cleanup --prune=all` and
+  `npm cache clean --force`, which reach past the measured path (old installed
+  versions; whichever cache npm is configured for); both now delete exactly the
+  path shown. In the web UI a cancelled or timed-out cleanup left its command
+  running; the command is now terminated, then killed if it ignores that.
+
 - **A cleanup whose command failed is recorded as failed, and a refused Time
   Machine snapshot delete says what to run.** `tmutil deletelocalsnapshots`
   needs administrator rights; without them it fails with "Failed to delete
