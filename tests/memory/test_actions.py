@@ -61,8 +61,9 @@ def test_terminate_refuses_when_process_gone() -> None:
     assert ("kill", "-TERM", "4242") not in sh.calls
 
 
-def test_terminate_without_expected_name_skips_revalidation() -> None:
-    # Older clients that don't send a label keep the prior behavior.
+def test_terminate_without_a_name_to_check_is_refused() -> None:
+    """A bare pid is whatever process holds it now; with nothing to compare it
+    against, the request could kill anything the user owns."""
     sh = _shell(**{"kill -TERM 4242": ShellResult(0, "", "")})
     result = execute_memory_action(
         sh,
@@ -71,8 +72,8 @@ def test_terminate_without_expected_name_skips_revalidation() -> None:
         target_id="pid:4242",
         confirmed=True,
     )
-    assert result.status == "ok"
-    assert ("kill", "-TERM", "4242") in sh.calls
+    assert result.status == "error"
+    assert ("kill", "-TERM", "4242") not in sh.calls
 
 
 def test_terminate_refuses_when_only_generic_token_matches() -> None:

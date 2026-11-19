@@ -155,6 +155,14 @@ def _terminate_pid(
             status="error",
             message="refusing to terminate a system process",
         )
+    if not expected_name:
+        # A bare pid is whatever process holds it now. Without the name the user
+        # was shown there is nothing to check it against.
+        return MemoryActionResult(
+            action_id=action_id,
+            status="error",
+            message="refusing to terminate a process without the name it was listed under",
+        )
     # PID-reuse guard: the pid came from a scan the UI may have held for a
     # while. Between scan and click the OS can recycle it onto an unrelated
     # process, so re-read the current command and refuse if it no longer

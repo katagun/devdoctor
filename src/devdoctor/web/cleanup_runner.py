@@ -45,6 +45,9 @@ class CleanupRunner:
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
     storage: StorageBackend | None = None
     events: asyncio.Queue[dict[str, Any]] = field(default_factory=asyncio.Queue)
+    # Set once a client opens the event stream: a job nobody listens to can never
+    # be answered, so the route cancels one that stays unheard.
+    subscribed: asyncio.Event = field(default_factory=asyncio.Event)
     _pending_prompts: dict[str, asyncio.Future[Choice]] = field(default_factory=dict)
     _pending_confirm: asyncio.Future[bool] | None = None
     _task: asyncio.Task[list[CleanResult]] | None = None
