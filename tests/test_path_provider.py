@@ -332,3 +332,29 @@ def test_only_the_selected_paths_are_sized(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(base, "size_many", spy)
     provider.discover_selected(frozenset({str(tmp_path / "caches" / "b")}))
     assert sized == [tmp_path / "caches" / "b"]
+
+
+def _bundled_specs() -> dict:
+    import yaml
+
+    from devdoctor.registry import _locate_paths_yaml
+
+    return {spec["name"]: spec for spec in yaml.safe_load(_locate_paths_yaml().read_text())}
+
+
+def test_the_poetry_cache_entry_leaves_poetry_virtualenvs_alone():
+    """Poetry keeps its virtualenvs under the same directory as its cache; a "safe"
+    entry on the parent deleted every project's environment."""
+    paths = _bundled_specs()["poetry-cache"]["paths"]
+    assert paths, "poetry-cache lost its paths"
+    for raw in paths:
+        assert raw.rstrip("/").rsplit("/", 1)[-1] in {"cache", "artifacts"}, raw
+
+
+def test_safe_path_entries_delete_only_the_path_they_measured():
+    """A tool's own cleanup command can reach past the previewed path:
+    `brew cleanup --prune=all` also removes old installed versions, and
+    `npm cache clean` empties whatever cache npm is configured for."""
+    specs = _bundled_specs()
+    for name in ("homebrew-downloads", "npm-cache"):
+        assert specs[name]["recipe"] == "rm -rf {path}", name

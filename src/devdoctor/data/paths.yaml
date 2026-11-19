@@ -12,8 +12,11 @@
   risk: safe
   platforms: [darwin, linux]
   paths:
-    - ~/.cache/pypoetry
-    - ~/Library/Caches/pypoetry
+    # Not the parent: pypoetry/virtualenvs holds every project's environment.
+    - ~/.cache/pypoetry/cache
+    - ~/.cache/pypoetry/artifacts
+    - ~/Library/Caches/pypoetry/cache
+    - ~/Library/Caches/pypoetry/artifacts
   recipe: "rm -rf {path}"
 
 - name: npm-cache
@@ -22,7 +25,7 @@
   platforms: [darwin, linux]
   paths:
     - ~/.npm/_cacache
-  recipe: "npm cache clean --force"
+  recipe: "rm -rf {path}"
 
 - name: homebrew-downloads
   description: Homebrew download cache
@@ -30,7 +33,7 @@
   platforms: [darwin, linux]
   paths:
     - ~/Library/Caches/Homebrew
-  recipe: "brew cleanup --prune=all"
+  recipe: "rm -rf {path}"
 
 - name: lm-studio-extensions
   description: LM Studio extension downloads

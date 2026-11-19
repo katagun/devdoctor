@@ -63,17 +63,25 @@ async def run_argv_streaming(
             sink.append(text)
             await on_chunk(stream_name, text)
 
+    timed_out = False
     try:
         async with asyncio.TaskGroup() as tg:
             tg.create_task(_pump(proc.stdout, "stdout", stdout_chunks))  # type: ignore[arg-type]
             tg.create_task(_pump(proc.stderr, "stderr", stderr_chunks))  # type: ignore[arg-type]
-            if timeout is not None:
+            # Caught inside the group: an error that leaves its body comes out
+            # wrapped in an ExceptionGroup, which `except TimeoutError` misses.
+            try:
                 await asyncio.wait_for(proc.wait(), timeout=timeout)
-            else:
-                await proc.wait()
-    except TimeoutError:
-        proc.terminate()
-        await proc.wait()
+            except TimeoutError:
+                timed_out = True
+                await _stop(proc)
+    finally:
+        # Cancellation (job cancelled, client gone) or a failed pump: the command
+        # must not outlive the job that reports it stopped.
+        if proc.returncode is None:
+            await _stop(proc)
+
+    if timed_out:
         return ShellResult(
             returncode=proc.returncode or 124,
             stdout="".join(stdout_chunks),
@@ -85,3 +93,19 @@ async def run_argv_streaming(
         stdout="".join(stdout_chunks),
         stderr="".join(stderr_chunks),
     )
+
+
+_TERMINATE_GRACE_S = 5.0
+
+
+async def _stop(proc: asyncio.subprocess.Process) -> None:
+    """Terminate ``proc``, kill it if it ignores that, and reap it."""
+    try:
+        proc.terminate()
+    except ProcessLookupError:
+        return
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=_TERMINATE_GRACE_S)
+    except TimeoutError:
+        proc.kill()
+        await proc.wait()
