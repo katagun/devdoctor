@@ -22,6 +22,7 @@ from devdoctor.rendering import (
 from devdoctor.types import (
     AdviceAction,
     CleanResult,
+    CommandAction,
     Coverage,
     DeletePathAction,
     DiffReport,
@@ -527,3 +528,27 @@ def test_summary_prints_only_the_last_line_of_a_long_failure() -> None:
     )
     out = console.export_text()
     assert "last word" in out and "trace line 1" not in out
+
+
+def test_plan_table_shows_every_action_of_an_entry_in_full() -> None:
+    """The plan is the last thing read before confirming: "(+1 more)" and an
+    ellipsis hid what would run."""
+    console = _console()
+    p = CleanupPresenter(console, home=HOME)
+    entry = dataclasses.replace(
+        _entry("uv", 100),
+        actions=(
+            CommandAction(("docker", "volume", "rm", "--force", "a-very-long-volume-name-" * 3)),
+            CommandAction(("docker", "builder", "prune", "--all", "--force")),
+        ),
+    )
+    p.on_event(
+        ConfirmRequired(
+            approved=[entry], total_bytes=100, unknown_entries=0, plan=(_planned(entry),)
+        )
+    )
+
+    out = "".join(console.export_text().split())
+    assert "more)" not in out and "…" not in out
+    assert "a-very-long-volume-name-a-very-long-volume-name-a-very-long-volume-name-" in out
+    assert "dockerbuilderprune--all--force" in out

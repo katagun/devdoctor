@@ -368,6 +368,9 @@ class CleanupOpts:
     yes_safe: bool = False
     allow_dangerous: bool = False
     providers: frozenset[str] | None = None
+    # Skip a path that is gone by the time its turn comes instead of running `rm`
+    # on it. Real runs set this; the state machine alone never touches the disk.
+    skip_missing_paths: bool = False
 
 
 @dataclass
@@ -772,7 +775,8 @@ class Report:
 
 
 # Choice letters: y=yes, n=no, a=all-remaining-in-provider, s=skip-provider, q=quit
-Choice = Literal["y", "n", "a", "s", "q"]
+# "unanswered" is what an unattended run answers: nobody is there to be asked.
+Choice = Literal["y", "n", "a", "s", "q", "unanswered"]
 PromptChoice = Callable[[Entry], Choice]
 Confirm = Callable[[str], bool]
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import subprocess
 from collections.abc import Callable, Generator, Sequence
 from dataclasses import dataclass
 from typing import Literal
@@ -18,6 +19,7 @@ from devdoctor.types import (
     CleanupAction,
     CleanupOpts,
     Confirm,
+    DeletePathAction,
     Entry,
     PromptChoice,
     Refusal,
@@ -36,11 +38,14 @@ logger = logging.getLogger(__name__)
 _ASCII_SPACE = 0x20  # first printable char; anything below is a C0 control
 _ASCII_DEL = 0x7F
 
+UNANSWERED_MESSAGE = "needs an answer; no terminal to ask on"
+
 SelectionState = Literal[
     "approved",
     "skipped:user",
     "skipped:provider-skip",
     "skipped:quit",
+    "skipped:unanswered",
     "skipped:dangerous",
     "skipped:covered",
 ]
@@ -202,7 +207,7 @@ def iter_cleanup_events(report: Report, opts: CleanupOpts) -> Generator[CleanupE
         yield from _resolve_aborted(selections)
         return
 
-    yield from _iter_execute(selections)
+    yield from _iter_execute(selections, skip_missing=opts.skip_missing_paths)
 
 
 def _iter_selection(
@@ -296,23 +301,27 @@ def _auto_state(
     return None
 
 
+_CHOICE_STATES: dict[object, SelectionState] = {
+    "y": "approved",
+    "n": "skipped:user",
+    "a": "approved",
+    "s": "skipped:provider-skip",
+    "q": "skipped:quit",
+    "unanswered": "skipped:unanswered",
+}
+_CHOICE_OVERRIDES = {"a": "all", "s": "skip"}
+
+
 def _apply_choice(
     choice: object, entry: Entry, provider_override: dict[str, str]
 ) -> SelectionState:
     """Translate a prompt choice into a selection state; may mutate provider_override."""
-    if choice == "y":
-        return "approved"
-    if choice == "n":
-        return "skipped:user"
-    if choice == "a":
-        provider_override[entry.provider] = "all"
-        return "approved"
-    if choice == "s":
-        provider_override[entry.provider] = "skip"
-        return "skipped:provider-skip"
-    if choice == "q":
-        return "skipped:quit"
-    return f"skipped:unknown-choice:{choice}"  # type: ignore[return-value]
+    state = _CHOICE_STATES.get(choice)
+    if state is None:
+        return f"skipped:unknown-choice:{choice}"  # type: ignore[return-value]
+    if choice in _CHOICE_OVERRIDES:
+        provider_override[entry.provider] = _CHOICE_OVERRIDES[str(choice)]
+    return state
 
 
 def _resolve_aborted(
@@ -365,7 +374,7 @@ def _build_skipped(selections: list[tuple[Entry, SelectionState]]) -> tuple[Skip
 
 
 def _iter_execute(
-    selections: list[tuple[Entry, SelectionState]],
+    selections: list[tuple[Entry, SelectionState]], *, skip_missing: bool = False
 ) -> Generator[CleanupEvent, object, None]:
     """Run each approved entry's recipe via ExecuteStep yields; resolve every selection.
 
@@ -410,7 +419,7 @@ def _iter_execute(
                     )
                 )
                 continue
-        error_msg, executed = yield from _run_actions(entry)
+        error_msg, executed, already_gone = yield from _run_actions(entry, skip_missing)
         if executed and not error_msg and is_reclaimable_worktree(entry):
             removed[real[entry.id]] = entry
         if error_msg:
@@ -423,7 +432,11 @@ def _iter_execute(
                     entry_id=entry.id,
                     status="skipped",
                     freed_bytes=0,
-                    message="advice only; no command executed",
+                    message=(
+                        "already gone; nothing to remove"
+                        if already_gone
+                        else "advice only; no command executed"
+                    ),
                 )
             )
         else:
@@ -451,19 +464,55 @@ def _removed_with(entry: Entry, real: dict[str, str], removed: dict[str, Entry])
     return next((owner for root, owner in removed.items() if path_is_inside(path, {root})), None)
 
 
-def _run_actions(entry: Entry) -> Generator[CleanupEvent, object, tuple[str | None, bool]]:
-    """Yield executable typed actions; advice is deliberately non-executable."""
+def _run_actions(
+    entry: Entry, skip_missing: bool = False
+) -> Generator[CleanupEvent, object, tuple[str | None, bool, bool]]:
+    """Yield executable typed actions; advice is deliberately non-executable.
+
+    Returns the failure message if a command failed, whether any command ran, and
+    whether a path to delete was already gone. `rm -rf` exits 0 on a missing path,
+    so running it would report the scan's estimate as reclaimed by this run.
+    """
     executed = False
+    already_gone = False
     for action in entry.cleanup_actions():
         if cleanup_action_argv(action) is None:
+            continue
+        if (
+            skip_missing
+            and isinstance(action, DeletePathAction)
+            and not os.path.lexists(action.path)
+        ):
+            already_gone = True
             continue
         executed = True
         result = yield ExecuteStep(entry=entry, action=action)
         assert isinstance(result, ShellResult)
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or "").strip() or f"exit {result.returncode}"
-            return _failure_message(entry, cleanup_action_argv(action) or (), detail), executed
-    return None, executed
+            message = _failure_message(entry, cleanup_action_argv(action) or (), detail)
+            return message, executed, already_gone
+    return None, executed, already_gone
+
+
+# Long enough for `rm -rf` of a large tree or a full `docker system prune`; a
+# command still running after this is hung, and an unbounded wait hangs the run.
+STEP_TIMEOUT_S = 30 * 60.0
+
+
+def run_step(shell: Shell, argv: tuple[str, ...]) -> ShellResult:
+    """Run one cleanup command; a command that cannot start or hangs is a failed
+    result, never an exception: entries before it have already been deleted and
+    the run still owes a summary and an audit record."""
+    try:
+        return shell.run(list(argv), check=False, timeout=STEP_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        minutes = int(STEP_TIMEOUT_S // 60)
+        return ShellResult(124, "", f"timed out after {minutes} minutes: {argv[0]}")
+    except FileNotFoundError:
+        return ShellResult(127, "", f"command not found: {argv[0]}")
+    except OSError as exc:
+        return ShellResult(1, "", f"could not run {argv[0]}: {exc}")
 
 
 def _failure_message(entry: Entry, argv: tuple[str, ...], detail: str) -> str:
@@ -498,7 +547,7 @@ def run(
             elif isinstance(event, VerifyRequired):
                 event = gen.send(NO_VERIFIER if verify is None else verify(event.entry))
             elif isinstance(event, ExecuteStep):
-                event = gen.send(shell.run(list(event.argv), check=False))
+                event = gen.send(run_step(shell, event.argv))
             elif isinstance(event, EntryResolved):
                 results.append(event.result)
                 event = next(gen)
@@ -587,6 +636,7 @@ def _to_result(
         "user": "declined",
         "provider-skip": "provider skipped",
         "quit": "quit before confirm",
+        "unanswered": UNANSWERED_MESSAGE,
         "dangerous": "dangerous (pass --allow-dangerous to include)",
         "covered": "covered",
     }.get(reason, reason)

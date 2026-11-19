@@ -962,3 +962,106 @@ def test_all_in_provider_still_prompts_for_each_dangerous_entry():
         "cache": "ok",
     }
     assert ("rm", "-rf", "/pgdata") not in [tuple(c) for c in shell.calls]
+
+
+class _RaisingShell(FakeShell):
+    """Raises for one argv, as a missing binary or a hung command would."""
+
+    def __init__(self, raises: dict[tuple[str, ...], Exception], **kwargs):
+        super().__init__(**kwargs)
+        self._raises = raises
+
+    def run(self, argv, *, check=False, timeout=None, env=None):
+        exc = self._raises.get(tuple(argv))
+        if exc is not None:
+            self.calls.append(tuple(argv))
+            raise exc
+        return super().run(argv, check=check, timeout=timeout, env=env)
+
+
+def test_a_command_that_cannot_start_fails_its_entry_and_the_run_continues():
+    """A missing `brew` used to raise out of the run after earlier entries were
+    already deleted, leaving no results to summarise or record."""
+    rep = _report(
+        _e("a", "1", 100, recipe=["rm -rf /1"]),
+        _e("b", "2", 200, actions=(CommandAction(("brew", "cleanup")),)),
+        _e("c", "3", 300, recipe=["rm -rf /3"]),
+    )
+    shell = _RaisingShell(
+        {("brew", "cleanup"): FileNotFoundError(2, "No such file or directory", "brew")},
+        responses={
+            ("rm", "-rf", "/1"): ShellResult(0, "", ""),
+            ("rm", "-rf", "/3"): ShellResult(0, "", ""),
+        },
+    )
+    results = run(
+        rep,
+        shell=shell,
+        prompt_choice=_scripted_choices(),
+        confirm=_always(True),
+        opts=CleanupOpts(execute=True, yes_safe=True),
+    )
+    assert [r.status for r in results] == ["ok", "error", "ok"]
+    assert "brew" in (results[1].message or "")
+
+
+def test_a_command_that_times_out_fails_its_entry():
+    import subprocess
+
+    rep = _report(_e("a", "1", 100, actions=(CommandAction(("docker", "prune")),)))
+    shell = _RaisingShell({("docker", "prune"): subprocess.TimeoutExpired(["docker"], 5)})
+    (result,) = run(
+        rep,
+        shell=shell,
+        prompt_choice=_scripted_choices(),
+        confirm=_always(True),
+        opts=CleanupOpts(execute=True, yes_safe=True),
+    )
+    assert result.status == "error"
+    assert "timed out" in (result.message or "")
+
+
+def test_cleanup_commands_run_with_a_timeout():
+    seen: list[float | None] = []
+
+    class Recording(FakeShell):
+        def run(self, argv, *, check=False, timeout=None, env=None):
+            seen.append(timeout)
+            return ShellResult(0, "", "")
+
+    run(
+        _report(_e("a", "1", 100, recipe=["rm -rf /1"])),
+        shell=Recording(),
+        prompt_choice=_scripted_choices(),
+        confirm=_always(True),
+        opts=CleanupOpts(execute=True, yes_safe=True),
+    )
+    assert seen and all(t is not None and t > 0 for t in seen)
+
+
+def test_a_path_already_gone_is_not_reported_as_reclaimed(tmp_path):
+    """`rm -rf` on a missing path exits 0; reporting "ok ~estimate" for it counted
+    space that something else had already freed."""
+    gone = tmp_path / "gone"
+    entry = Entry(
+        provider="a",
+        id=str(gone),
+        path=gone,
+        label="gone",
+        size_bytes=500,
+        mtime=None,
+        risk=Risk.SAFE,
+        recipe=[],
+        actions=(DeletePathAction(gone),),
+    )
+    shell = FakeShell()
+    (result,) = run(
+        _report(entry),
+        shell=shell,
+        prompt_choice=_scripted_choices(),
+        confirm=_always(True),
+        opts=CleanupOpts(execute=True, yes_safe=True, skip_missing_paths=True),
+    )
+    assert shell.calls == []
+    assert result.status == "skipped" and result.freed_bytes == 0
+    assert "already gone" in (result.message or "")

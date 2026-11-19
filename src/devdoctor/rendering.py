@@ -45,6 +45,9 @@ def _strip_controls(value: str) -> str:
     return value.translate(_CONTROL_STRIP)
 
 
+_PLAN_ACTIONS_SHOWN = 5
+
+
 def _safe_cell(value: str) -> Text:
     """Render a filename-derived string as inert text.
 
@@ -363,6 +366,7 @@ class CleanupPresenter:
         self.plan: tuple[PlannedEntry, ...] = ()
         self._index: dict[str, int] = {}
         self._plan_printed = False
+        self._unanswered_noted = False
         self._scan_total = 0
         self._scan_done = 0
         self._scan_running: list[str] = []
@@ -441,19 +445,22 @@ class CleanupPresenter:
         table.add_column("risk", justify="center")
         table.add_column("est.", justify="right")
         table.add_column("path", overflow="fold")
-        table.add_column("action", overflow="ellipsis")
+        # Every command, whole: this table is what the confirm below agrees to.
+        table.add_column("action", overflow="fold")
         for i, planned in enumerate(event.plan, 1):
-            lines = planned.lines
-            action = lines[0] if lines else "(no cleanup action)"
-            if len(lines) > 1:
-                action += f" (+{len(lines) - 1} more)"
+            lines = planned.lines or ["(no cleanup action)"]
+            shown = [_safe_cell(line) for line in lines[:_PLAN_ACTIONS_SHOWN]]
+            if len(lines) > _PLAN_ACTIONS_SHOWN:
+                # A bucket of hundreds of files would bury the plan; `recipe` lists all.
+                shown.append(Text(f"(+{len(lines) - _PLAN_ACTIONS_SHOWN} more of the same kind)"))
+            action = Text("\n").join(shown)
             table.add_row(
                 str(i),
                 _safe_cell(planned.entry.provider),
                 _risk_label(planned.entry.risk),
                 _estimated_bytes(planned.estimate_bytes).lstrip("~"),
                 _safe_cell(self._short_path(planned.entry)),
-                _safe_cell(action),
+                action,
             )
         self._console.print(table)
         skipped = _group_reasons(s.reason for s in event.skipped)
@@ -512,10 +519,19 @@ class CleanupPresenter:
                 show_choices=False,
             )
         except (EOFError, click.exceptions.Abort):
-            self._print_no_terminal()
+            # Nobody is there to answer. Skip this entry and keep going: reading
+            # EOF as "quit" dropped every safe entry sorted after this one.
+            if not self._unanswered_noted:
+                self._unanswered_noted = True
+                self._console.print(
+                    Text(
+                        "no terminal to answer prompts on; skipping entries that need "
+                        "an answer (--yes-safe approves safe ones)"
+                    )
+                )
             if was_active:
                 self._start_status(self.status_text)
-            return "q"
+            return "unanswered"
         if was_active:
             self._start_status(self.status_text)
         return raw  # type: ignore[return-value]

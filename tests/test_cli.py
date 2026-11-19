@@ -235,7 +235,9 @@ def test_clean_declined_at_confirm_records_an_aborted_outcome(tmp_path, monkeypa
     assert event["results"][0]["message"] == "aborted at confirm"
 
 
-def test_clean_yes_without_a_tty_or_yes_safe_quits_at_the_per_entry_prompt(tmp_path, monkeypatch):
+def test_clean_yes_without_a_tty_or_yes_safe_skips_the_entry_it_cannot_ask_about(
+    tmp_path, monkeypatch
+):
     cache = _reclaimable_fixture(tmp_path, monkeypatch)
     shell = FakeShell(which_table={"ollama": None, "docker": None})
     # --yes only skips the final confirm; a reclaimable (not safe) entry still needs
@@ -245,7 +247,7 @@ def test_clean_yes_without_a_tty_or_yes_safe_quits_at_the_per_entry_prompt(tmp_p
     )
 
     assert result.exit_code == 0, result.output
-    assert "quitting" in result.output
+    assert "no terminal to answer prompts on; skipping" in result.output
     assert shell.calls == []
     assert cache.exists()
     (event,) = build_storage().read_audit_events(limit=1)
@@ -463,3 +465,82 @@ def test_a_typo_reads_as_a_typo_even_without_a_terminal(tmp_path, monkeypatch):
         assert result.exit_code == 2, (option, result.output)
         assert message in result.output
         assert "no terminal" not in result.output
+
+
+class _InterruptOnSecondCall(FakeShell):
+    """Lets the first command through, then raises as Ctrl-C would."""
+
+    def run(self, argv, *, check=False, timeout=None, env=None):
+        if self.calls:
+            raise KeyboardInterrupt
+        return super().run(argv, check=check, timeout=timeout, env=env)
+
+
+def _two_cache_fixture(tmp_path: Path, monkeypatch, risks: tuple[str, str]) -> list[Path]:
+    """Two YAML providers, the first with the larger cache so it is offered first."""
+    caches = []
+    specs = []
+    for name, risk, size in zip(("big-cache", "small-cache"), risks, (8192, 4096), strict=True):
+        cache = tmp_path / name
+        cache.mkdir()
+        (cache / "blob.bin").write_bytes(b"x" * size)
+        caches.append(cache)
+        specs.append(
+            f"""- name: {name}
+  description: sample
+  risk: {risk}
+  platforms: [darwin, linux]
+  paths: ["{cache}"]
+  recipe: "rm -rf {{path}}"
+"""
+        )
+    yaml = tmp_path / "p.yaml"
+    yaml.write_text("".join(specs))
+    monkeypatch.setenv("DEVDOCTOR_PATHS_YAML", str(yaml))
+    return caches
+
+
+def test_clean_ctrl_c_records_what_was_already_deleted(tmp_path, monkeypatch):
+    big, _small = _two_cache_fixture(tmp_path, monkeypatch, ("safe", "safe"))
+    shell = _InterruptOnSecondCall(
+        which_table={"ollama": None, "docker": None},
+        responses={("rm", "-rf", "--", str(big)): ShellResult(0, "", "")},
+    )
+    result = CliRunner().invoke(
+        build_cli(shell),
+        [
+            "clean", "--execute", "--yes-safe", "--yes",
+            "--provider", "big-cache", "--provider", "small-cache",
+        ],
+    )  # fmt: skip
+
+    assert result.exit_code == 130, result.output
+    assert "Done: 1 ok" in result.output
+    (event,) = build_storage().read_audit_events(limit=1)
+    assert event["outcome"] == "interrupted"
+    assert [(r["entry_id"], r["status"]) for r in event["results"]] == [(f"big-cache:{big}", "ok")]
+
+
+def test_an_unattended_run_cleans_safe_entries_past_one_it_cannot_ask_about(tmp_path, monkeypatch):
+    """The first entry needing a prompt used to read EOF as "quit", so every safe
+    entry after it was skipped and the run still exited 0."""
+    big, small = _two_cache_fixture(tmp_path, monkeypatch, ("reclaimable", "safe"))
+    shell = FakeShell(
+        which_table={"ollama": None, "docker": None},
+        responses={("rm", "-rf", "--", str(small)): ShellResult(0, "", "")},
+    )
+    result = CliRunner().invoke(
+        build_cli(shell),
+        [
+            "clean", "--execute", "--yes-safe", "--yes",
+            "--provider", "big-cache", "--provider", "small-cache",
+        ],
+    )  # fmt: skip
+
+    assert result.exit_code == 0, result.output
+    assert shell.calls == [("rm", "-rf", "--", str(small))]
+    assert "Done: 1 ok" in result.output
+    (event,) = build_storage().read_audit_events(limit=1)
+    statuses = {r["entry_id"]: (r["status"], r["message"]) for r in event["results"]}
+    assert statuses[f"small-cache:{small}"][0] == "ok"
+    assert statuses[f"big-cache:{big}"] == ("skipped", "needs an answer; no terminal to ask on")

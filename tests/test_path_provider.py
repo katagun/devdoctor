@@ -358,3 +358,51 @@ def test_safe_path_entries_delete_only_the_path_they_measured():
     specs = _bundled_specs()
     for name in ("homebrew-downloads", "npm-cache"):
         assert specs[name]["recipe"] == "rm -rf {path}", name
+
+
+def _yaml_provider(paths: list[str], risk: str = "safe"):
+    from devdoctor.providers.base import PathProvider
+    from tests.conftest import FakeShell
+
+    return PathProvider.from_yaml(
+        {
+            "name": "sample",
+            "description": "sample",
+            "risk": risk,
+            "platforms": ["darwin", "linux"],
+            "paths": paths,
+            "recipe": "rm -rf {path}",
+        },
+        FakeShell(),
+    )
+
+
+def test_a_symlinked_cache_root_is_advice_not_a_delete(tmp_path):
+    """`rm -rf link` unlinks the link: the relocated cache keeps its bytes while the
+    run reports them freed, and the user's relocation is gone."""
+    from devdoctor.types import AdviceAction
+
+    target = tmp_path / "external" / "cache"
+    target.mkdir(parents=True)
+    (target / "blob").write_bytes(b"x" * 8192)
+    link = tmp_path / "cache"
+    link.symlink_to(target)
+
+    (entry,) = _yaml_provider([str(link)]).discover()
+
+    assert entry.size_bytes >= 8192
+    assert entry.reclaimable_bytes is None
+    assert all(isinstance(action, AdviceAction) for action in entry.cleanup_actions())
+    assert str(target) in entry.cleanup_actions()[0].message
+
+
+def test_a_path_that_is_not_absolute_after_expansion_is_ignored(tmp_path, monkeypatch):
+    """An unset $VAR stays literal and would resolve against the working directory."""
+    monkeypatch.delenv("DEVDOCTOR_NO_SUCH_VAR", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "$DEVDOCTOR_NO_SUCH_VAR" / "cache").mkdir(parents=True)
+
+    provider = _yaml_provider(["$DEVDOCTOR_NO_SUCH_VAR/cache"])
+
+    assert provider.discover() == []
+    assert any("not an absolute path" in note for note in provider.diagnostics)

@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from devdoctor.cleanup import PlannedEntry
+from devdoctor.cleanup import UNANSWERED_MESSAGE, PlannedEntry
 from devdoctor.types import CleanResult, Entry, estimated_reclaimable_bytes
 
 AUDIT_TYPE = "cleanup"
@@ -53,7 +53,7 @@ def free_space_lagged(free_before: int | None, free_after: int | None, reclaimed
 
 # Selection-phase skip messages (cleanup._resolve_aborted / _to_result) that mean
 # "nothing ran": the confirm was declined, or the user quit the per-entry prompts.
-_ABORTED_MESSAGES = frozenset({"aborted at confirm", "quit before confirm"})
+_ABORTED_MESSAGES = frozenset({"aborted at confirm", "quit before confirm", UNANSWERED_MESSAGE})
 
 
 def run_outcome(results: Sequence[CleanResult]) -> str:

@@ -246,6 +246,13 @@ class PathProvider(Provider):
         out: list[Path] = []
         for raw in self.raw_paths:
             expanded = os.path.expanduser(os.path.expandvars(raw))
+            if not os.path.isabs(expanded):
+                # An unset $VAR stays literal; resolved against the working
+                # directory it would offer whatever happens to sit there.
+                self.diagnostics.append(
+                    f"{self.name}: ignored {raw!r}: not an absolute path once expanded"
+                )
+                continue
             matches = glob.glob(expanded) if any(c in expanded for c in "*?[") else [expanded]
             for m in matches:
                 p = Path(m)
@@ -270,6 +277,17 @@ class PathProvider(Provider):
             quoted = shlex.quote(str(p))
             recipe = [line.format(path=quoted) for line in self.recipe_template]
             actions = _typed_path_actions(recipe, p)
+            if p.is_symlink() and p.is_dir():
+                # The size above is the target's, but `rm -rf link` only unlinks
+                # the link: nothing is freed and the relocation is lost.
+                target = os.path.realpath(p)
+                recipe = []
+                actions = (
+                    AdviceAction(
+                        f"{p} is a symlink to {target}. DevDoctor does not delete through "
+                        f"symlinks; clear {target} yourself to free this space."
+                    ),
+                )
             mtime = sizing.newest_mtime
             entries.append(
                 Entry(
