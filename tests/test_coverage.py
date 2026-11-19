@@ -77,7 +77,7 @@ def test_unclassified_directories_are_sized_at_depth_and_skip_what_is_classified
         limit=10,
     )
     assert [(str(u.path.relative_to(home)), u.bytes, u.files_only) for u in found.directories] == [
-        ("Library/App/Foo", 5_000, False),
+        ("Library/App/Foo/deep", 5_000, False),  # narrowed to what holds the bytes
         ("Downloads", 3_000, False),
         ("Library/App/Bar", 900, False),
         ("Library/App", 70, True),
@@ -233,3 +233,33 @@ def test_a_classified_symlink_also_classifies_the_directory_it_names(tmp_path):
 
     found = unclassified_directories(home, [home / "LinkToCache"], depth=3, limit=10)
     assert [u.path.name for u in found.directories if u.bytes >= 50] == ["Other"]
+
+
+def test_a_row_is_narrowed_to_the_directory_that_actually_holds_the_bytes(tmp_path):
+    """100 GB of models four levels below the listing depth showed up only as the
+    organisation folder above them, which says nothing about what to look at."""
+    home = tmp_path / "home"
+    heavy = home / "projects" / "github" / "org" / "repo" / "data" / "models"
+    heavy.mkdir(parents=True)
+    (heavy / "a.gguf").write_bytes(b"x" * 400_000)
+    (heavy / "b.gguf").write_bytes(b"x" * 400_000)
+    (heavy.parent.parent / "README.md").write_bytes(b"x" * 100)
+    (home / "projects" / "github" / "org" / "other").mkdir()
+    (home / "projects" / "github" / "org" / "other" / "f").write_bytes(b"x" * 5_000)
+
+    result = unclassified_directories(home, [], depth=3, limit=10)
+
+    assert result.directories[0].path == heavy
+    assert result.directories[0].bytes >= 800_000
+
+
+def test_a_row_shared_between_several_children_is_left_where_it_is(tmp_path):
+    home = tmp_path / "home"
+    shared = home / "projects" / "github" / "org"
+    for name in ("one", "two", "three"):
+        (shared / name).mkdir(parents=True)
+        (shared / name / "f").write_bytes(b"x" * 300_000)
+
+    result = unclassified_directories(home, [], depth=3, limit=10)
+
+    assert result.directories[0].path == shared
