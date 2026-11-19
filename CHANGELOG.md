@@ -292,6 +292,19 @@ entries under a versioned heading as described in
 
 ### Fixed
 
+- **A cleanup run that hits trouble still finishes, and says what it did.** A
+  command that cannot start (a missing `brew`) or hangs now fails its own entry
+  instead of raising out of the run with earlier entries already deleted and no
+  record; cleanup commands time out after 30 minutes. Ctrl-C records the
+  entries already deleted rather than an empty list. With no terminal, an entry
+  that needs an answer is skipped on its own: reading end-of-input as "quit"
+  dropped every safe entry sorted after it while exiting 0. A path already gone
+  when its turn comes is skipped, not reported as reclaimed. A cache root that
+  is a symlink is advice only, since `rm -rf link` frees nothing and loses the
+  relocation. The plan table shows each entry's commands in full (the first
+  five of a long list) instead of one truncated line. A `paths.yaml` path that
+  is not absolute once expanded is ignored with a note.
+
 - **Four ways a cleanup could delete more than it showed are closed.** With
   `--allow-dangerous`, answering `a` (all in this provider) approved the
   provider's dangerous entries unseen, so a named Docker volume went with an

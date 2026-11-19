@@ -14,7 +14,7 @@ from rich.table import Table
 from devdoctor import cleanup_audit, discovery, registry
 from devdoctor import coverage as coverage_mod
 from devdoctor import history as history_mod
-from devdoctor.cleanup import build_script
+from devdoctor.cleanup import CleanupEvent, EntryResolved, build_script
 from devdoctor.cleanup import run as cleanup_run
 from devdoctor.config import load_app_settings
 from devdoctor.logging_config import configure_logging
@@ -383,6 +383,14 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
             console.print("[dim]Preview only — re-run with --execute to perform cleanup.[/]")
             return
         free_before = cleanup_audit.free_bytes()
+        # Kept outside the run so an interrupted one can still say what it deleted.
+        resolved: list[CleanResult] = []
+
+        def on_event(event: CleanupEvent) -> None:
+            if isinstance(event, EntryResolved):
+                resolved.append(event.result)
+            presenter.on_event(event)
+
         try:
             with presenter.executing():
                 results = cleanup_run(
@@ -395,17 +403,23 @@ def build_cli(shell: Shell | None = None) -> click.Group:  # noqa: PLR0915
                         yes_safe=yes_safe,
                         allow_dangerous=allow_dangerous,
                         providers=filters.providers,
+                        skip_missing_paths=True,
                     ),
                     # Re-check each worktree immediately before removing it (#110).
                     verify=GitWorktreeProvider(ctx.obj["shell"]).verify_removable,
-                    on_event=presenter.on_event,
+                    on_event=on_event,
                 )
         except KeyboardInterrupt:
             # A run interrupted mid-flight still gets a summary line and an audit
             # record — silence here is exactly what spec issue #126 complains about.
             free_after = cleanup_audit.free_bytes()
-            presenter.summary([], free_before=free_before, free_after=free_after)
-            _record_run(report, presenter, [], free_before, free_after, outcome="interrupted")
+            presenter.summary(
+                resolved,
+                free_before=free_before,
+                free_after=free_after,
+                reclaimed_bytes=cleanup_audit.estimated_reclaimed_bytes(report.entries, resolved),
+            )
+            _record_run(report, presenter, resolved, free_before, free_after, outcome="interrupted")
             sys.exit(130)
         free_after = cleanup_audit.free_bytes()
         reclaimed_bytes = cleanup_audit.estimated_reclaimed_bytes(report.entries, results)

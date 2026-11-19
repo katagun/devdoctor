@@ -105,6 +105,7 @@ async def start_job(body: CleanJobCreate, request: Request) -> Response:
                         execute=True,
                         yes_safe=body.yes_safe,
                         allow_dangerous=body.allow_dangerous,
+                        skip_missing_paths=True,
                     ),
                     run_line=run_line,
                     # Re-check each worktree immediately before removing it (#110).

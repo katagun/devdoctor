@@ -276,7 +276,7 @@ def test_clean_older_than_removes_old_transcripts_one_by_one(tmp_path: Path, mon
         [("rm", "-f", "--", str(old_b)), ("rm", "-f", "--", str(old_a))]
     )
     assert str(fresh) not in result.output.replace("\n", "")
-    assert "(+1 more)" in result.output
+    assert "(+1 more)" not in result.output
 
 
 def test_allow_dangerous_still_executes_nothing_for_a_young_bucket(
