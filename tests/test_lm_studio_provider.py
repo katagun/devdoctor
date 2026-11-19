@@ -130,3 +130,14 @@ def test_home_pointer_is_respected(tmp_path, monkeypatch):
     entries = LMStudioProvider(FakeShell()).discover()
     ids = {e.id for e in entries}
     assert "acme/frobnicator" in ids
+
+
+def test_the_default_home_is_dot_lmstudio(tmp_path, monkeypatch):
+    """Current LM Studio keeps everything under ~/.lmstudio; only old installs used
+    ~/.cache/lm-studio."""
+    from devdoctor.providers.lm_studio import _resolve_home
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert _resolve_home() == tmp_path / ".cache" / "lm-studio"
+    (tmp_path / ".lmstudio").mkdir()
+    assert _resolve_home() == tmp_path / ".lmstudio"

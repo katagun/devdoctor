@@ -26,7 +26,7 @@ class HuggingFaceProvider(Provider):
     )
 
     def discover(self) -> list[Entry]:
-        hub = Path(os.path.expanduser("~/.cache/huggingface/hub"))
+        hub = _hub_dir()
         if not hub.exists():
             return []
         entries: list[Entry] = []
@@ -60,3 +60,14 @@ class HuggingFaceProvider(Provider):
                 )
             )
         return entries
+
+
+def _hub_dir() -> Path:
+    """Where huggingface_hub keeps repos: HF_HUB_CACHE, else HF_HOME/hub, else the default."""
+    hub_cache = os.environ.get("HF_HUB_CACHE")
+    if hub_cache:
+        return Path(os.path.expanduser(hub_cache))
+    hf_home = os.environ.get("HF_HOME")
+    if hf_home:
+        return Path(os.path.expanduser(hf_home)) / "hub"
+    return Path(os.path.expanduser("~/.cache/huggingface/hub"))

@@ -66,7 +66,9 @@ def _resolve_home() -> Path:
                 return Path(os.path.expanduser(target))
         except OSError:
             pass
-    return Path("~/.cache/lm-studio").expanduser()
+    # Current LM Studio keeps everything in ~/.lmstudio; older installs used the cache dir.
+    current = Path("~/.lmstudio").expanduser()
+    return current if current.is_dir() else Path("~/.cache/lm-studio").expanduser()
 
 
 def _scan_legacy(root: Path, provider: LMStudioProvider) -> list[Entry]:

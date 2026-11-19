@@ -61,3 +61,23 @@ def test_discover_empty_when_hub_missing(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr("sys.platform", "darwin")
     assert HuggingFaceProvider(FakeShell()).discover() == []
+
+
+def test_the_hub_is_found_where_the_environment_puts_it(tmp_path, monkeypatch):
+    """HF_HUB_CACHE, then HF_HOME/hub, decide where the hub lives; a relocated
+    cache (the usual reason it is large) was invisible."""
+    home = tmp_path / "h"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr("sys.platform", "darwin")
+
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "hf-home"))
+    monkeypatch.delenv("HF_HUB_CACHE", raising=False)
+    _mk_hf_repo(tmp_path / "hf-home" / "hub", "models", "org", "via-home", blob_size=1000)
+    assert [e.id for e in HuggingFaceProvider(FakeShell()).discover()] == ["models:org/via-home"]
+
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub-cache"))
+    _mk_hf_repo(tmp_path / "hub-cache", "models", "org", "via-hub-cache", blob_size=1000)
+    assert [e.id for e in HuggingFaceProvider(FakeShell()).discover()] == [
+        "models:org/via-hub-cache"
+    ]

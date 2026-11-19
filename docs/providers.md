@@ -42,7 +42,7 @@ always wins.
 | `time-machine-local-snapshots` (macOS only) | Local snapshots; one all-but-newest bundle plus per-snapshot entries | reclaimable |
 | `node-project-dependencies` | `node_modules` under common code roots | reclaimable |
 | `cargo-targets` | Cargo workspace `target/` build dirs | reclaimable |
-| `terraform-workspaces` | Per-workspace `.terraform` directories (re-created by `terraform init`); the scan measures the plugin copies a shared `TF_PLUGIN_CACHE_DIR` would collapse | reclaimable |
+| `terraform-workspaces` | The provider plugins and modules in each workspace's `.terraform` (re-downloaded by `terraform init`; the selected workspace and backend settings are left alone); the scan measures the plugin copies a shared `TF_PLUGIN_CACHE_DIR` would collapse | reclaimable |
 | `python-venvs` | Virtualenvs (rebuildable with `uv sync` / `pip install -r`) | reclaimable |
 | `tox-nox-environments` | Generated tox/nox test environments | safe |
 | `conda-environments` | Non-base Conda environments (may hold your work) | dangerous |

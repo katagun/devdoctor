@@ -292,6 +292,20 @@ entries under a versioned heading as described in
 
 ### Fixed
 
+- **Providers look where the tools actually keep things, and stop when a tool
+  does not answer.** `terraform-workspaces` removes only `providers/` and
+  `modules/`: deleting `.terraform` whole also dropped the selected workspace
+  and backend settings, so the next apply could target `default`.
+  `huggingface-hub` follows `HF_HUB_CACHE` and `HF_HOME`, `ollama` follows
+  `OLLAMA_MODELS`, and LM Studio's current `~/.lmstudio` is found. Every tool a
+  provider asks during a scan (`conda info`, `xcrun simctl`, `ollama list`,
+  `go env` and the rest) now has a 30-second limit, so one hung tool no longer
+  hangs the scan. `large-files` no longer walks Photos and other library
+  packages or app bundles. The desktop app adds Homebrew, `~/.local/bin` and
+  the other usual tool directories to the backend's `PATH`: opened from Finder
+  it had only the system directories and most tool-backed providers found
+  nothing.
+
 - **Four ways a cleanup could delete more than it showed are closed.** With
   `--allow-dangerous`, answering `a` (all in this provider) approved the
   provider's dangerous entries unseen, so a named Docker volume went with an

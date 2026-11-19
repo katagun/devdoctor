@@ -37,7 +37,7 @@ class OllamaProvider(Provider):
     )
 
     def discover(self) -> list[Entry]:
-        result = self._shell.run(["ollama", "list"], check=False)
+        result = self._probe(["ollama", "list"])
         if result.returncode == 0 and result.stdout.strip():
             return self._parse_list(result.stdout)
         return self._walk_models_dir()
@@ -83,7 +83,7 @@ class OllamaProvider(Provider):
         return entries
 
     def _walk_models_dir(self) -> list[Entry]:
-        models = Path(os.path.expanduser("~/.ollama/models"))
+        models = _models_dir()
         if not models.exists():
             return []
         sizing = size_path_detailed(models)
@@ -107,6 +107,11 @@ class OllamaProvider(Provider):
         ]
 
 
+def _models_dir() -> Path:
+    """The model store: wherever OLLAMA_MODELS points, else ~/.ollama/models."""
+    return Path(os.path.expanduser(os.environ.get("OLLAMA_MODELS") or "~/.ollama/models"))
+
+
 def _parse_size(s: str) -> int:
     m = _SIZE_RE.search(s)
     if not m:
@@ -127,7 +132,7 @@ def _manifest_path(name: str) -> Path | None:
     repo, _, tag = name.partition(":")
     if not tag:
         tag = "latest"
-    base = Path(os.path.expanduser("~/.ollama/models/manifests"))
+    base = _models_dir() / "manifests"
     parts = repo.split("/") if repo else []
     candidates: list[Path] = []
     if len(parts) == _MANIFEST_PARTS_BARE:

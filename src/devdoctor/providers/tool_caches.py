@@ -122,7 +122,7 @@ class UvCacheProvider(Provider):
 
     def _cache_dir(self, uv_available: bool) -> Path:
         if uv_available:
-            result = self._shell.run(["uv", "cache", "dir"], check=False)
+            result = self._probe(["uv", "cache", "dir"])
             path = _path_from_output(result.stdout) if result.returncode == 0 else None
             if path is not None:
                 return path
@@ -142,7 +142,7 @@ class PnpmStoreProvider(Provider):
     )
 
     def discover(self) -> list[Entry]:
-        result = self._shell.run(["pnpm", "store", "path"], check=False)
+        result = self._probe(["pnpm", "store", "path"])
         path = _path_from_output(result.stdout) if result.returncode == 0 else None
         if path is None:
             self.diagnostics.append("pnpm-store: could not resolve the active store path")
@@ -169,7 +169,7 @@ class BunCacheProvider(Provider):
     details = "Uses bun pm cache to discover the cache and bun pm cache rm to clear it."
 
     def discover(self) -> list[Entry]:
-        result = self._shell.run(["bun", "pm", "cache"], check=False)
+        result = self._probe(["bun", "pm", "cache"])
         path = _path_from_output(result.stdout) if result.returncode == 0 else None
         if path is None:
             self.diagnostics.append("bun-cache: could not resolve the global cache path")
@@ -204,7 +204,7 @@ class YarnCacheProvider(Provider):
             ["yarn", "config", "get", "cacheFolder"],
             ["yarn", "cache", "dir"],
         ):
-            result = self._shell.run(argv, check=False)
+            result = self._probe(argv)
             if result.returncode == 0:
                 path = _path_from_output(result.stdout)
             if path is not None:
@@ -250,10 +250,7 @@ class GoCachesProvider(Provider):
     details = "Uses go env for configured paths and official go clean cache commands."
 
     def discover(self) -> list[Entry]:
-        result = self._shell.run(
-            ["go", "env", "-json", "GOCACHE", "GOMODCACHE"],
-            check=False,
-        )
+        result = self._probe(["go", "env", "-json", "GOCACHE", "GOMODCACHE"])
         if result.returncode != 0:
             self.diagnostics.append("go-caches: go env failed")
             return []
@@ -359,10 +356,7 @@ class NuGetCacheProvider(Provider):
     details = "Uses dotnet nuget locals all --list and clears each reported cache explicitly."
 
     def discover(self) -> list[Entry]:
-        result = self._shell.run(
-            ["dotnet", "nuget", "locals", "all", "--list"],
-            check=False,
-        )
+        result = self._probe(["dotnet", "nuget", "locals", "all", "--list"])
         if result.returncode != 0:
             self.diagnostics.append("nuget-caches: dotnet nuget locals failed")
             return []
@@ -439,7 +433,7 @@ class CondaCacheProvider(Provider):
         ]
 
     def _conda_info(self) -> dict[str, object] | None:
-        result = self._shell.run(["conda", "info", "--json"], check=False)
+        result = self._probe(["conda", "info", "--json"])
         if result.returncode != 0:
             self.diagnostics.append("conda-package-caches: conda info failed")
             return None

@@ -39,6 +39,11 @@ _SKIP_DIR_NAMES = PRUNE_DIR_NAMES | {
     "Caches",
 }
 
+# Packages their owner sees as one object: an app, or a media library of hundreds
+# of thousands of files. Nothing inside one is a forgotten file to offer, and
+# walking a Photos library costs a stat per photo on every scan.
+_SKIP_DIR_SUFFIXES = (".app", ".photoslibrary", ".musiclibrary", ".tvlibrary", ".sparsebundle")
+
 
 class LargeFilesProvider(Provider):
     name = "large-files"
@@ -120,7 +125,7 @@ def _walk_for_large_files(
         # Prune by name (node_modules, etc.) and by device boundary.
         keep: list[str] = []
         for name in dirnames:
-            if name in _SKIP_DIR_NAMES:
+            if name in _SKIP_DIR_NAMES or name.endswith(_SKIP_DIR_SUFFIXES):
                 continue
             sub = dp / name
             try:

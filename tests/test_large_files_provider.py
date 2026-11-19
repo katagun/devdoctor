@@ -133,3 +133,22 @@ def test_a_large_sparse_file_reports_what_it_reserves(tmp_path, monkeypatch):
     (entry,) = LargeFilesProvider(FakeShell()).discover()
     assert entry.apparent_bytes == 50 * _TEST_THRESHOLD + 1
     assert entry.footprint_bytes is not None and entry.footprint_bytes < entry.apparent_bytes
+
+
+def test_library_packages_are_not_walked(tmp_path, monkeypatch):
+    """A Photos library is one object to its owner and hundreds of thousands of
+    files to a walk; nothing inside it is a forgotten file to offer."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setattr("devdoctor.providers.large_files._MIN_BYTES", _TEST_THRESHOLD)
+    _mk_file(
+        home / "Pictures" / "Photos Library.photoslibrary" / "originals" / "a.mov",
+        2 * _TEST_THRESHOLD,
+    )
+    _mk_file(home / "Pictures" / "export.mov", 2 * _TEST_THRESHOLD)
+
+    entries = LargeFilesProvider(FakeShell()).discover()
+
+    assert [e.path for e in entries] == [home / "Pictures" / "export.mov"]

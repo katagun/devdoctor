@@ -45,3 +45,24 @@ def test_available_true_when_required_binary_none(monkeypatch):
 
     monkeypatch.setattr("sys.platform", "linux")
     assert _Pure(FakeShell()).available() is True
+
+
+def test_no_provider_runs_a_command_without_a_timeout():
+    """A hung `conda info` or `xcrun simctl` used to hang the scan, and every
+    identical scan waiting on it."""
+    import re
+    from pathlib import Path
+
+    import devdoctor.providers as providers_pkg
+
+    offenders = []
+    for source in sorted(Path(providers_pkg.__file__).parent.glob("*.py")):
+        text = source.read_text()
+        for match in re.finditer(r"shell\.run\(", text):
+            depth, end = 1, match.end()
+            while depth and end < len(text):
+                depth += {"(": 1, ")": -1}.get(text[end], 0)
+                end += 1
+            if "timeout=" not in text[match.end() : end]:
+                offenders.append(f"{source.name}:{text.count(chr(10), 0, match.start()) + 1}")
+    assert offenders == []
