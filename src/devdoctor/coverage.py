@@ -175,7 +175,36 @@ def unclassified_directories(
         if sizing.allocated_bytes:
             rows.append(Unclassified(Path(path), sizing.allocated_bytes))
     rows.sort(key=lambda row: (-row.bytes, str(row.path)))
-    return UnclassifiedResult(tuple(rows[:limit]), skipped)
+    top = [row if row.files_only else _narrowed(row, exclude, root_dev) for row in rows[:limit]]
+    return UnclassifiedResult(tuple(top), skipped)
+
+
+# A child holding at least this share of a row's bytes is the better thing to name.
+_DOMINANT_SHARE = 0.8
+# Enough to get from ~/projects/<host>/<org> down to <repo>/data/models.
+_NARROW_LEVELS = 6
+
+
+def _narrowed(row: Unclassified, exclude: frozenset[FileId], root_dev: int) -> Unclassified:
+    """``row``, or the directory inside it that holds nearly all of its bytes.
+
+    Rows are listed at a fixed depth, so one heavy directory far below it appears
+    as an ancestor that says nothing about what to look at. Following the dominant
+    child names the directory itself. Only the rows that are returned are narrowed:
+    each step sizes the children of one directory again.
+    """
+    current = row
+    for _ in range(_NARROW_LEVELS):
+        listed = _list(str(current.path), exclude, root_dev)
+        if listed is None or not listed.subdirectories:
+            break
+        children = [Path(child) for child in listed.subdirectories]
+        sizes = [sizing.allocated_bytes for sizing in size_many(children, exclude=exclude)]
+        largest = max(range(len(children)), key=sizes.__getitem__)
+        if sizes[largest] < _DOMINANT_SHARE * current.bytes:
+            break
+        current = Unclassified(children[largest], sizes[largest])
+    return current
 
 
 @dataclass(frozen=True)

@@ -14,6 +14,12 @@ entries under a versioned heading as described in
 
 ### Changed
 
+- **`scan --coverage` names the directory that holds the bytes.** Rows are
+  listed three levels below home, so 100 GB of model files further down showed
+  up only as the organisation folder above them. Each listed row now follows
+  its dominant child (one holding at least 80% of the row) down to the
+  directory worth looking at.
+
 - **The web UI's lint and test tooling is current: ESLint 10, the React Hooks
   rules 7, jsdom 30.** ESLint 10.9 (with `@eslint/js` 10),
   `eslint-plugin-react-hooks` 7.1, `eslint-plugin-react-refresh` 0.5, jsdom 30.0
