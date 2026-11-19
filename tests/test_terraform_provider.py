@@ -40,8 +40,11 @@ def test_each_workspace_is_a_reclaimable_deletion(tmp_path: Path, monkeypatch) -
     assert [e.path for e in entries] == [dev, prod]
     for entry in entries:
         assert entry.risk is Risk.RECLAIMABLE
-        assert entry.actions == (DeletePathAction(entry.path),)
-        assert entry.reclaimable_bytes == entry.footprint_bytes
+    assert entries[0].actions == (DeletePathAction(dev / "providers"),)
+    assert entries[1].actions == (
+        DeletePathAction(prod / "providers"),
+        DeletePathAction(prod / "modules"),
+    )
     assert entries[1].label == "prod/.terraform"
 
 
@@ -116,3 +119,36 @@ def _figures(note: str) -> tuple[int, int]:
     assert len(found) >= 2, note
     (t_num, t_unit), (d_num, d_unit) = found[0], found[1]
     return int(float(t_num) * units[t_unit]), int(float(d_num) * units[d_unit])
+
+
+def test_cleanup_keeps_the_selected_workspace_and_backend_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """`.terraform` also holds `environment` (the selected workspace) and the backend
+    config `init` was given; deleting the directory made the next apply target
+    `default`. Only the re-downloadable parts are removed, and only they are counted."""
+    root = tmp_path / "projects"
+    monkeypatch.setenv("DEVDOCTOR_PROJECT_ROOTS", str(root))
+    dot = _workspace(root / "infra", "prod")
+    _plugin(dot, 40_000)
+    (dot / "environment").write_text("production")
+    (dot / "terraform.tfstate").write_bytes(b"s" * 20_000)
+
+    (entry,) = TerraformProvider(FakeShell(), index=ProjectArtifactIndex()).discover()
+
+    assert entry.path == dot
+    assert entry.actions == (DeletePathAction(dot / "providers"),)
+    assert entry.reclaimable_bytes is not None
+    assert entry.reclaimable_bytes < entry.footprint_bytes
+
+
+def test_a_workspace_with_nothing_re_downloadable_is_not_offered(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = tmp_path / "projects"
+    monkeypatch.setenv("DEVDOCTOR_PROJECT_ROOTS", str(root))
+    dot = _workspace(root / "infra", "prod")
+    dot.mkdir()
+    (dot / "environment").write_text("production")
+
+    assert TerraformProvider(FakeShell(), index=ProjectArtifactIndex()).discover() == []

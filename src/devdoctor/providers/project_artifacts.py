@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import os
 import stat as stat_mod
 import threading
@@ -346,7 +347,9 @@ class TerraformProvider(CargoTargetsProvider):
     risk = Risk.RECLAIMABLE
     details = (
         "Finds .terraform next to .terraform.lock.hcl or main.tf under bounded project "
-        "roots; terraform init re-creates it. The plugin binaries under providers/ are "
+        "roots and offers its providers/ and modules/, which terraform init downloads "
+        "again; the selected workspace and backend settings stay. The plugin binaries "
+        "under providers/ are "
         "byte-identical across workspaces, so the lasting fix is a shared plugin cache: "
         "set TF_PLUGIN_CACHE_DIR (or plugin_cache_dir in ~/.terraformrc) and Terraform "
         "keeps one copy and links each workspace to it. The scan measures the duplicate "
@@ -356,12 +359,40 @@ class TerraformProvider(CargoTargetsProvider):
 
     def discover(self) -> list[Entry]:
         candidates = self._candidates()
-        entries = _sized_entries(self, candidates)
+        entries = self._re_downloadable_only(_sized_entries(self, candidates))
         self._note_duplicate_plugins([candidate.artifact for candidate in candidates])
         return entries
 
-    # discover_selected is inherited: a cleanup's re-check skips the duplicate-plugin
-    # note, a report diagnostic that measures every workspace's plugins.
+    def discover_selected(self, ids: frozenset[str]) -> list[Entry]:
+        # No duplicate-plugin note here: that report diagnostic measures every
+        # workspace's plugins, and a cleanup's re-check wants only its selection.
+        return self._re_downloadable_only(super().discover_selected(ids))
+
+    def _re_downloadable_only(self, entries: list[Entry]) -> list[Entry]:
+        """Offer each workspace's plugins and modules, not the whole directory.
+
+        `.terraform` also holds `environment` (the selected workspace) and the
+        backend settings `terraform init` was given, which init cannot always
+        rebuild; without them the next apply can target the default workspace.
+        """
+        out: list[Entry] = []
+        for entry in entries:
+            assert entry.path is not None
+            parts = [p for p in (entry.path / name for name in _TERRAFORM_PARTS) if _is_real_dir(p)]
+            if not parts:
+                continue
+            reclaimable = 0
+            for sizing in size_many(parts):
+                self._note_skipped(list(sizing.skipped_paths))
+                reclaimable += sizing.allocated_bytes
+            out.append(
+                dataclasses.replace(
+                    entry,
+                    usage=DiskUsage(entry.footprint_bytes, reclaimable),
+                    actions=tuple(DeletePathAction(part) for part in parts),
+                )
+            )
+        return out
 
     def _note_duplicate_plugins(self, dot_terraform_dirs: list[Path]) -> None:
         """Measure the provider plugin copies that a shared cache would collapse.
@@ -391,6 +422,8 @@ class TerraformProvider(CargoTargetsProvider):
         )
 
 
+# What `terraform init` downloads again; everything else in .terraform is state.
+_TERRAFORM_PARTS = ("providers", "modules")
 _PLUGIN_KEY_DEPTH = 5  # host / namespace / name / version / platform
 
 

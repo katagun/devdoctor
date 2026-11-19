@@ -42,7 +42,7 @@ class TimeMachineSnapshotsProvider(Provider):
     )
 
     def discover(self) -> list[Entry]:
-        result = self._shell.run(list(_LIST_ARGV), check=False)
+        result = self._probe(list(_LIST_ARGV))
         if result.returncode != 0:
             msg = (
                 f"{self.name}: `tmutil listlocalsnapshots /` failed "

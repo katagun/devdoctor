@@ -4,6 +4,7 @@ import glob
 import logging
 import os
 import shlex
+import subprocess
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -20,6 +21,7 @@ from devdoctor.types import (
     DiskUsage,
     Entry,
     Risk,
+    ShellResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,6 +31,9 @@ logger = logging.getLogger(__name__)
 # Report is serialized into).
 _DIAGNOSTIC_SAMPLE = 3
 _RM_RECIPE_ARGC = 3
+
+# How long discovery waits for a tool it asks a question of.
+PROBE_TIMEOUT_S = 30.0
 
 
 class Provider(ABC):
@@ -52,6 +57,18 @@ class Provider(ABC):
         # these into Report.diagnostics after calling discover(). A fresh
         # provider instance is built per scan, so this never leaks across scans.
         self.diagnostics: list[str] = []
+
+    def _probe(self, argv: list[str], *, timeout: float = PROBE_TIMEOUT_S) -> ShellResult:
+        """Run a tool to ask it something during discovery, never waiting for ever.
+
+        A tool that hangs (a wedged daemon, a CLI waiting on the network) answers
+        like one that failed, so its provider falls back or says so and the scan,
+        and every identical scan waiting on it, moves on.
+        """
+        try:
+            return self._shell.run(argv, check=False, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return ShellResult(124, "", f"{argv[0]} did not answer within {timeout:.0f}s")
 
     def _note_skipped(self, paths: list[Path]) -> None:
         """Log and record paths the sizer could not read during a walk.

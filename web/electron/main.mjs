@@ -10,6 +10,7 @@ import {
   FULL_DISK_ACCESS_SETTINGS_URL,
   fullDiskAccessDialogOptions,
 } from "./full-disk-access.mjs";
+import { backendPath } from "./backend-env.mjs";
 import { createWindowTracker } from "./window-tracker.mjs";
 
 // Set the app name before any app.getPath()/whenReady call so userData and logs
@@ -121,7 +122,7 @@ function startBackend(port) {
 
   const child = spawn(command.command, command.args, {
     cwd: command.cwd,
-    env: process.env,
+    env: { ...process.env, PATH: backendPath(process.env.PATH, os.homedir(), fs.existsSync) },
     stdio: ["ignore", "pipe", "pipe"],
   });
 

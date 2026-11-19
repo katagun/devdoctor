@@ -134,3 +134,42 @@ def test_discover_shell_quotes_suspicious_model_names(monkeypatch):
     [e] = OllamaProvider(sh).discover()
     # The semicolon must be quoted, not left bare.
     assert "rm -rf /" not in e.recipe[0] or "'" in e.recipe[0]
+
+
+def test_the_models_directory_follows_ollama_models(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    moved = tmp_path / "external" / "ollama-models"
+    (moved / "blobs").mkdir(parents=True)
+    (moved / "blobs" / "sha256-aa").write_bytes(b"x" * 4096)
+    monkeypatch.setenv("OLLAMA_MODELS", str(moved))
+    shell = FakeShell(
+        which_table={"ollama": "/opt/homebrew/bin/ollama"},
+        responses={("ollama", "list"): ShellResult(1, "", "could not connect")},
+    )
+
+    (entry,) = OllamaProvider(shell).discover()
+
+    assert entry.path == moved and entry.size_bytes >= 4096
+
+
+def test_a_hung_ollama_falls_back_to_the_models_directory(tmp_path, monkeypatch):
+    import subprocess
+
+    home = tmp_path / "home"
+    (home / ".ollama" / "models" / "blobs").mkdir(parents=True)
+    (home / ".ollama" / "models" / "blobs" / "sha256-aa").write_bytes(b"x" * 4096)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("OLLAMA_MODELS", raising=False)
+    timeouts = []
+
+    class Hung(FakeShell):
+        def run(self, argv, *, check=False, timeout=None, env=None):
+            timeouts.append(timeout)
+            raise subprocess.TimeoutExpired(argv, timeout or 0)
+
+    (entry,) = OllamaProvider(Hung(which_table={"ollama": "/x/ollama"})).discover()
+
+    assert entry.path == home / ".ollama" / "models"
+    assert timeouts and timeouts[0] is not None

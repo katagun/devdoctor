@@ -113,10 +113,7 @@ class XcodeProvider(Provider):
     def _unavailable_simulators(self) -> list[_XcodeCandidate]:
         if self._shell.which("xcrun") is None:
             return []
-        result = self._shell.run(
-            ["xcrun", "simctl", "list", "devices", "unavailable", "-j"],
-            check=False,
-        )
+        result = self._probe(["xcrun", "simctl", "list", "devices", "unavailable", "-j"])
         if result.returncode != 0:
             self.diagnostics.append("xcode-development-data: simctl device listing failed")
             return []
