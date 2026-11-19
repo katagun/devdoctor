@@ -21,6 +21,13 @@ from devdoctor.web.subprocess_stream import OnChunk, run_argv_streaming
 
 router = APIRouter(prefix="/api/clean")
 
+# Long enough for `rm -rf` of a large tree or a full `docker system prune`; a
+# command still running after this is hung and would hold the job slot for ever.
+STEP_TIMEOUT_S = 30 * 60.0
+# How long a new job waits for its page to open the event stream before it is
+# cancelled: a tab reloaded during the re-scan never comes back for it.
+SUBSCRIBE_GRACE_S = 60.0
+
 
 def _owning_providers(entry_ids: list[str], providers: list[Provider]) -> frozenset[str] | None:
     """The providers named by the ``"{provider}:{id}"`` prefix of every selected id.
@@ -71,7 +78,7 @@ async def start_job(body: CleanJobCreate, request: Request) -> Response:
 
     async def run_line(argv: tuple[str, ...]) -> ShellResult:
         # Dummy default; the runner uses run_line_with_chunks below.
-        return await run_argv_streaming(argv, on_chunk=_noop_chunk)
+        return await run_argv_streaming(argv, on_chunk=_noop_chunk, timeout=STEP_TIMEOUT_S)
 
     try:
         # Held from before the re-scan until the runner fills the slot, so a second
@@ -124,14 +131,22 @@ async def start_job(body: CleanJobCreate, request: Request) -> Response:
         )
 
     async def run_line_with_chunks(argv: tuple[str, ...], on_chunk: OnChunk) -> ShellResult:
-        return await run_argv_streaming(argv, on_chunk=on_chunk)
+        return await run_argv_streaming(argv, on_chunk=on_chunk, timeout=STEP_TIMEOUT_S)
 
     runner.run_line_with_chunks = run_line_with_chunks
 
+    async def _cancel_if_unheard() -> None:
+        try:
+            await asyncio.wait_for(runner.subscribed.wait(), timeout=SUBSCRIBE_GRACE_S)
+        except TimeoutError:
+            await runner.cancel()
+
     async def _execute() -> None:
+        watchdog = asyncio.create_task(_cancel_if_unheard())
         try:
             await runner.run()
         finally:
+            watchdog.cancel()
             registry_obj.release(runner)
 
     runner._task = asyncio.create_task(_execute())
@@ -144,6 +159,8 @@ async def events(job_id: str, request: Request) -> EventSourceResponse:
     runner = registry_obj.active()
     if runner is None or runner.id != job_id:
         raise HTTPException(status_code=404, detail="no active job with that id")
+
+    runner.subscribed.set()
 
     async def _stream() -> Any:
         completed = False

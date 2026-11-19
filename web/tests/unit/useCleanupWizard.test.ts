@@ -161,6 +161,26 @@ describe("useCleanupWizard", () => {
     ]);
   });
 
+  it("ends on the summary with an error when the event stream is lost", async () => {
+    // The server cancels a job whose stream drops, and the browser's reconnect then
+    // finds no job: without this the wizard sat on "executing" for ever.
+    startResponse.mockResolvedValue({ job_id: "job-1" });
+    const { result } = renderWizard();
+    await act(async () => {
+      await result.current.startJob();
+    });
+    const es = FakeEventSource.instances.at(-1)!;
+    expect(result.current.state.step).toBe("execute");
+
+    act(() => {
+      for (const fn of es.listeners["error"] ?? []) fn(new MessageEvent("error"));
+    });
+
+    expect(result.current.state.step).toBe("summary");
+    expect(result.current.state.error).toMatch(/connection/i);
+    expect(es.closed).toBe(true);
+  });
+
   it("caps console output so a chatty command can't grow state without bound", () => {
     let state = initial([]);
     state = reducer(state, { type: "EXECUTE_START", entry_id: "1", cmd: "docker prune" });

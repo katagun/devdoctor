@@ -17,6 +17,9 @@ class HostHeaderMiddleware:
     def __init__(self, app: ASGIApp, *, allowed_hosts: set[str]) -> None:
         self.app = app
         self.allowed_hosts = {h.lower() for h in allowed_hosts}
+        # The server speaks plain http on loopback, so its own pages have exactly
+        # these origins.
+        self.allowed_origins = {f"http://{h}" for h in self.allowed_hosts}
 
     async def __call__(self, scope, receive, send):  # type: ignore[no-untyped-def]
         if scope["type"] != "http":
@@ -36,4 +39,31 @@ class HostHeaderMiddleware:
             )
             await response(scope, receive, send)
             return
+        if scope["path"].startswith("/api/") and not self._own_page(request):
+            response = JSONResponse(
+                status_code=403,
+                content={
+                    "error": {
+                        "code": "bad_origin",
+                        "message": "API requests must come from the DevDoctor page itself",
+                    }
+                },
+            )
+            await response(scope, receive, send)
+            return
         await self.app(scope, receive, send)
+
+    def _own_page(self, request: Request) -> bool:
+        """False when a browser says another page sent this request.
+
+        The Host check stops DNS rebinding, not a page on another site (or another
+        local port) posting here through the user's browser. Browsers attach
+        ``Origin`` to cross-origin and to every non-GET request, and
+        ``Sec-Fetch-Site`` to all of them; a client that sends neither is not a
+        browser acting for some other page. "same-site" is refused too: every
+        port on localhost is the same site.
+        """
+        origin = request.headers.get("origin")
+        if origin is not None and origin.lower() not in self.allowed_origins:
+            return False
+        return request.headers.get("sec-fetch-site", "same-origin") in {"same-origin", "none"}

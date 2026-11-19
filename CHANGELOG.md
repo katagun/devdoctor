@@ -292,6 +292,16 @@ entries under a versioned heading as described in
 
 ### Fixed
 
+- **The web UI's API only answers its own page, and a cleanup job can no longer
+  be left stuck.** A page on another site, or on another local port, could post
+  to the API through the browser; `/api/*` now refuses any request whose
+  `Origin` or `Sec-Fetch-Site` says it came from elsewhere. Terminating a
+  process requires the name it was listed under, so a bare pid is refused. A
+  job whose page never opens its event stream is cancelled after a minute
+  instead of holding the one job slot for ever, cleanup commands time out after
+  30 minutes, and the wizard ends on the summary with an error when the
+  connection drops instead of showing "executing" indefinitely.
+
 - **Four ways a cleanup could delete more than it showed are closed.** With
   `--allow-dangerous`, answering `a` (all in this provider) approved the
   provider's dangerous entries unseen, so a named Docker volume went with an

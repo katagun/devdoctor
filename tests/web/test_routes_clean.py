@@ -453,3 +453,61 @@ async def test_the_job_rescan_builds_only_the_selected_entries(tmp_path, monkeyp
         assert r.status_code == 200, r.text
         await app.state.runner_registry.active().cancel()
     assert selections == [frozenset({entry_id})]
+
+
+@pytest.mark.asyncio
+async def test_a_job_nobody_listens_to_gives_the_slot_back(tmp_path, monkeypatch):
+    """A tab reloaded before it opened the event stream left its job waiting on a
+    prompt for ever, and every later cleanup was refused with 409."""
+    from devdoctor.web import routes_clean
+
+    monkeypatch.setattr(routes_clean, "SUBSCRIBE_GRACE_S", 0.05)
+    app = _build(tmp_path, monkeypatch)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        body = {"entry_ids": [f"t:{tmp_path}/cache"]}
+        r = await client.post("/api/clean/jobs", json=body, headers={"Host": "testserver"})
+        assert r.status_code == 200, r.text
+        for _ in range(100):
+            if app.state.runner_registry.active() is None:
+                break
+            await asyncio.sleep(0.02)
+        assert app.state.runner_registry.active() is None
+        r = await client.post("/api/clean/jobs", json=body, headers={"Host": "testserver"})
+        assert r.status_code == 200, r.text
+        await app.state.runner_registry.active().cancel()
+    assert (tmp_path / "cache").exists()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_commands_run_with_a_timeout(tmp_path, monkeypatch):
+    from devdoctor.types import ShellResult
+    from devdoctor.web import routes_clean
+
+    timeouts: list[float | None] = []
+
+    async def fake_streaming(argv, *, on_chunk, timeout=None):
+        timeouts.append(timeout)
+        return ShellResult(0, "", "")
+
+    monkeypatch.setattr(routes_clean, "run_argv_streaming", fake_streaming)
+    app = _build(tmp_path, monkeypatch)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        r = await client.post(
+            "/api/clean/jobs",
+            json={"entry_ids": [f"t:{tmp_path}/cache"], "yes_safe": True},
+            headers={"Host": "testserver"},
+        )
+        assert r.status_code == 200, r.text
+        runner = app.state.runner_registry.active()
+        await runner.answer_confirm(True)
+        for _ in range(100):
+            if runner._pending_confirm is not None:
+                break
+            await asyncio.sleep(0.02)
+        await runner.answer_confirm(True)
+        await runner._task
+    assert timeouts and all(t is not None and t > 0 for t in timeouts)

@@ -336,6 +336,21 @@ export function useCleanupWizard({
       // The job_error path also wrote an audit entry; refresh history.
       queryClient.invalidateQueries({ queryKey: ["history"] });
     });
+    // The connection itself failing (not a job_error message). The server cancels a
+    // job whose stream drops, so the browser's automatic reconnect would only find
+    // "no such job": stop here and say so instead of waiting on a job that is gone.
+    es.addEventListener("error", () => {
+      if (esRef.current !== es) return;
+      es.close();
+      esRef.current = null;
+      dispatch({
+        type: "JOB_ERROR",
+        message:
+          "Lost the connection to DevDoctor, so the cleanup was stopped. " +
+          "Entries already cleaned stay cleaned; check History, then rescan.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["history"] });
+    });
   }, [queryClient]);
 
   const startJob = useCallback(async () => {
